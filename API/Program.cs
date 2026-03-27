@@ -1,5 +1,8 @@
+using Application.Core;
+using Application.Annualleaves.Queries;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,10 +14,16 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
 
     opt.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
 });
+builder.Services.AddCors();
+builder.Services.AddMediatR(x =>
+x.RegisterServicesFromAssemblyContaining<GetAnnualleaveList.Handler>());
 
+builder.Services.AddAutoMapper(cfg => { }, typeof(MappingProfiles).Assembly);
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+app.UseCors(x => x.AllowAnyHeader().AllowAnyMethod()
+.WithOrigins("http://localhost:5001", "https://localhost:5001"));
 
 app.MapControllers();
 
@@ -31,5 +40,4 @@ catch (Exception ex)
     var logger = services.GetRequiredService<ILogger<Program>>();
     logger.LogError(ex, "An error accoured duaring migration");
 }
-
 app.Run();
