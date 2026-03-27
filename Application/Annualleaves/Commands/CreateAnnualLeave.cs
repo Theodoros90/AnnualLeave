@@ -1,4 +1,6 @@
 using System;
+using Application.Annualleaves.DTOs;
+using AutoMapper;
 using Domain;
 using MediatR;
 using Persistence;
@@ -10,18 +12,20 @@ public class CreateAnnualLeave
 {
     public class Command : IRequest<string>
     {
-        public required AnnualLeave AnnualLeave { get; set; }
+        public required CreateAnnualLeaveRequest AnnualLeave { get; set; }
     }
 
-    public class Handler(AppDbContext context) : IRequestHandler<Command, string>
+    public class Handler(AppDbContext context, IMapper mapper) : IRequestHandler<Command, string>
     {
         public async Task<string> Handle(Command request, CancellationToken cancellationToken)
         {
-            context.AnnualLeaves.Add(request.AnnualLeave);
+            var annualLeave = mapper.Map<AnnualLeave>(request.AnnualLeave);
+
+            context.AnnualLeaves.Add(annualLeave);
 
             await context.SaveChangesAsync(cancellationToken);
 
-            return request.AnnualLeave.Id;
+            return annualLeave.Id;
         }
     }
 }

@@ -1,0 +1,34 @@
+using System;
+using System.ComponentModel.DataAnnotations;
+
+namespace Application.Annualleaves.DTOs;
+
+public class AnnualLeaveDto
+{
+
+    public string Id { get; set; } = string.Empty;
+
+
+    public string EmployeeId { get; set; } = string.Empty;
+
+
+    public DateTime StartDate { get; set; }
+
+
+    public DateTime EndDate { get; set; }
+
+
+    public string Reason { get; set; } = string.Empty;
+
+
+    public string Status { get; set; } = string.Empty;
+
+
+    public DateTime CreatedAt { get; set; }
+
+    public DateTime? ApprovedAt { get; set; }
+
+
+    [Range(1, int.MaxValue)]
+    public int TotalDays { get; set; }
+}
