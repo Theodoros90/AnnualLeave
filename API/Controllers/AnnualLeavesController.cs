@@ -1,95 +1,47 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Persistence;
+using System;
+using Application.Annualleaves.Commands;
+using Application.Annualleaves.Queries;
 using Domain;
+using Microsoft.AspNetCore.Mvc;
 
 namespace API.Controllers;
 
-[ApiController]
-[Route("api/[controller]")]
-public class AnnualLeavesController : ControllerBase
+public class AnnualLeavesController : BaseApiController
 {
-    private readonly AppDbContext _context;
-
-    public AnnualLeavesController(AppDbContext context)
-    {
-        _context = context;
-    }
-
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<AnnualLeave>>> GetAnnualLeaves()
+    public async Task<ActionResult<List<AnnualLeave>>> GetAnnualLeaves()
     {
-        return await _context.AnnualLeaves.ToListAsync();
+        return await Mediator.Send(new GetAnnualleaveList.Query());
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<AnnualLeave>> GetAnnualLeave(string id)
+    public async Task<ActionResult<AnnualLeave>> GetAnnualLeaveDetails(string id)
     {
-        var annualLeave = await _context.AnnualLeaves.FindAsync(id);
 
-        if (annualLeave == null)
-        {
-            return NotFound();
-        }
+        return await Mediator.Send(new GetAnnualLeaveDetails.Query { Id = id });
 
-        return annualLeave;
     }
 
     [HttpPost]
-    public async Task<ActionResult<AnnualLeave>> PostAnnualLeave(AnnualLeave annualLeave)
-    {
-        _context.AnnualLeaves.Add(annualLeave);
-        await _context.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetAnnualLeave), new { id = annualLeave.Id }, annualLeave);
+    public async Task<ActionResult<string>> CreateCustomer(AnnualLeave annualLeave)
+    {
+        return await Mediator.Send(new CreateAnnualLeave.Command { AnnualLeave = annualLeave });
     }
 
-    [HttpPut("{id}")]
-    public async Task<IActionResult> PutAnnualLeave(string id, AnnualLeave annualLeave)
+    [HttpPut]
+
+    public async Task<ActionResult> EditAnnualLeave(AnnualLeave annualLeave)
     {
-        if (id != annualLeave.Id)
-        {
-            return BadRequest();
-        }
-
-        _context.Entry(annualLeave).State = EntityState.Modified;
-
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!AnnualLeaveExists(id))
-            {
-                return NotFound();
-            }
-            else
-            {
-                throw;
-            }
-        }
-
+        await Mediator.Send(new EditAnnualLeave.Command { AnnualLeave = annualLeave });
         return NoContent();
     }
-
     [HttpDelete("{id}")]
-    public async Task<IActionResult> DeleteAnnualLeave(string id)
+
+    public async Task<ActionResult> DeleteCustomer(string id)
     {
-        var annualLeave = await _context.AnnualLeaves.FindAsync(id);
-        if (annualLeave == null)
-        {
-            return NotFound();
-        }
-
-        _context.AnnualLeaves.Remove(annualLeave);
-        await _context.SaveChangesAsync();
-
-        return NoContent();
+        await Mediator.Send(new DeleteAnnualLeave.Command { Id = id });
+        return Ok();
     }
 
-    private bool AnnualLeaveExists(string id)
-    {
-        return _context.AnnualLeaves.Any(e => e.Id == id);
-    }
 }
