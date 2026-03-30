@@ -56,7 +56,25 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
 
     opt.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
 });
-builder.Services.AddCors();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("ClientPolicy", policy =>
+    {
+        policy
+            .SetIsOriginAllowed(origin =>
+            {
+                if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                {
+                    return false;
+                }
+
+                return uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase);
+            })
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 builder.Services.AddMediatR(x =>
 x.RegisterServicesFromAssemblyContaining<GetAnnualleaveList.Handler>());
 
@@ -88,13 +106,15 @@ builder.Services.AddAuthorization(options =>
 });
 var app = builder.Build();
 
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    app.MapScalarApiReference();
+}
+
 // Configure the HTTP request pipeline.
 app.UseMiddleware<ValidationExceptionMiddleware>();
-app.UseAuthentication();
-app.UseAuthorization();
-app.UseCors(x => x.AllowAnyHeader().AllowAnyMethod()
-.WithOrigins("http://localhost:5001", "https://localhost:5001")
-.AllowCredentials());
+app.UseCors("ClientPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 
