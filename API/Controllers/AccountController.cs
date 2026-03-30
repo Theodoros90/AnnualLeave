@@ -40,7 +40,7 @@ public class AccountController(
             });
         }
 
-        var addToRoleResult = await userManager.AddToRoleAsync(user, "Viewer");
+        var addToRoleResult = await userManager.AddToRoleAsync(user, AppRoles.Employee);
         if (!addToRoleResult.Succeeded)
         {
             await userManager.DeleteAsync(user);
@@ -71,8 +71,8 @@ public class AccountController(
             UserId = user.Id,
             DepartmentId = defaultDepartmentId.Value,
             JobTitle = "Employee",
-            AnnualLeaveEntitlement = 20,
-            LeaveBalance = 20,
+            AnnualLeaveEntitlement = 22,
+            LeaveBalance = 22,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -90,7 +90,7 @@ public class AccountController(
         return Ok(new
         {
             message = "User registered successfully.",
-            role = "Viewer",
+            role = AppRoles.Employee,
             employeeProfileId = employeeProfile.Id
         });
     }

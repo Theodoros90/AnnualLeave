@@ -40,6 +40,25 @@ public class ValidationExceptionMiddleware(RequestDelegate next, ILogger<Validat
         {
             logger.LogError(ex, "Unhandled exception for request {Path}", context.Request.Path);
 
+            if (ex is UnauthorizedAccessException)
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.ContentType = "application/json";
+
+                var forbiddenResponse = new ErrorResponse
+                {
+                    StatusCode = StatusCodes.Status403Forbidden,
+                    Message = "You do not have permission to perform this action.",
+                    Path = context.Request.Path,
+                    TraceId = context.TraceIdentifier,
+                    Timestamp = DateTime.UtcNow,
+                    Details = ex.Message
+                };
+
+                await context.Response.WriteAsync(JsonSerializer.Serialize(forbiddenResponse));
+                return;
+            }
+
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
             context.Response.ContentType = "application/json";
 

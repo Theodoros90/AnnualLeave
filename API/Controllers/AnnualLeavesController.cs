@@ -1,6 +1,7 @@
 using Application.Annualleaves.Commands;
 using Application.Annualleaves.DTOs;
 using Application.Annualleaves.Queries;
+using Domain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -9,20 +10,33 @@ namespace API.Controllers;
 
 public class AnnualLeavesController : BaseApiController
 {
-    // Admin, Author and Viewer can view all leaves
+    // Visibility is role-scoped: Admin all, Manager by assigned departments, Employee own requests.
     [HttpGet]
     [Authorize(Policy = "AnnualLeaveRead")]
     public async Task<ActionResult<List<AnnualLeaveDto>>> GetAnnualLeaves()
     {
-        return await Mediator.Send(new GetAnnualleaveList.Query());
+        return await Mediator.Send(new GetAnnualleaveList.Query
+        {
+            RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsManager = User.IsInRole(AppRoles.Manager),
+            IsEmployee = User.IsInRole(AppRoles.Employee)
+        });
     }
 
-    // Admin, Author and Viewer can view leave details
+    // Visibility is role-scoped: Admin all, Manager by assigned departments, Employee own requests.
     [HttpGet("{id}")]
     [Authorize(Policy = "AnnualLeaveRead")]
     public async Task<ActionResult<AnnualLeaveDto>> GetAnnualLeaveDetails(string id)
     {
-        var result = await Mediator.Send(new GetAnnualLeaveDetails.Query { Id = id });
+        var result = await Mediator.Send(new GetAnnualLeaveDetails.Query
+        {
+            Id = id,
+            RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsManager = User.IsInRole(AppRoles.Manager),
+            IsEmployee = User.IsInRole(AppRoles.Employee)
+        });
         return HandleResult(result);
     }
 
@@ -35,7 +49,7 @@ public class AnnualLeavesController : BaseApiController
         return await Mediator.Send(new CreateAnnualLeave.Command { AnnualLeave = request });
     }
 
-    // Only Admin can edit leaves
+    // Admin can edit all leaves; Employee can edit own leaves; Manager can edit own and managed-department leaves.
     [HttpPut]
     [Authorize(Policy = "AnnualLeaveUpdate")]
     public async Task<ActionResult> EditAnnualLeave(EditAnnualLeaveRequest request)
@@ -43,17 +57,41 @@ public class AnnualLeavesController : BaseApiController
         await Mediator.Send(new EditAnnualLeave.Command
         {
             AnnualLeave = request,
-            ChangedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty
+            ChangedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsManager = User.IsInRole(AppRoles.Manager)
         });
         return NoContent();
     }
 
-    // Only Admin can delete leaves
+    // Admin and Managers can approve/reject leaves via status-only update.
+    [HttpPatch("{id}/status")]
+    [Authorize(Policy = "AnnualLeaveUpdate")]
+    public async Task<ActionResult> UpdateLeaveStatus(string id, UpdateLeaveStatusRequest request)
+    {
+        await Mediator.Send(new UpdateLeaveStatus.Command
+        {
+            LeaveId = id,
+            Request = request,
+            ChangedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsManager = User.IsInRole(AppRoles.Manager),
+        });
+        return NoContent();
+    }
+
+    // Admin can delete all leaves; Employee can delete own leaves; Manager can delete own and managed-department leaves.
     [HttpDelete("{id}")]
     [Authorize(Policy = "AnnualLeaveDelete")]
     public async Task<ActionResult> DeleteAnnualLeave(string id)
     {
-        await Mediator.Send(new DeleteAnnualLeave.Command { Id = id });
+        await Mediator.Send(new DeleteAnnualLeave.Command
+        {
+            Id = id,
+            RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsManager = User.IsInRole(AppRoles.Manager)
+        });
         return Ok();
     }
 }

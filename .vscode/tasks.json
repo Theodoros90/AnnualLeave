@@ -1,0 +1,63 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run API",
+            "type": "shell",
+            "command": "dotnet watch --project ${workspaceFolder}/API/API.csproj",
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^\\s*(.*)\\((\\d+),(\\d+)\\):\\s+(error|warning)\\s+(\\w+):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "code": 5,
+                    "message": 6
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "dotnet watch",
+                    "endsPattern": "Now listening on:"
+                }
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Run Client",
+            "type": "shell",
+            "command": "cd '${workspaceFolder}/client' ; npm run dev",
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^(.*)$",
+                    "message": 1
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "VITE",
+                    "endsPattern": "ready in"
+                }
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Run Full Stack",
+            "dependsOn": [
+                "Run API",
+                "Run Client"
+            ],
+            "dependsOrder": "parallel",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}

@@ -6,11 +6,16 @@ namespace Persistence;
 public class DbInitializer
 {
     private const string DefaultSeedPassword = "Pa$$w0rd";
+    private static readonly Dictionary<string, string> LegacyRoleMappings = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Author"] = AppRoles.Manager,
+        ["Viewer"] = AppRoles.Employee
+    };
 
     public static async Task SeedData(AppDbContext context, UserManager<User> userManager,
         RoleManager<Role> roleManager)
     {
-        await SeedRoles(roleManager);
+        await SeedRoles(roleManager, userManager);
         await SeedUsers(userManager);
         await SeedAnnualLeaves(context);
         await SeedLeaveTypes(context);
@@ -19,14 +24,47 @@ public class DbInitializer
         await SeedEmployeeProfiles(context);
     }
 
-    private static async Task SeedRoles(RoleManager<Role> roleManager)
+    private static async Task SeedRoles(RoleManager<Role> roleManager, UserManager<User> userManager)
     {
-        var roles = new[] { "Admin", "Author", "Viewer" };
-
-        foreach (var role in roles)
+        foreach (var role in AppRoles.All)
         {
             if (!await roleManager.RoleExistsAsync(role))
-                await roleManager.CreateAsync(new Role { Name = role });
+            {
+                await EnsureIdentitySucceeded(
+                    () => $"Failed to create role '{role}'.",
+                    await roleManager.CreateAsync(new Role { Name = role }));
+            }
+        }
+
+        foreach (var (legacyRole, replacementRole) in LegacyRoleMappings)
+        {
+            if (!await roleManager.RoleExistsAsync(legacyRole))
+            {
+                continue;
+            }
+
+            var usersInLegacyRole = await userManager.GetUsersInRoleAsync(legacyRole);
+            foreach (var user in usersInLegacyRole)
+            {
+                if (!await userManager.IsInRoleAsync(user, replacementRole))
+                {
+                    await EnsureIdentitySucceeded(
+                        () => $"Failed to add '{user.Email}' to role '{replacementRole}'.",
+                        await userManager.AddToRoleAsync(user, replacementRole));
+                }
+
+                await EnsureIdentitySucceeded(
+                    () => $"Failed to remove '{user.Email}' from role '{legacyRole}'.",
+                    await userManager.RemoveFromRoleAsync(user, legacyRole));
+            }
+
+            var role = await roleManager.FindByNameAsync(legacyRole);
+            if (role is not null)
+            {
+                await EnsureIdentitySucceeded(
+                    () => $"Failed to delete legacy role '{legacyRole}'.",
+                    await roleManager.DeleteAsync(role));
+            }
         }
     }
 
@@ -34,34 +72,59 @@ public class DbInitializer
     {
         var users = new[]
         {
-            new { DisplayName = "Admin User",  Email = "admin@annualleave.com",  Role = "Admin"  },
-            new { DisplayName = "Author User", Email = "author@annualleave.com", Role = "Author" },
-            new { DisplayName = "Viewer User", Email = "viewer@annualleave.com", Role = "Viewer" }
+            new { DisplayName = "Admin User", Email = "admin@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Admin },
+            new { DisplayName = "Manager User", Email = "manager@annualleave.com", LegacyEmail = "author@annualleave.com", Role = AppRoles.Manager },
+            new { DisplayName = "Employee User", Email = "employee@annualleave.com", LegacyEmail = "viewer@annualleave.com", Role = AppRoles.Employee }
         };
 
         foreach (var u in users)
         {
             var existingUser = await userManager.FindByEmailAsync(u.Email);
+            if (existingUser is null && !string.IsNullOrWhiteSpace(u.LegacyEmail))
+            {
+                existingUser = await userManager.FindByEmailAsync(u.LegacyEmail);
+            }
+
             if (existingUser is not null)
             {
-                if (!string.Equals(existingUser.UserName, u.Email, StringComparison.OrdinalIgnoreCase))
+                var shouldUpdateUser = false;
+
+                if (!string.Equals(existingUser.DisplayName, u.DisplayName, StringComparison.Ordinal))
                 {
-                    var setUserNameResult = await userManager.SetUserNameAsync(existingUser, u.Email);
-                    if (!setUserNameResult.Succeeded)
-                    {
-                        throw new InvalidOperationException($"Failed to set username for seed user '{u.Email}': {string.Join(", ", setUserNameResult.Errors.Select(e => e.Description))}");
-                    }
+                    existingUser.DisplayName = u.DisplayName;
+                    shouldUpdateUser = true;
                 }
 
                 if (!existingUser.EmailConfirmed)
                 {
                     existingUser.EmailConfirmed = true;
-                    await userManager.UpdateAsync(existingUser);
+                    shouldUpdateUser = true;
+                }
+
+                if (!string.Equals(existingUser.Email, u.Email, StringComparison.OrdinalIgnoreCase))
+                {
+                    existingUser.Email = u.Email;
+                    shouldUpdateUser = true;
+                }
+
+                if (!string.Equals(existingUser.UserName, u.Email, StringComparison.OrdinalIgnoreCase))
+                {
+                    existingUser.UserName = u.Email;
+                    shouldUpdateUser = true;
+                }
+
+                if (shouldUpdateUser)
+                {
+                    await EnsureIdentitySucceeded(
+                        () => $"Failed to update seed user '{u.Email}'.",
+                        await userManager.UpdateAsync(existingUser));
                 }
 
                 if (!await userManager.IsInRoleAsync(existingUser, u.Role))
                 {
-                    await userManager.AddToRoleAsync(existingUser, u.Role);
+                    await EnsureIdentitySucceeded(
+                        () => $"Failed to add '{u.Email}' to role '{u.Role}'.",
+                        await userManager.AddToRoleAsync(existingUser, u.Role));
                 }
 
                 // Keep seeded users deterministic across environments.
@@ -84,8 +147,20 @@ public class DbInitializer
                 throw new InvalidOperationException($"Failed to create seed user '{u.Email}': {string.Join(", ", createResult.Errors.Select(e => e.Description))}");
             }
 
-            await userManager.AddToRoleAsync(user, u.Role);
+            await EnsureIdentitySucceeded(
+                () => $"Failed to add '{u.Email}' to role '{u.Role}'.",
+                await userManager.AddToRoleAsync(user, u.Role));
         }
+    }
+
+    private static Task EnsureIdentitySucceeded(Func<string> errorMessage, IdentityResult result)
+    {
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException($"{errorMessage()} {string.Join(", ", result.Errors.Select(e => e.Description))}");
+        }
+
+        return Task.CompletedTask;
     }
 
     private static async Task EnsurePassword(UserManager<User> userManager, User user)
@@ -114,8 +189,8 @@ public class DbInitializer
         if (context.AnnualLeaves.Any()) return;
 
         var adminUser = context.Users.FirstOrDefault(u => u.Email == "admin@annualleave.com");
-        var authorUser = context.Users.FirstOrDefault(u => u.Email == "author@annualleave.com");
-        if (adminUser is null || authorUser is null) return;
+        var managerUser = context.Users.FirstOrDefault(u => u.Email == "manager@annualleave.com");
+        if (adminUser is null || managerUser is null) return;
 
         var annualLeaves = new List<AnnualLeave>
         {
@@ -129,7 +204,7 @@ public class DbInitializer
             new AnnualLeave
             {
                 Id = Guid.NewGuid().ToString(),
-                EmployeeId = authorUser.Id,
+                EmployeeId = managerUser.Id,
                 StartDate = DateTime.Now.AddMonths(2),
                 EndDate = DateTime.Now.AddMonths(2).AddDays(10)
             }
@@ -179,9 +254,9 @@ public class DbInitializer
         if (context.UserDepartments.Any()) return;
 
         var adminUser = context.Users.FirstOrDefault(u => u.Email == "admin@annualleave.com");
-        var authorUser = context.Users.FirstOrDefault(u => u.Email == "author@annualleave.com");
-        var viewerUser = context.Users.FirstOrDefault(u => u.Email == "viewer@annualleave.com");
-        if (adminUser is null || authorUser is null || viewerUser is null) return;
+        var managerUser = context.Users.FirstOrDefault(u => u.Email == "manager@annualleave.com");
+        var employeeUser = context.Users.FirstOrDefault(u => u.Email == "employee@annualleave.com");
+        if (adminUser is null || managerUser is null || employeeUser is null) return;
 
         var engineering = context.Departments.FirstOrDefault(d => d.Code == "ENG");
         var hr = context.Departments.FirstOrDefault(d => d.Code == "HR");
@@ -199,14 +274,14 @@ public class DbInitializer
             },
             new UserDepartment
             {
-                UserId         = authorUser.Id,
+                UserId         = managerUser.Id,
                 DepartmentId   = engineering.Id,
                 AssignedByUserId = adminUser.Id,
                 AssignedAt     = DateTime.UtcNow
             },
             new UserDepartment
             {
-                UserId         = viewerUser.Id,
+                UserId         = employeeUser.Id,
                 DepartmentId   = hr.Id,
                 AssignedByUserId = adminUser.Id,
                 AssignedAt     = DateTime.UtcNow
@@ -222,9 +297,9 @@ public class DbInitializer
         if (context.EmployeeProfiles.Any()) return;
 
         var adminUser = context.Users.FirstOrDefault(u => u.Email == "admin@annualleave.com");
-        var authorUser = context.Users.FirstOrDefault(u => u.Email == "author@annualleave.com");
-        var viewerUser = context.Users.FirstOrDefault(u => u.Email == "viewer@annualleave.com");
-        if (adminUser is null || authorUser is null || viewerUser is null) return;
+        var managerUser = context.Users.FirstOrDefault(u => u.Email == "manager@annualleave.com");
+        var employeeUser = context.Users.FirstOrDefault(u => u.Email == "employee@annualleave.com");
+        if (adminUser is null || managerUser is null || employeeUser is null) return;
 
         var engineering = context.Departments.FirstOrDefault(d => d.Code == "ENG");
         var hr = context.Departments.FirstOrDefault(d => d.Code == "HR");
@@ -238,38 +313,38 @@ public class DbInitializer
             DepartmentId = engineering.Id,
             ManagerId = null,
             JobTitle = "Engineering Manager",
-            AnnualLeaveEntitlement = 25,
-            LeaveBalance = 25,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        // Author reports to Admin
-        var authorProfile = new EmployeeProfile
-        {
-            Id = Guid.NewGuid().ToString(),
-            UserId = authorUser.Id,
-            DepartmentId = engineering.Id,
-            ManagerId = adminProfile.Id,
-            JobTitle = "Senior Developer",
             AnnualLeaveEntitlement = 22,
             LeaveBalance = 22,
             CreatedAt = DateTime.UtcNow
         };
 
-        // Viewer in HR, reports to Admin
-        var viewerProfile = new EmployeeProfile
+        // Manager reports to Admin
+        var managerProfile = new EmployeeProfile
         {
             Id = Guid.NewGuid().ToString(),
-            UserId = viewerUser.Id,
-            DepartmentId = hr.Id,
+            UserId = managerUser.Id,
+            DepartmentId = engineering.Id,
             ManagerId = adminProfile.Id,
-            JobTitle = "HR Coordinator",
-            AnnualLeaveEntitlement = 20,
-            LeaveBalance = 20,
+            JobTitle = "Engineering Team Lead",
+            AnnualLeaveEntitlement = 22,
+            LeaveBalance = 22,
             CreatedAt = DateTime.UtcNow
         };
 
-        await context.EmployeeProfiles.AddRangeAsync(adminProfile, authorProfile, viewerProfile);
+        // Employee in HR, reports to Admin
+        var employeeProfile = new EmployeeProfile
+        {
+            Id = Guid.NewGuid().ToString(),
+            UserId = employeeUser.Id,
+            DepartmentId = hr.Id,
+            ManagerId = adminProfile.Id,
+            JobTitle = "HR Coordinator",
+            AnnualLeaveEntitlement = 22,
+            LeaveBalance = 22,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await context.EmployeeProfiles.AddRangeAsync(adminProfile, managerProfile, employeeProfile);
         await context.SaveChangesAsync();
     }
 

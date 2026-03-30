@@ -11,6 +11,8 @@ public class AnnualLeaveDto
 
     public string EmployeeId { get; set; } = string.Empty;
 
+    public int? LeaveTypeId { get; set; }
+
 
     public DateTime StartDate { get; set; }
 
@@ -31,4 +33,8 @@ public class AnnualLeaveDto
 
     [Range(1, int.MaxValue)]
     public int TotalDays { get; set; }
+
+    public string EmployeeName { get; set; } = string.Empty;
+
+    public string DepartmentName { get; set; } = string.Empty;
 }

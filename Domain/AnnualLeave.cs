@@ -30,7 +30,25 @@ public class AnnualLeave
     public DateTime CreatedAt { get; set; }
     public DateTime? ApprovedAt { get; set; }
 
-    public int TotalDays => (EndDate.Date - StartDate.Date).Days + 1;
+    public int TotalDays
+    {
+        get
+        {
+            var start = StartDate.Date;
+            var end = EndDate.Date;
+
+            if (end < start) return 0;
+
+            var days = 0;
+            for (var date = start; date <= end; date = date.AddDays(1))
+            {
+                if (date.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday)
+                    days++;
+            }
+
+            return days;
+        }
+    }
     public ICollection<LeaveStatusHistory> StatusHistory { get; set; } = new List<LeaveStatusHistory>();
 }
 

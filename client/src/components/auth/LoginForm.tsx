@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import Alert from '@mui/material/Alert'
+import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
 import CircularProgress from '@mui/material/CircularProgress'
+import Divider from '@mui/material/Divider'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import Link from '@mui/material/Link'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
@@ -36,7 +39,11 @@ function getErrorMessage(error: unknown) {
     return 'Unable to sign in. Please check your details and try again.'
 }
 
-function LoginForm() {
+interface LoginFormProps {
+    onSwitch: () => void
+}
+
+function LoginForm({ onSwitch }: LoginFormProps) {
     const { authStore } = useStore()
     const [values, setValues] = useState<LoginRequest>(initialValues)
 
@@ -64,23 +71,32 @@ function LoginForm() {
 
     return (
         <Paper
-            elevation={0}
+            elevation={3}
             sx={{
-                p: { xs: 3, md: 4 },
-                border: '1px solid',
-                borderColor: 'rgba(15, 23, 42, 0.08)',
+                p: { xs: 4, md: 5 },
+                borderRadius: 3,
                 bgcolor: 'background.paper',
             }}
         >
             <Stack spacing={3} component="form" onSubmit={handleSubmit} noValidate>
-                <Stack spacing={1}>
-                    <Typography variant="h5" component="h2">
-                        Sign in
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                        Access your leave dashboard, requests, and approvals.
-                    </Typography>
+                <Stack spacing={2} alignItems="center">
+                    <Avatar
+                        variant="rounded"
+                        sx={{ width: 52, height: 52, bgcolor: 'primary.main', fontWeight: 700, fontSize: 18 }}
+                    >
+                        AL
+                    </Avatar>
+                    <Stack spacing={0.5} alignItems="center">
+                        <Typography variant="h5" fontWeight={700}>
+                            Welcome back
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            Sign in to your Annual Leave account
+                        </Typography>
+                    </Stack>
                 </Stack>
+
+                <Divider />
 
                 <TextField
                     label="Email"
@@ -121,9 +137,10 @@ function LoginForm() {
                     type="submit"
                     variant="contained"
                     size="large"
+                    fullWidth
                     disabled={mutation.isPending}
                     startIcon={mutation.isPending ? <CircularProgress size={18} color="inherit" /> : null}
-                    sx={{ minHeight: 48 }}
+                    sx={{ minHeight: 48, borderRadius: 2 }}
                 >
                     {mutation.isPending ? 'Signing in...' : 'Sign in'}
                 </Button>
@@ -133,6 +150,13 @@ function LoginForm() {
                         Demo account: admin@annualleave.com / Pa$$w0rd
                     </Typography>
                 </Box>
+
+                <Typography variant="body2" align="center" color="text.secondary">
+                    Don&apos;t have an account?{' '}
+                    <Link component="button" type="button" variant="body2" onClick={onSwitch} underline="hover">
+                        Register
+                    </Link>
+                </Typography>
             </Stack>
         </Paper>
     )

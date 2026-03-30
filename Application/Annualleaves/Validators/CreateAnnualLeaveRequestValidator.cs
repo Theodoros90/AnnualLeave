@@ -29,6 +29,11 @@ public class CreateAnnualLeaveRequestValidator : AbstractValidator<CreateAnnualL
                 .MustAsync(async (employeeId, cancellationToken) =>
                     await context.EmployeeProfiles.AnyAsync(ep => ep.UserId == employeeId, cancellationToken))
                 .WithMessage("Employee profile does not exist.");
+
+            RuleFor(x => x.AnnualLeave.LeaveTypeId)
+                .MustAsync(async (leaveTypeId, cancellationToken) =>
+                    await context.LeaveTypes.AnyAsync(lt => lt.Id == leaveTypeId && lt.IsActive, cancellationToken))
+                .WithMessage("Selected leave type is invalid or inactive.");
         });
     }
 }

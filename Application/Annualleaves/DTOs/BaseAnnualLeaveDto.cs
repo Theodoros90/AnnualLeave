@@ -9,6 +9,9 @@ public class BaseAnnualLeaveDto
 
     public DateTime EndDate { get; set; }
 
+    [Range(1, int.MaxValue)]
+    public int LeaveTypeId { get; set; }
+
     [StringLength(500, MinimumLength = 1)]
     public string Reason { get; set; } = string.Empty;
 }

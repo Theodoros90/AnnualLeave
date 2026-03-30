@@ -1,19 +1,19 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { observer } from 'mobx-react-lite'
+import AppBar from '@mui/material/AppBar'
+import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
-import Button from '@mui/material/Button'
-import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Container from '@mui/material/Container'
-import Divider from '@mui/material/Divider'
-import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
+import Toolbar from '@mui/material/Toolbar'
 import Typography from '@mui/material/Typography'
 import { DashboardHome, LoginForm, Navbar, RegisterForm } from './components'
 import { useStore } from './lib/mobx'
 
 const App = observer(function App() {
-  const { authStore, uiStore } = useStore()
+  const { authStore } = useStore()
+  const [authView, setAuthView] = useState<'login' | 'register'>('login')
 
   useEffect(() => {
     void authStore.hydrateUser()
@@ -39,115 +39,59 @@ const App = observer(function App() {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      <Navbar />
+      {authStore.user && <Navbar />}
 
-      <Container component="main" maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
-        {authStore.user ? (
+      {authStore.user ? (
+        <Container component="main" maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
           <DashboardHome user={authStore.user} />
-        ) : (
+        </Container>
+      ) : (
+        <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'grey.50' }}>
+          {/* Auth header */}
+          <AppBar position="static" color="transparent" elevation={0} sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Container maxWidth="lg">
+              <Toolbar disableGutters sx={{ minHeight: 64 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Avatar
+                    variant="rounded"
+                    sx={{ width: 38, height: 38, bgcolor: 'primary.main', color: 'primary.contrastText', fontWeight: 700, fontSize: 15 }}
+                  >
+                    AL
+                  </Avatar>
+                  <Box>
+                    <Typography variant="h6" fontWeight={700} lineHeight={1.2}>
+                      Annual Leave
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Leave planning &amp; approvals
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Toolbar>
+            </Container>
+          </AppBar>
+
+          {/* Centered form */}
           <Box
             sx={{
-              display: 'grid',
-              gap: 4,
-              alignItems: 'start',
-              gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1.2fr) minmax(360px, 420px)' },
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              py: 6,
+              px: 2,
+              background: 'linear-gradient(135deg, rgba(15,118,110,0.06) 0%, rgba(180,83,9,0.06) 100%)',
             }}
           >
-            <Paper
-              elevation={0}
-              sx={{
-                p: { xs: 4, md: 6 },
-                border: '1px solid',
-                borderColor: 'rgba(15, 23, 42, 0.08)',
-                background:
-                  'linear-gradient(135deg, rgba(15,118,110,0.08), rgba(180,83,9,0.08))',
-              }}
-            >
-              <Stack spacing={3} alignItems="flex-start">
-                <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
-                  <Chip label="Material UI ready" color="primary" />
-                  <Chip label="React Query ready" variant="outlined" color="secondary" />
-                  <Chip
-                    label={uiStore.isCreateDrawerOpen ? 'MobX state active' : 'MobX ready'}
-                    variant="outlined"
-                  />
-                </Stack>
-
-                <Stack spacing={1.5}>
-                  <Typography variant="h3" component="h1">
-                    Manage leave without email chains
-                  </Typography>
-                  <Typography variant="body1" color="text.secondary">
-                    Centralize requests, approval steps, and team visibility in one
-                    workspace built for the Annual Leave app.
-                  </Typography>
-                </Stack>
-
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                  <Button
-                    variant="contained"
-                    size="large"
-                    onClick={() => uiStore.toggleCreateDrawer()}
-                  >
-                    Create Leave Request
-                  </Button>
-                  <Button variant="outlined" size="large" color="secondary">
-                    View Leave History
-                  </Button>
-                </Stack>
-
-                <Divider flexItem />
-
-                <Stack spacing={2} sx={{ width: '100%' }}>
-                  <Typography variant="overline" color="text.secondary">
-                    What this starter already includes
-                  </Typography>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} useFlexGap flexWrap="wrap">
-                    <Paper elevation={0} sx={{ p: 2.5, flex: '1 1 180px', bgcolor: 'rgba(255,255,255,0.72)' }}>
-                      <Typography variant="subtitle1">Secure HTTPS dev flow</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Vite runs locally with HTTPS and is ready to talk to the API.
-                      </Typography>
-                    </Paper>
-                    <Paper elevation={0} sx={{ p: 2.5, flex: '1 1 180px', bgcolor: 'rgba(255,255,255,0.72)' }}>
-                      <Typography variant="subtitle1">Typed API foundation</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Axios, shared types, and React Query are already wired in.
-                      </Typography>
-                    </Paper>
-                  </Stack>
-                </Stack>
-
-                {uiStore.isCreateDrawerOpen ? (
-                  <Paper
-                    elevation={0}
-                    sx={{
-                      width: '100%',
-                      p: 3,
-                      bgcolor: 'background.paper',
-                      border: '1px solid',
-                      borderColor: 'rgba(15, 23, 42, 0.08)',
-                    }}
-                  >
-                    <Stack spacing={1.5}>
-                      <Typography variant="h6">Create request panel</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        This panel is controlled by MobX and is ready for form state or UI-only
-                        interactions.
-                      </Typography>
-                    </Stack>
-                  </Paper>
-                ) : null}
-              </Stack>
-            </Paper>
-
-            <Stack spacing={3}>
-              <LoginForm />
-              <RegisterForm />
-            </Stack>
+            <Box sx={{ width: '100%', maxWidth: 440 }}>
+              {authView === 'login'
+                ? <LoginForm onSwitch={() => setAuthView('register')} />
+                : <RegisterForm onSwitch={() => setAuthView('login')} />
+              }
+            </Box>
           </Box>
-        )}
-      </Container>
+        </Box>
+      )}
     </Box>
   )
 })

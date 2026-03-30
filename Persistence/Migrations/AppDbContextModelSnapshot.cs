@@ -536,7 +536,7 @@ namespace Persistence.Migrations
                         .IsRequired();
 
                     b.HasOne("Domain.User", "ChangedByUser")
-                        .WithMany()
+                        .WithMany("LeaveStatusChanges")
                         .HasForeignKey("ChangedByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -667,6 +667,8 @@ namespace Persistence.Migrations
                     b.Navigation("AssignedUserDepartments");
 
                     b.Navigation("EmployeeProfile");
+
+                    b.Navigation("LeaveStatusChanges");
 
                     b.Navigation("UserDepartments");
 

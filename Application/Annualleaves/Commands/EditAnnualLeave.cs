@@ -13,6 +13,8 @@ public class EditAnnualLeave
     {
         public required EditAnnualLeaveRequest AnnualLeave { get; set; }
         public string ChangedByUserId { get; set; } = string.Empty;
+        public bool IsAdmin { get; set; }
+        public bool IsManager { get; set; }
     }
     public class Handler(AppDbContext context) : IRequestHandler<Command>
     {
@@ -22,18 +24,68 @@ public class EditAnnualLeave
             .FindAsync([request.AnnualLeave.Id], cancellationToken)
             ?? throw new Exception("Cannot find the annual leave");
 
+            if (string.IsNullOrWhiteSpace(request.ChangedByUserId))
+            {
+                throw new UnauthorizedAccessException("User context is required.");
+            }
+
+            var isInManagedDepartment = false;
+            if (request.IsManager && annualLeave.DepartmentId.HasValue)
+            {
+                isInManagedDepartment = await context.UserDepartments
+                    .AnyAsync(ud => ud.UserId == request.ChangedByUserId && ud.DepartmentId == annualLeave.DepartmentId.Value,
+                        cancellationToken);
+            }
+
+            var canEdit = request.IsAdmin || annualLeave.EmployeeId == request.ChangedByUserId;
+
+            if (!canEdit && isInManagedDepartment)
+            {
+                canEdit = true;
+            }
+
+            if (!canEdit)
+            {
+                throw new UnauthorizedAccessException("You can only update your own leave requests or requests in your managed departments.");
+            }
+
+            var previousStatus = annualLeave.Status;
+            var previousDays = annualLeave.TotalDays;
+
             annualLeave.StartDate = request.AnnualLeave.StartDate;
             annualLeave.EndDate = request.AnnualLeave.EndDate;
+            annualLeave.LeaveTypeId = request.AnnualLeave.LeaveTypeId;
             annualLeave.Reason = request.AnnualLeave.Reason;
+
+            var newDays = annualLeave.TotalDays;
+            var employeeProfile = await context.EmployeeProfiles
+                .FirstOrDefaultAsync(ep => ep.Id == annualLeave.EmployeeProfileId, cancellationToken);
+
+            if (previousStatus == AnnualLeaveStatus.Approved && employeeProfile is not null && previousDays != newDays)
+            {
+                var dayDiff = newDays - previousDays;
+                if (dayDiff > 0)
+                {
+                    if (employeeProfile.LeaveBalance < dayDiff)
+                        throw new InvalidOperationException("Insufficient leave balance.");
+
+                    employeeProfile.LeaveBalance -= dayDiff;
+                }
+                else
+                {
+                    employeeProfile.LeaveBalance += Math.Abs(dayDiff);
+                }
+            }
+
+            var canChangeStatus = request.IsAdmin || isInManagedDepartment;
+            if (request.AnnualLeave.Status.HasValue && !canChangeStatus)
+            {
+                throw new UnauthorizedAccessException("Only admins or managers of the request's department can change leave status.");
+            }
 
             if (request.AnnualLeave.Status.HasValue && request.AnnualLeave.Status.Value != annualLeave.Status)
             {
                 var changedByUserId = request.ChangedByUserId;
-                if (string.IsNullOrWhiteSpace(changedByUserId))
-                {
-                    throw new Exception("User context is required to change status.");
-                }
-
                 var userExists = await context.Users
                     .AnyAsync(u => u.Id == changedByUserId, cancellationToken);
                 if (!userExists)
@@ -44,6 +96,18 @@ public class EditAnnualLeave
                 var oldStatus = annualLeave.Status;
                 var newStatus = request.AnnualLeave.Status.Value;
                 annualLeave.Status = newStatus;
+
+                if (employeeProfile is not null && oldStatus != AnnualLeaveStatus.Approved && newStatus == AnnualLeaveStatus.Approved)
+                {
+                    if (employeeProfile.LeaveBalance < newDays)
+                        throw new InvalidOperationException("Insufficient leave balance.");
+
+                    employeeProfile.LeaveBalance -= newDays;
+                }
+                else if (employeeProfile is not null && oldStatus == AnnualLeaveStatus.Approved && newStatus != AnnualLeaveStatus.Approved)
+                {
+                    employeeProfile.LeaveBalance += newDays;
+                }
 
                 if (newStatus == AnnualLeaveStatus.Approved)
                 {

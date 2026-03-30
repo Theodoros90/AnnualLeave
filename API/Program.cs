@@ -1,4 +1,5 @@
 using API.Middleware;
+using API.Extensions;
 using Application.Core;
 using Application.Annualleaves.Queries;
 using Domain;
@@ -8,49 +9,20 @@ using Microsoft.EntityFrameworkCore;
 using Persistence;
 using FluentValidation;
 using Application.Annualleaves.Validators;
-using Scalar.AspNetCore;
-using Microsoft.OpenApi.Models;
+using Application.EmployeeProfiles.Validators;
+using System.Text.Json.Serialization;
 
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddControllers();
-builder.Services.AddOpenApi(options =>
+builder.Services.AddControllers().AddJsonOptions(options =>
 {
-    options.AddDocumentTransformer((document, _, _) =>
-    {
-        document.Components ??= new OpenApiComponents();
-        document.Components.SecuritySchemes ??= new Dictionary<string, OpenApiSecurityScheme>();
-
-        document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
-        {
-            Type = SecuritySchemeType.Http,
-            Scheme = "bearer",
-            BearerFormat = "JWT",
-            In = ParameterLocation.Header,
-            Name = "Authorization",
-            Description = "Enter: Bearer {your JWT token}"
-        };
-
-        document.SecurityRequirements ??= new List<OpenApiSecurityRequirement>();
-        document.SecurityRequirements.Add(new OpenApiSecurityRequirement
-        {
-            [new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            }
-            ] = Array.Empty<string>()
-        });
-
-        return Task.CompletedTask;
-    });
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerDocumentation();
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
 
@@ -81,6 +53,7 @@ x.RegisterServicesFromAssemblyContaining<GetAnnualleaveList.Handler>());
 builder.Services.AddAutoMapper(cfg => { }, typeof(MappingProfiles).Assembly);
 builder.Services.AddValidatorsFromAssemblyContaining<CreateAnnualLeaveRequestValidator>();
 builder.Services.AddValidatorsFromAssemblyContaining<EditAnnualLeaveRequestValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<EditEmployeeProfileRequestValidator>();
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 builder.Services.AddIdentityApiEndpoints<User>(opt =>
 {
@@ -93,23 +66,25 @@ builder.Services.AddIdentityApiEndpoints<User>(opt =>
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AnnualLeaveRead", policy =>
-        policy.RequireRole("Admin", "Author", "Viewer"));
+        policy.RequireRole(AppRoles.Admin, AppRoles.Manager, AppRoles.Employee));
 
     options.AddPolicy("AnnualLeaveCreate", policy =>
-        policy.RequireRole("Admin", "Author", "Viewer"));
+        policy.RequireRole(AppRoles.Admin, AppRoles.Manager, AppRoles.Employee));
 
     options.AddPolicy("AnnualLeaveUpdate", policy =>
-        policy.RequireRole("Admin"));
+        policy.RequireRole(AppRoles.Admin, AppRoles.Manager, AppRoles.Employee));
 
     options.AddPolicy("AnnualLeaveDelete", policy =>
-        policy.RequireRole("Admin"));
+        policy.RequireRole(AppRoles.Admin, AppRoles.Manager, AppRoles.Employee));
+
+    options.AddPolicy("EmployeeProfileUpdate", policy =>
+        policy.RequireRole(AppRoles.Admin));
 });
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
-    app.MapScalarApiReference();
+    app.UseSwaggerDocumentation();
 }
 
 // Configure the HTTP request pipeline.
@@ -120,8 +95,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapGroup("api").MapIdentityApi<User>();
-app.MapOpenApi();
-app.MapScalarApiReference();
 
 using var scope = app.Services.CreateScope();
 var services = scope.ServiceProvider;

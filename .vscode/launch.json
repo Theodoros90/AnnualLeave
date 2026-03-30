@@ -1,0 +1,38 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch API",
+            "type": "shell",
+            "request": "launch",
+            "command": "dotnet watch --project ${workspaceFolder}/API/API.csproj",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "name": "Launch Client",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": [
+                "run",
+                "dev"
+            ],
+            "cwd": "${workspaceFolder}/client",
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "neverOpen"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Full Stack",
+            "configurations": [
+                "Launch API",
+                "Launch Client"
+            ],
+            "stopAll": true
+        }
+    ]
+}

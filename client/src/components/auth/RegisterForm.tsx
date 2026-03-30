@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import Alert from '@mui/material/Alert'
+import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
+import Divider from '@mui/material/Divider'
+import Link from '@mui/material/Link'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
@@ -34,7 +37,11 @@ function getErrorMessage(error: unknown) {
     return 'Unable to create your account. Please review the form and try again.'
 }
 
-function RegisterForm() {
+interface RegisterFormProps {
+    onSwitch: () => void
+}
+
+function RegisterForm({ onSwitch }: RegisterFormProps) {
     const { authStore } = useStore()
     const [values, setValues] = useState<RegisterRequest>(initialValues)
 
@@ -58,23 +65,32 @@ function RegisterForm() {
 
     return (
         <Paper
-            elevation={0}
+            elevation={3}
             sx={{
-                p: { xs: 3, md: 4 },
-                border: '1px solid',
-                borderColor: 'rgba(15, 23, 42, 0.08)',
+                p: { xs: 4, md: 5 },
+                borderRadius: 3,
                 bgcolor: 'background.paper',
             }}
         >
             <Stack spacing={3} component="form" onSubmit={handleSubmit} noValidate>
-                <Stack spacing={1}>
-                    <Typography variant="h5" component="h2">
-                        Create account
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                        Register a new viewer account and launch directly into the dashboard.
-                    </Typography>
+                <Stack spacing={2} alignItems="center">
+                    <Avatar
+                        variant="rounded"
+                        sx={{ width: 52, height: 52, bgcolor: 'primary.main', fontWeight: 700, fontSize: 18 }}
+                    >
+                        AL
+                    </Avatar>
+                    <Stack spacing={0.5} alignItems="center">
+                        <Typography variant="h5" fontWeight={700}>
+                            Create an account
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            Join Annual Leave and manage your time off
+                        </Typography>
+                    </Stack>
                 </Stack>
+
+                <Divider />
 
                 <TextField
                     label="Display name"
@@ -119,21 +135,28 @@ function RegisterForm() {
 
                 <Button
                     type="submit"
-                    variant="outlined"
+                    variant="contained"
                     size="large"
-                    color="secondary"
+                    fullWidth
                     disabled={mutation.isPending}
                     startIcon={mutation.isPending ? <CircularProgress size={18} color="inherit" /> : null}
-                    sx={{ minHeight: 48 }}
+                    sx={{ minHeight: 48, borderRadius: 2 }}
                 >
-                    {mutation.isPending ? 'Creating account...' : 'Register'}
+                    {mutation.isPending ? 'Creating account...' : 'Create account'}
                 </Button>
 
                 <Box>
                     <Typography variant="caption" color="text.secondary">
-                        New accounts are registered with the Viewer role by default.
+                        New accounts are registered with the Employee role by default.
                     </Typography>
                 </Box>
+
+                <Typography variant="body2" align="center" color="text.secondary">
+                    Already have an account?{' '}
+                    <Link component="button" type="button" variant="body2" onClick={onSwitch} underline="hover">
+                        Sign in
+                    </Link>
+                </Typography>
             </Stack>
         </Paper>
     )
