@@ -3,6 +3,7 @@ using Application.Annualleaves.DTOs;
 using Application.Annualleaves.Queries;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace API.Controllers;
 
@@ -25,20 +26,25 @@ public class AnnualLeavesController : BaseApiController
         return HandleResult(result);
     }
 
-    // Admin and Author can create leaves
+    // All roles can create leaves; status is defaulted to Pending in mapping profile.
     [HttpPost]
-    [Authorize(Policy = "AnnualLeaveWrite")]
+    [Authorize(Policy = "AnnualLeaveCreate")]
     public async Task<ActionResult<string>> CreateAnnualLeave(CreateAnnualLeaveRequest request)
     {
+        request.EmployeeId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
         return await Mediator.Send(new CreateAnnualLeave.Command { AnnualLeave = request });
     }
 
-    // Admin and Author can edit leaves
+    // Only Admin can edit leaves
     [HttpPut]
-    [Authorize(Policy = "AnnualLeaveWrite")]
+    [Authorize(Policy = "AnnualLeaveUpdate")]
     public async Task<ActionResult> EditAnnualLeave(EditAnnualLeaveRequest request)
     {
-        await Mediator.Send(new EditAnnualLeave.Command { AnnualLeave = request });
+        await Mediator.Send(new EditAnnualLeave.Command
+        {
+            AnnualLeave = request,
+            ChangedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty
+        });
         return NoContent();
     }
 

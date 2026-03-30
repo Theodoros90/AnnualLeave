@@ -3,12 +3,15 @@ using Domain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Persistence;
 
 namespace API.Controllers;
 
 public class AccountController(
     UserManager<User> userManager,
-    SignInManager<User> signInManager) : BaseApiController
+    SignInManager<User> signInManager,
+    AppDbContext context) : BaseApiController
 {
     [AllowAnonymous]
     [HttpPost("register")]
@@ -40,6 +43,7 @@ public class AccountController(
         var addToRoleResult = await userManager.AddToRoleAsync(user, "Viewer");
         if (!addToRoleResult.Succeeded)
         {
+            await userManager.DeleteAsync(user);
             return BadRequest(new
             {
                 message = "Failed to assign role.",
@@ -47,10 +51,47 @@ public class AccountController(
             });
         }
 
+        var defaultDepartmentId = await context.Departments
+            .Where(d => d.IsActive)
+            .OrderBy(d => d.Id)
+            .Select(d => (int?)d.Id)
+            .FirstOrDefaultAsync();
+
+        if (defaultDepartmentId is null)
+        {
+            await userManager.DeleteAsync(user);
+            return BadRequest(new
+            {
+                message = "Registration failed because no active department is configured for employee profile assignment."
+            });
+        }
+
+        var employeeProfile = new EmployeeProfile
+        {
+            UserId = user.Id,
+            DepartmentId = defaultDepartmentId.Value,
+            JobTitle = "Employee",
+            AnnualLeaveEntitlement = 20,
+            LeaveBalance = 20,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        try
+        {
+            context.EmployeeProfiles.Add(employeeProfile);
+            await context.SaveChangesAsync();
+        }
+        catch
+        {
+            await userManager.DeleteAsync(user);
+            throw;
+        }
+
         return Ok(new
         {
             message = "User registered successfully.",
-            role = "Viewer"
+            role = "Viewer",
+            employeeProfileId = employeeProfile.Id
         });
     }
 

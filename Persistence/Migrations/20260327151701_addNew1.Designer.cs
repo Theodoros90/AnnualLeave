@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Persistence;
 
@@ -11,9 +12,11 @@ using Persistence;
 namespace Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260327151701_addNew1")]
+    partial class addNew1
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -29,9 +32,6 @@ namespace Persistence.Migrations
 
                     b.Property<DateTime?>("ApprovedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<string>("ApprovedById")
-                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -63,8 +63,6 @@ namespace Persistence.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ApprovedById");
 
                     b.HasIndex("DepartmentId");
 
@@ -464,11 +462,6 @@ namespace Persistence.Migrations
 
             modelBuilder.Entity("Domain.AnnualLeave", b =>
                 {
-                    b.HasOne("Domain.User", "ApprovedBy")
-                        .WithMany("ApprovedAnnualLeaves")
-                        .HasForeignKey("ApprovedById")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Domain.Department", "Department")
                         .WithMany("AnnualLeaves")
                         .HasForeignKey("DepartmentId")
@@ -489,8 +482,6 @@ namespace Persistence.Migrations
                         .WithMany("AnnualLeaves")
                         .HasForeignKey("LeaveTypeId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("ApprovedBy");
 
                     b.Navigation("Department");
 
@@ -661,8 +652,6 @@ namespace Persistence.Migrations
             modelBuilder.Entity("Domain.User", b =>
                 {
                     b.Navigation("AnnualLeaves");
-
-                    b.Navigation("ApprovedAnnualLeaves");
 
                     b.Navigation("AssignedUserDepartments");
 

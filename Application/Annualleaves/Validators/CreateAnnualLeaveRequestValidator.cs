@@ -1,11 +1,13 @@
 using Application.Annualleaves.Commands;
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+using Persistence;
 
 namespace Application.Annualleaves.Validators;
 
 public class CreateAnnualLeaveRequestValidator : AbstractValidator<CreateAnnualLeave.Command>
 {
-    public CreateAnnualLeaveRequestValidator()
+    public CreateAnnualLeaveRequestValidator(AppDbContext context)
     {
         RuleFor(x => x.AnnualLeave)
             .NotNull()
@@ -18,7 +20,15 @@ public class CreateAnnualLeaveRequestValidator : AbstractValidator<CreateAnnualL
 
             RuleFor(x => x.AnnualLeave.EmployeeId)
                 .NotEmpty()
-                .WithMessage("EmployeeId is required.");
+                .WithMessage("EmployeeId is required.")
+                .MustAsync(async (employeeId, cancellationToken) =>
+                    await context.Users.AnyAsync(u => u.Id == employeeId, cancellationToken))
+                .WithMessage("Employee does not exist.");
+
+            RuleFor(x => x.AnnualLeave.EmployeeId)
+                .MustAsync(async (employeeId, cancellationToken) =>
+                    await context.EmployeeProfiles.AnyAsync(ep => ep.UserId == employeeId, cancellationToken))
+                .WithMessage("Employee profile does not exist.");
         });
     }
 }

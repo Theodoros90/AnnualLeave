@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Persistence;
 
@@ -11,9 +12,11 @@ using Persistence;
 namespace Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260327145816_AddAnnualLeaveEmployeeProfileRelation")]
+    partial class AddAnnualLeaveEmployeeProfileRelation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -30,14 +33,8 @@ namespace Persistence.Migrations
                     b.Property<DateTime?>("ApprovedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("ApprovedById")
-                        .HasColumnType("nvarchar(450)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<int?>("DepartmentId")
-                        .HasColumnType("int");
 
                     b.Property<string>("EmployeeId")
                         .IsRequired()
@@ -48,9 +45,6 @@ namespace Persistence.Migrations
 
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("datetime2");
-
-                    b.Property<int?>("LeaveTypeId")
-                        .HasColumnType("int");
 
                     b.Property<string>("Reason")
                         .IsRequired()
@@ -64,15 +58,9 @@ namespace Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ApprovedById");
-
-                    b.HasIndex("DepartmentId");
-
                     b.HasIndex("EmployeeId");
 
                     b.HasIndex("EmployeeProfileId");
-
-                    b.HasIndex("LeaveTypeId");
 
                     b.ToTable("AnnualLeaves");
                 });
@@ -464,16 +452,6 @@ namespace Persistence.Migrations
 
             modelBuilder.Entity("Domain.AnnualLeave", b =>
                 {
-                    b.HasOne("Domain.User", "ApprovedBy")
-                        .WithMany("ApprovedAnnualLeaves")
-                        .HasForeignKey("ApprovedById")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Domain.Department", "Department")
-                        .WithMany("AnnualLeaves")
-                        .HasForeignKey("DepartmentId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Domain.User", "Employee")
                         .WithMany("AnnualLeaves")
                         .HasForeignKey("EmployeeId")
@@ -485,20 +463,9 @@ namespace Persistence.Migrations
                         .HasForeignKey("EmployeeProfileId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("Domain.LeaveType", "LeaveType")
-                        .WithMany("AnnualLeaves")
-                        .HasForeignKey("LeaveTypeId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("ApprovedBy");
-
-                    b.Navigation("Department");
-
                     b.Navigation("Employee");
 
                     b.Navigation("EmployeeProfile");
-
-                    b.Navigation("LeaveType");
                 });
 
             modelBuilder.Entity("Domain.EmployeeProfile", b =>
@@ -634,8 +601,6 @@ namespace Persistence.Migrations
 
             modelBuilder.Entity("Domain.Department", b =>
                 {
-                    b.Navigation("AnnualLeaves");
-
                     b.Navigation("EmployeeProfiles");
 
                     b.Navigation("UserDepartments");
@@ -648,11 +613,6 @@ namespace Persistence.Migrations
                     b.Navigation("DirectReports");
                 });
 
-            modelBuilder.Entity("Domain.LeaveType", b =>
-                {
-                    b.Navigation("AnnualLeaves");
-                });
-
             modelBuilder.Entity("Domain.Role", b =>
                 {
                     b.Navigation("UserRoles");
@@ -661,8 +621,6 @@ namespace Persistence.Migrations
             modelBuilder.Entity("Domain.User", b =>
                 {
                     b.Navigation("AnnualLeaves");
-
-                    b.Navigation("ApprovedAnnualLeaves");
 
                     b.Navigation("AssignedUserDepartments");
 

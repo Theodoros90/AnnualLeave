@@ -3,6 +3,7 @@ using Application.Annualleaves.DTOs;
 using AutoMapper;
 using Domain;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Persistence;
 
 
@@ -20,6 +21,17 @@ public class CreateAnnualLeave
         public async Task<string> Handle(Command request, CancellationToken cancellationToken)
         {
             var annualLeave = mapper.Map<AnnualLeave>(request.AnnualLeave);
+
+            var employeeProfile = await context.EmployeeProfiles
+                .Where(ep => ep.UserId == request.AnnualLeave.EmployeeId)
+                .Select(ep => new { ep.Id, ep.DepartmentId })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (employeeProfile is null)
+                throw new InvalidOperationException("Employee profile not found for the selected user.");
+
+            annualLeave.EmployeeProfileId = employeeProfile.Id;
+            annualLeave.DepartmentId = employeeProfile.DepartmentId;
 
             context.AnnualLeaves.Add(annualLeave);
 

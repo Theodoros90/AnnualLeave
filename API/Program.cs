@@ -8,6 +8,8 @@ using Microsoft.EntityFrameworkCore;
 using Persistence;
 using FluentValidation;
 using Application.Annualleaves.Validators;
+using Scalar.AspNetCore;
+using Microsoft.OpenApi.Models;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,6 +17,40 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 
 builder.Services.AddControllers();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer((document, _, _) =>
+    {
+        document.Components ??= new OpenApiComponents();
+        document.Components.SecuritySchemes ??= new Dictionary<string, OpenApiSecurityScheme>();
+
+        document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            In = ParameterLocation.Header,
+            Name = "Authorization",
+            Description = "Enter: Bearer {your JWT token}"
+        };
+
+        document.SecurityRequirements ??= new List<OpenApiSecurityRequirement>();
+        document.SecurityRequirements.Add(new OpenApiSecurityRequirement
+        {
+            [new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            }
+            ] = Array.Empty<string>()
+        });
+
+        return Task.CompletedTask;
+    });
+});
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
 
@@ -34,15 +70,18 @@ builder.Services.AddIdentityApiEndpoints<User>(opt =>
     opt.SignIn.RequireConfirmedEmail = false;
     opt.SignIn.RequireConfirmedAccount = false;
 })
-.AddRoles<IdentityRole>()
+.AddRoles<Role>()
     .AddEntityFrameworkStores<AppDbContext>();
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AnnualLeaveRead", policy =>
         policy.RequireRole("Admin", "Author", "Viewer"));
 
-    options.AddPolicy("AnnualLeaveWrite", policy =>
-        policy.RequireRole("Admin", "Author"));
+    options.AddPolicy("AnnualLeaveCreate", policy =>
+        policy.RequireRole("Admin", "Author", "Viewer"));
+
+    options.AddPolicy("AnnualLeaveUpdate", policy =>
+        policy.RequireRole("Admin"));
 
     options.AddPolicy("AnnualLeaveDelete", policy =>
         policy.RequireRole("Admin"));
@@ -61,6 +100,8 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapGroup("api").MapIdentityApi<User>();
+app.MapOpenApi();
+app.MapScalarApiReference();
 
 using var scope = app.Services.CreateScope();
 var services = scope.ServiceProvider;
@@ -68,7 +109,7 @@ try
 {
     var context = services.GetRequiredService<AppDbContext>();
     var userManager = services.GetRequiredService<UserManager<User>>();
-    var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
+    var roleManager = services.GetRequiredService<RoleManager<Role>>();
     await context.Database.MigrateAsync();
     await DbInitializer.SeedData(context, userManager, roleManager);
 }
