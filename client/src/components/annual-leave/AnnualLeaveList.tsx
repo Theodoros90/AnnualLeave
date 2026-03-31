@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { observer } from 'mobx-react-lite'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -8,12 +8,27 @@ import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { Add as AddIcon } from '@mui/icons-material'
 import { getAnnualLeaves } from '../../lib/api'
-import type { UserInfo } from '../../lib/types'
+import { useStore } from '../../lib/mobx'
+import type { AnnualLeave, UserInfo } from '../../lib/types'
 import AnnualLeaveCard from './AnnualLeaveCard'
 import AnnualLeaveForm from './AnnualLeaveForm'
 
-function AnnualLeaveList({ user }: { user: UserInfo }) {
-    const [createOpen, setCreateOpen] = useState(false)
+type AnnualLeaveListProps = {
+    user: UserInfo
+    filterPredicate?: (leave: AnnualLeave) => boolean
+    showCreateButton?: boolean
+    emptyMessage?: string
+    isAdmin?: boolean
+}
+
+const AnnualLeaveList = observer(function AnnualLeaveList({
+    user,
+    filterPredicate,
+    showCreateButton = true,
+    emptyMessage = 'No leave requests found.',
+    isAdmin = false,
+}: AnnualLeaveListProps) {
+    const { uiStore } = useStore()
 
     const { data: leaves, isLoading, isError } = useQuery({
         queryKey: ['annualLeaves'],
@@ -32,9 +47,30 @@ function AnnualLeaveList({ user }: { user: UserInfo }) {
         return <Alert severity="error">Failed to load leave requests.</Alert>
     }
 
+    const visibleLeaves = filterPredicate ? (leaves ?? []).filter(filterPredicate) : (leaves ?? [])
+
     return (
         <Stack spacing={2}>
-            {!leaves || leaves.length === 0 ? (
+            {showCreateButton && (
+                <Box sx={{ pb: 1 }}>
+                    <Button
+                        variant="contained"
+                        startIcon={<AddIcon />}
+                        onClick={() => uiStore.openCreateDrawer()}
+                        sx={{
+                            borderRadius: 999,
+                            px: 2.2,
+                            py: 1,
+                            textTransform: 'none',
+                            fontWeight: 700,
+                        }}
+                    >
+                        New Leave Request
+                    </Button>
+                </Box>
+            )}
+
+            {visibleLeaves.length === 0 ? (
                 <Box
                     sx={{
                         py: 6,
@@ -44,27 +80,17 @@ function AnnualLeaveList({ user }: { user: UserInfo }) {
                         borderRadius: 2,
                     }}
                 >
-                    <Typography color="text.secondary">No leave requests found.</Typography>
+                    <Typography color="text.secondary">{emptyMessage}</Typography>
                 </Box>
             ) : (
-                leaves.map((leave) => (
+                visibleLeaves.map((leave) => (
                     <AnnualLeaveCard key={leave.id} leave={leave} user={user} />
                 ))
             )}
 
-            <Box sx={{ pt: 1 }}>
-                <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => setCreateOpen(true)}
-                >
-                    New Leave Request
-                </Button>
-            </Box>
-
-            <AnnualLeaveForm open={createOpen} onClose={() => setCreateOpen(false)} />
+            <AnnualLeaveForm open={uiStore.isCreateDrawerOpen} onClose={() => uiStore.closeCreateDrawer()} isAdmin={isAdmin} />
         </Stack>
     )
-}
+})
 
 export default AnnualLeaveList

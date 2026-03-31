@@ -1,6 +1,6 @@
 :root {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  color: #111827;
+  font-family: 'Aptos', 'Segoe UI Variable', 'Segoe UI', Tahoma, 'Trebuchet MS', sans-serif;
+  color: #0f172a;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -19,4 +19,8 @@ body,
 
 body {
   margin: 0;
+}
+
+::selection {
+  background: rgba(15, 118, 110, 0.2);
 }

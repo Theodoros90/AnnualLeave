@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import Alert from '@mui/material/Alert'
@@ -8,10 +8,14 @@ import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
+import Divider from '@mui/material/Divider'
+import InputAdornment from '@mui/material/InputAdornment'
 import Stack from '@mui/material/Stack'
 import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
-import { createAnnualLeave, editAnnualLeave, getLeaveTypes } from '../../lib/api'
+import Typography from '@mui/material/Typography'
+import { CalendarMonth as CalendarMonthIcon } from '@mui/icons-material'
+import { createAnnualLeave, editAnnualLeave, getLeaveTypes, getAdminUsers } from '../../lib/api'
 import type { AnnualLeave, CreateAnnualLeaveRequest, EditAnnualLeaveRequest } from '../../lib/types'
 
 function getErrorMessage(error: unknown) {
@@ -52,9 +56,11 @@ interface AnnualLeaveFormProps {
     onClose: () => void
     /** Pass an existing leave to edit; omit for create */
     leave?: AnnualLeave
+    /** When true, an "Assign to Employee" dropdown is shown so admin can create on behalf of a user */
+    isAdmin?: boolean
 }
 
-function AnnualLeaveForm({ open, onClose, leave }: AnnualLeaveFormProps) {
+function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveFormProps) {
     const isEdit = !!leave
     const queryClient = useQueryClient()
 
@@ -62,11 +68,29 @@ function AnnualLeaveForm({ open, onClose, leave }: AnnualLeaveFormProps) {
     const [endDate, setEndDate] = useState(leave ? toInputDate(leave.endDate) : '')
     const [leaveTypeId, setLeaveTypeId] = useState<number>(leave?.leaveTypeId ?? 0)
     const [reason, setReason] = useState(leave?.reason ?? '')
+    const [assignedUserId, setAssignedUserId] = useState('')
 
     const { data: leaveTypes, isLoading: isLoadingLeaveTypes } = useQuery({
         queryKey: ['leaveTypes'],
         queryFn: getLeaveTypes,
     })
+
+    const { data: adminUsers, isLoading: isLoadingUsers } = useQuery({
+        queryKey: ['adminUsers'],
+        queryFn: getAdminUsers,
+        enabled: isAdmin && !isEdit,
+    })
+
+    // Reset form state when dialog closes
+    useEffect(() => {
+        if (!open) {
+            setStartDate(leave ? toInputDate(leave.startDate) : '')
+            setEndDate(leave ? toInputDate(leave.endDate) : '')
+            setLeaveTypeId(leave?.leaveTypeId ?? 0)
+            setReason(leave?.reason ?? '')
+            setAssignedUserId('')
+        }
+    }, [open])
 
     const createMutation = useMutation({
         mutationFn: (req: CreateAnnualLeaveRequest) => createAnnualLeave(req),
@@ -87,43 +111,106 @@ function AnnualLeaveForm({ open, onClose, leave }: AnnualLeaveFormProps) {
     const isPending = createMutation.isPending || editMutation.isPending
     const error = createMutation.error ?? editMutation.error
 
+    const dateFieldSx = {
+        '& .MuiInputBase-root': {
+            borderRadius: 2,
+            backgroundColor: 'rgba(15, 23, 42, 0.02)',
+        },
+        '& input[type="date"]': {
+            fontWeight: 600,
+        },
+        '& input[type="date"]::-webkit-calendar-picker-indicator': {
+            cursor: 'pointer',
+            opacity: 0.8,
+            filter: 'saturate(1.2)',
+        },
+    }
+
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         if (isEdit && leave) {
             editMutation.mutate({ id: leave.id, startDate, endDate, leaveTypeId, reason })
         } else {
-            // employeeId is set server-side from the auth cookie
-            createMutation.mutate({ startDate, endDate, leaveTypeId, reason, employeeId: '' })
+            // Admin can assign to a specific user; others create for themselves (server sets employeeId)
+            createMutation.mutate({ startDate, endDate, leaveTypeId, reason, employeeId: isAdmin ? assignedUserId : '' })
         }
     }
 
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-            <DialogTitle sx={{ fontWeight: 700 }}>
+        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 2.5 } }}>
+            <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>
                 {isEdit ? 'Edit Leave Request' : 'New Leave Request'}
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontWeight: 400 }}>
+                    {isEdit ? 'Update dates, leave type, and notes.' : 'Fill in details and submit your leave request.'}
+                </Typography>
             </DialogTitle>
+
+            <Divider />
 
             <DialogContent>
                 <Stack spacing={3} component="form" id="leave-form" onSubmit={handleSubmit} noValidate sx={{ pt: 1 }}>
-                    <TextField
-                        label="Start Date"
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        required
-                        fullWidth
-                        InputLabelProps={{ shrink: true }}
-                    />
-                    <TextField
-                        label="End Date"
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        required
-                        fullWidth
-                        InputLabelProps={{ shrink: true }}
-                        inputProps={{ min: startDate }}
-                    />
+                    {isAdmin && !isEdit && (
+                        <TextField
+                            label="Assign to Employee"
+                            select
+                            value={assignedUserId}
+                            onChange={(e) => setAssignedUserId(e.target.value)}
+                            required
+                            fullWidth
+                            disabled={isLoadingUsers}
+                            helperText="Required"
+                        >
+                            <MenuItem value="" disabled>
+                                Select employee
+                            </MenuItem>
+                            {(adminUsers ?? [])
+                                .filter((u) => u.roles.includes('Employee') || u.roles.includes('Manager'))
+                                .map((u) => (
+                                    <MenuItem key={u.id} value={u.id}>
+                                        {u.displayName} ({u.email})
+                                    </MenuItem>
+                                ))}
+                        </TextField>
+                    )}
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                        <TextField
+                            label="Start Date"
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            required
+                            fullWidth
+                            InputLabelProps={{ shrink: true }}
+                            helperText="Select start of leave"
+                            InputProps={{
+                                endAdornment: (
+                                    <InputAdornment position="end">
+                                        <CalendarMonthIcon fontSize="small" color="action" />
+                                    </InputAdornment>
+                                ),
+                            }}
+                            sx={dateFieldSx}
+                        />
+                        <TextField
+                            label="End Date"
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            required
+                            fullWidth
+                            InputLabelProps={{ shrink: true }}
+                            inputProps={{ min: startDate }}
+                            helperText="Select end of leave"
+                            InputProps={{
+                                endAdornment: (
+                                    <InputAdornment position="end">
+                                        <CalendarMonthIcon fontSize="small" color="action" />
+                                    </InputAdornment>
+                                ),
+                            }}
+                            sx={dateFieldSx}
+                        />
+                    </Stack>
                     <TextField
                         label="Leave Type"
                         select
@@ -150,6 +237,7 @@ function AnnualLeaveForm({ open, onClose, leave }: AnnualLeaveFormProps) {
                         multiline
                         rows={3}
                         fullWidth
+                        placeholder="Add a short reason for this request"
                     />
 
                     {error ? <Alert severity="error">{getErrorMessage(error)}</Alert> : null}
@@ -164,7 +252,7 @@ function AnnualLeaveForm({ open, onClose, leave }: AnnualLeaveFormProps) {
                     type="submit"
                     form="leave-form"
                     variant="contained"
-                    disabled={isPending || leaveTypeId <= 0 || isLoadingLeaveTypes}
+                    disabled={isPending || leaveTypeId <= 0 || isLoadingLeaveTypes || (isAdmin && !isEdit && !assignedUserId)}
                     startIcon={isPending ? <CircularProgress size={16} color="inherit" /> : null}
                 >
                     {isPending ? 'Saving...' : isEdit ? 'Save Changes' : 'Submit Request'}

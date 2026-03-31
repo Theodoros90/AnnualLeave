@@ -92,25 +92,37 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
         },
     })
 
+    const statusAccentColor =
+        leave.status === 'Approved'
+            ? 'success.main'
+            : leave.status === 'Rejected'
+                ? 'error.main'
+                : leave.status === 'Cancelled'
+                    ? 'grey.500'
+                    : 'warning.main'
+
     return (
         <>
             <Paper
-                elevation={2}
+                elevation={0}
                 sx={{
-                    p: 3,
+                    p: { xs: 2.25, sm: 3 },
                     borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: 'divider',
                     borderLeft: '4px solid',
-                    borderColor:
-                        leave.status === 'Approved' ? 'success.main'
-                            : leave.status === 'Rejected' ? 'error.main'
-                                : leave.status === 'Cancelled' ? 'grey.400'
-                                    : 'warning.main',
+                    borderLeftColor: statusAccentColor,
+                    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                    '&:hover': {
+                        transform: 'translateY(-1px)',
+                        boxShadow: '0 8px 22px rgba(15, 23, 42, 0.08)',
+                    },
                 }}
             >
                 <Stack spacing={2}>
                     <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                         <Stack spacing={0.5}>
-                            <Typography variant="subtitle1" fontWeight={600}>
+                            <Typography variant="subtitle1" fontWeight={800}>
                                 {formatDate(leave.startDate)} — {formatDate(leave.endDate)}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
@@ -123,12 +135,12 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
                                 </Typography>
                             )}
                         </Stack>
-                        <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Stack direction="row" spacing={0.25} alignItems="center" sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                             <Chip
                                 label={leave.status}
                                 color={statusColor(leave.status)}
                                 size="small"
-                                sx={{ fontWeight: 600 }}
+                                sx={{ fontWeight: 700, mr: 0.5 }}
                             />
                             {canApproveReject ? (
                                 <>
@@ -182,7 +194,7 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
                         </>
                     ) : null}
 
-                    <Box>
+                    <Box sx={{ pt: 0.25 }}>
                         <Typography variant="caption" color="text.disabled">
                             {leave.approvedAt
                                 ? `Approved on ${formatDate(leave.approvedAt)}`

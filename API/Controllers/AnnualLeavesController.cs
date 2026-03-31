@@ -41,11 +41,16 @@ public class AnnualLeavesController : BaseApiController
     }
 
     // All roles can create leaves; status is defaulted to Pending in mapping profile.
+    // Admin can supply a target EmployeeId to create on behalf of another user.
     [HttpPost]
     [Authorize(Policy = "AnnualLeaveCreate")]
     public async Task<ActionResult<string>> CreateAnnualLeave(CreateAnnualLeaveRequest request)
     {
-        request.EmployeeId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+        var isAdmin = User.IsInRole(AppRoles.Admin);
+        // Non-admins always create for themselves; admins may supply a target user id.
+        if (!isAdmin || string.IsNullOrWhiteSpace(request.EmployeeId))
+            request.EmployeeId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+
         return await Mediator.Send(new CreateAnnualLeave.Command { AnnualLeave = request });
     }
 

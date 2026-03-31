@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import Alert from '@mui/material/Alert'
@@ -17,13 +17,13 @@ import Switch from '@mui/material/Switch'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import {
-    createDepartment,
-    deleteDepartment,
-    getDepartments,
-    updateDepartment,
-    type UpsertDepartmentRequest,
+    createLeaveType,
+    deleteLeaveType,
+    getLeaveTypes,
+    updateLeaveType,
+    type UpsertLeaveTypeRequest,
 } from '../../lib/api'
-import type { Department } from '../../lib/types'
+import type { LeaveType } from '../../lib/types'
 
 function getErrorMessage(error: unknown) {
     if (isAxiosError(error)) {
@@ -34,37 +34,37 @@ function getErrorMessage(error: unknown) {
     return 'Something went wrong. Please try again.'
 }
 
-function DepartmentsPanel() {
+function LeaveTypesPanel() {
     const queryClient = useQueryClient()
     const [createOpen, setCreateOpen] = useState(false)
-    const [editDept, setEditDept] = useState<Department | null>(null)
+    const [editType, setEditType] = useState<LeaveType | null>(null)
 
-    const { data: departments = [], isLoading, isError, error } = useQuery({
-        queryKey: ['departments'],
-        queryFn: getDepartments,
+    const { data: leaveTypes = [], isLoading, isError, error } = useQuery({
+        queryKey: ['leaveTypes'],
+        queryFn: getLeaveTypes,
     })
 
     const createMutation = useMutation({
-        mutationFn: createDepartment,
+        mutationFn: createLeaveType,
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: ['departments'] })
+            void queryClient.invalidateQueries({ queryKey: ['leaveTypes'] })
             setCreateOpen(false)
         },
     })
 
     const updateMutation = useMutation({
-        mutationFn: ({ id, payload }: { id: number; payload: UpsertDepartmentRequest }) =>
-            updateDepartment(id, payload),
+        mutationFn: ({ id, payload }: { id: number; payload: UpsertLeaveTypeRequest }) =>
+            updateLeaveType(id, payload),
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: ['departments'] })
-            setEditDept(null)
+            void queryClient.invalidateQueries({ queryKey: ['leaveTypes'] })
+            setEditType(null)
         },
     })
 
     const deleteMutation = useMutation({
-        mutationFn: deleteDepartment,
+        mutationFn: deleteLeaveType,
         onSuccess: () => {
-            void queryClient.invalidateQueries({ queryKey: ['departments'] })
+            void queryClient.invalidateQueries({ queryKey: ['leaveTypes'] })
         },
     })
 
@@ -72,13 +72,13 @@ function DepartmentsPanel() {
         <Stack spacing={2}>
             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1.5}>
                 <Stack spacing={0.5}>
-                    <Typography variant="h6" fontWeight={800}>Departments</Typography>
-                    <Typography variant="body2" color="text.secondary">Create and maintain organizational departments.</Typography>
+                    <Typography variant="h6" fontWeight={800}>Leave Types</Typography>
+                    <Typography variant="body2" color="text.secondary">Define leave categories and approval behavior.</Typography>
                 </Stack>
                 <Stack direction="row" spacing={1} alignItems="center">
-                    <Chip label={`${departments.length} departments`} size="small" variant="outlined" />
+                    <Chip label={`${leaveTypes.length} types`} size="small" variant="outlined" />
                     <Button variant="contained" sx={{ textTransform: 'none', borderRadius: 999, px: 2.25 }} onClick={() => setCreateOpen(true)}>
-                        Add Department
+                        Add Leave Type
                     </Button>
                 </Stack>
             </Stack>
@@ -91,22 +91,22 @@ function DepartmentsPanel() {
 
             {isError && <Alert severity="error">{getErrorMessage(error)}</Alert>}
 
-            {!isLoading && !isError && departments.length === 0 && (
+            {!isLoading && !isError && leaveTypes.length === 0 && (
                 <Paper elevation={0} sx={{ p: 3, border: '1px dashed', borderColor: 'divider' }}>
-                    <Typography color="text.secondary">No departments found.</Typography>
+                    <Typography color="text.secondary">No leave types found.</Typography>
                 </Paper>
             )}
 
-            {!isLoading && !isError && departments.map((dept) => (
+            {!isLoading && !isError && leaveTypes.map((leaveType) => (
                 <Paper
-                    key={dept.id}
+                    key={leaveType.id}
                     elevation={0}
                     sx={{
                         p: 2.5,
                         border: '1px solid',
                         borderColor: 'divider',
                         borderLeft: '4px solid',
-                        borderLeftColor: dept.isActive ? 'rgba(56,142,60,0.6)' : 'rgba(100,116,139,0.6)',
+                        borderLeftColor: leaveType.requiresApproval ? 'rgba(237,108,2,0.65)' : 'rgba(15,118,110,0.55)',
                         transition: 'border-color 0.15s, box-shadow 0.15s',
                         '&:hover': { borderColor: 'rgba(15,118,110,0.35)', boxShadow: '0 8px 20px rgba(15,23,42,0.06)' },
                     }}
@@ -114,20 +114,21 @@ function DepartmentsPanel() {
                     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1}>
                         <Box>
                             <Stack direction="row" spacing={1} alignItems="center">
-                                <Typography fontWeight={700}>{dept.name}</Typography>
-                                <Chip label={dept.code} size="small" variant="outlined" />
+                                <Typography fontWeight={700}>{leaveType.name}</Typography>
                                 <Chip
-                                    label={dept.isActive ? 'Active' : 'Inactive'}
+                                    label={leaveType.requiresApproval ? 'Approval Required' : 'Auto Approved'}
                                     size="small"
-                                    color={dept.isActive ? 'success' : 'default'}
+                                    color={leaveType.requiresApproval ? 'warning' : 'default'}
+                                />
+                                <Chip
+                                    label={leaveType.isActive ? 'Active' : 'Inactive'}
+                                    size="small"
+                                    color={leaveType.isActive ? 'success' : 'default'}
                                 />
                             </Stack>
-                            <Typography variant="caption" color="text.secondary">
-                                Created {new Date(dept.createdAt).toLocaleDateString()}
-                            </Typography>
                         </Box>
                         <Stack direction="row" spacing={1}>
-                            <Button size="small" variant="outlined" sx={{ textTransform: 'none' }} onClick={() => setEditDept(dept)}>
+                            <Button size="small" variant="outlined" sx={{ textTransform: 'none' }} onClick={() => setEditType(leaveType)}>
                                 Edit
                             </Button>
                             <Button
@@ -137,8 +138,8 @@ function DepartmentsPanel() {
                                 sx={{ textTransform: 'none' }}
                                 disabled={deleteMutation.isPending}
                                 onClick={() => {
-                                    if (window.confirm(`Delete department "${dept.name}"? This will fail if users are assigned to it.`)) {
-                                        deleteMutation.mutate(dept.id)
+                                    if (window.confirm(`Delete leave type "${leaveType.name}"? This will fail if leave requests use it.`)) {
+                                        deleteMutation.mutate(leaveType.id)
                                     }
                                 }}
                             >
@@ -153,51 +154,45 @@ function DepartmentsPanel() {
                 <Alert severity="error">{getErrorMessage(deleteMutation.error)}</Alert>
             )}
 
-            <DepartmentFormDialog
+            <LeaveTypeFormDialog
+                key={createOpen ? 'leave-type-create-open' : 'leave-type-create-closed'}
                 open={createOpen}
-                title="Add Department"
+                title="Add Leave Type"
                 isPending={createMutation.isPending}
                 error={createMutation.error}
                 onClose={() => setCreateOpen(false)}
                 onSubmit={(payload) => createMutation.mutate(payload)}
             />
 
-            <DepartmentFormDialog
-                open={!!editDept}
-                title="Edit Department"
-                initial={editDept ?? undefined}
+            <LeaveTypeFormDialog
+                key={editType ? `leave-type-edit-${editType.id}` : 'leave-type-edit-none'}
+                open={!!editType}
+                title="Edit Leave Type"
+                initial={editType ?? undefined}
                 isPending={updateMutation.isPending}
                 error={updateMutation.error}
-                onClose={() => setEditDept(null)}
-                onSubmit={(payload) => editDept && updateMutation.mutate({ id: editDept.id, payload })}
+                onClose={() => setEditType(null)}
+                onSubmit={(payload) => editType && updateMutation.mutate({ id: editType.id, payload })}
             />
         </Stack>
     )
 }
 
-function DepartmentFormDialog(props: {
+function LeaveTypeFormDialog(props: {
     open: boolean
     title: string
-    initial?: Department
+    initial?: LeaveType
     isPending: boolean
     error: Error | null
     onClose: () => void
-    onSubmit: (payload: UpsertDepartmentRequest) => void
+    onSubmit: (payload: UpsertLeaveTypeRequest) => void
 }) {
-    const [name, setName] = useState('')
-    const [code, setCode] = useState('')
-    const [isActive, setIsActive] = useState(true)
-
-    useEffect(() => {
-        if (props.open) {
-            setName(props.initial?.name ?? '')
-            setCode(props.initial?.code ?? '')
-            setIsActive(props.initial?.isActive ?? true)
-        }
-    }, [props.open, props.initial])
+    const [name, setName] = useState(props.initial?.name ?? '')
+    const [requiresApproval, setRequiresApproval] = useState(props.initial?.requiresApproval ?? true)
+    const [isActive, setIsActive] = useState(props.initial?.isActive ?? true)
 
     const handleSubmit = () => {
-        props.onSubmit({ name: name.trim(), code: code.trim(), isActive })
+        props.onSubmit({ name: name.trim(), requiresApproval, isActive })
     }
 
     return (
@@ -212,14 +207,14 @@ function DepartmentFormDialog(props: {
                         fullWidth
                         required
                     />
-                    <TextField
-                        label="Code"
-                        value={code}
-                        onChange={(e) => setCode(e.target.value.toUpperCase())}
-                        fullWidth
-                        required
-                        inputProps={{ maxLength: 10 }}
-                        helperText="Short uppercase code e.g. ENG, HR"
+                    <FormControlLabel
+                        control={
+                            <Switch
+                                checked={requiresApproval}
+                                onChange={(e) => setRequiresApproval(e.target.checked)}
+                            />
+                        }
+                        label="Requires approval"
                     />
                     <FormControlLabel
                         control={
@@ -237,7 +232,7 @@ function DepartmentFormDialog(props: {
                 <Button onClick={props.onClose} disabled={props.isPending}>Cancel</Button>
                 <Button
                     variant="contained"
-                    disabled={props.isPending || !name.trim() || !code.trim()}
+                    disabled={props.isPending || !name.trim()}
                     onClick={handleSubmit}
                 >
                     Save
@@ -247,4 +242,4 @@ function DepartmentFormDialog(props: {
     )
 }
 
-export default DepartmentsPanel
+export default LeaveTypesPanel

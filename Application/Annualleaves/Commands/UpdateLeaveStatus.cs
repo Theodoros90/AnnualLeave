@@ -37,39 +37,16 @@ public class UpdateLeaveStatus
                 if (!annualLeave.DepartmentId.HasValue)
                     throw new UnauthorizedAccessException("Leave has no department assigned.");
 
-                var managedDepartmentIds = await context.UserDepartments
-                    .Where(ud => ud.UserId == request.ChangedByUserId)
-                    .Select(ud => ud.DepartmentId)
-                    .Distinct()
-                    .ToListAsync(cancellationToken);
-
-                // Include manager profile department because registered users may not have UserDepartment rows.
                 var profileDepartmentId = await context.EmployeeProfiles
                     .Where(ep => ep.UserId == request.ChangedByUserId)
                     .Select(ep => (int?)ep.DepartmentId)
                     .FirstOrDefaultAsync(cancellationToken);
 
-                if (profileDepartmentId.HasValue && !managedDepartmentIds.Contains(profileDepartmentId.Value))
-                    managedDepartmentIds.Add(profileDepartmentId.Value);
-
-                var managerProfileIds = await context.EmployeeProfiles
-                    .Where(ep => ep.UserId == request.ChangedByUserId)
-                    .Select(ep => ep.Id)
-                    .ToListAsync(cancellationToken);
-
-                var directReportUserIds = managerProfileIds.Count == 0
-                    ? new List<string>()
-                    : await context.EmployeeProfiles
-                        .Where(ep => ep.ManagerId != null && managerProfileIds.Contains(ep.ManagerId))
-                        .Select(ep => ep.UserId)
-                        .Distinct()
-                        .ToListAsync(cancellationToken);
-
-                var isInManagedDepartment = managedDepartmentIds.Contains(annualLeave.DepartmentId.Value)
-                    || directReportUserIds.Contains(annualLeave.EmployeeId);
+                var isInManagedDepartment = profileDepartmentId.HasValue
+                    && annualLeave.DepartmentId.Value == profileDepartmentId.Value;
 
                 if (!isInManagedDepartment)
-                    throw new UnauthorizedAccessException("You can only change status for leaves in your managed departments.");
+                    throw new UnauthorizedAccessException("You can only change status for leaves in your department.");
             }
 
             var oldStatus = annualLeave.Status;

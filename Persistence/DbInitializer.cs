@@ -1,5 +1,6 @@
 using Domain;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 namespace Persistence;
 
@@ -16,7 +17,7 @@ public class DbInitializer
         RoleManager<Role> roleManager)
     {
         await SeedRoles(roleManager, userManager);
-        await SeedUsers(userManager);
+        await SeedUsers(context, userManager);
         await SeedAnnualLeaves(context);
         await SeedLeaveTypes(context);
         await SeedDepartments(context);
@@ -68,13 +69,40 @@ public class DbInitializer
         }
     }
 
-    private static async Task SeedUsers(UserManager<User> userManager)
+    private static async Task SeedUsers(AppDbContext context, UserManager<User> userManager)
     {
+        // Remove legacy seeded accounts so only admin stays as a default user.
+        var deprecatedSeedEmails = new[]
+        {
+            "manager@annualleave.com",
+            "employee@annualleave.com",
+            "author@annualleave.com",
+            "viewer@annualleave.com"
+        };
+
+        foreach (var deprecatedEmail in deprecatedSeedEmails)
+        {
+            var deprecatedUser = await userManager.FindByEmailAsync(deprecatedEmail);
+            if (deprecatedUser is null) continue;
+
+            await CleanupUserDependencies(context, deprecatedUser.Id, CancellationToken.None);
+
+            var currentRoles = await userManager.GetRolesAsync(deprecatedUser);
+            if (currentRoles.Count > 0)
+            {
+                await EnsureIdentitySucceeded(
+                    () => $"Failed to remove roles for deprecated seed user '{deprecatedEmail}'.",
+                    await userManager.RemoveFromRolesAsync(deprecatedUser, currentRoles));
+            }
+
+            await EnsureIdentitySucceeded(
+                () => $"Failed to delete deprecated seed user '{deprecatedEmail}'.",
+                await userManager.DeleteAsync(deprecatedUser));
+        }
+
         var users = new[]
         {
-            new { DisplayName = "Admin User", Email = "admin@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Admin },
-            new { DisplayName = "Manager User", Email = "manager@annualleave.com", LegacyEmail = "author@annualleave.com", Role = AppRoles.Manager },
-            new { DisplayName = "Employee User", Email = "employee@annualleave.com", LegacyEmail = "viewer@annualleave.com", Role = AppRoles.Employee }
+            new { DisplayName = "Admin User", Email = "admin@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Admin }
         };
 
         foreach (var u in users)
@@ -182,6 +210,76 @@ public class DbInitializer
         {
             throw new InvalidOperationException($"Failed to set password for seed user '{user.Email}': {string.Join(", ", addResult.Errors.Select(e => e.Description))}");
         }
+    }
+
+    private static async Task CleanupUserDependencies(AppDbContext context, string userId, CancellationToken cancellationToken)
+    {
+        var userProfileId = await context.EmployeeProfiles
+            .Where(ep => ep.UserId == userId)
+            .Select(ep => ep.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(userProfileId))
+        {
+            var directReports = await context.EmployeeProfiles
+                .Where(ep => ep.ManagerId == userProfileId)
+                .ToListAsync(cancellationToken);
+
+            foreach (var report in directReports)
+            {
+                report.ManagerId = null;
+            }
+        }
+
+        var approvedLeaves = await context.AnnualLeaves
+            .Where(al => al.ApprovedById == userId)
+            .ToListAsync(cancellationToken);
+        foreach (var leave in approvedLeaves)
+        {
+            leave.ApprovedById = null;
+            leave.ApprovedAt = null;
+        }
+
+        var assignedByRows = await context.UserDepartments
+            .Where(ud => ud.AssignedByUserId == userId)
+            .ToListAsync(cancellationToken);
+        foreach (var row in assignedByRows)
+        {
+            row.AssignedByUserId = null;
+        }
+
+        var statusChangesByUser = await context.LeaveStatusHistories
+            .Where(h => h.ChangedByUserId == userId)
+            .ToListAsync(cancellationToken);
+        if (statusChangesByUser.Count > 0)
+        {
+            context.LeaveStatusHistories.RemoveRange(statusChangesByUser);
+        }
+
+        var ownedUserDepartments = await context.UserDepartments
+            .Where(ud => ud.UserId == userId)
+            .ToListAsync(cancellationToken);
+        if (ownedUserDepartments.Count > 0)
+        {
+            context.UserDepartments.RemoveRange(ownedUserDepartments);
+        }
+
+        var employeeLeaves = await context.AnnualLeaves
+            .Where(al => al.EmployeeId == userId)
+            .ToListAsync(cancellationToken);
+        if (employeeLeaves.Count > 0)
+        {
+            context.AnnualLeaves.RemoveRange(employeeLeaves);
+        }
+
+        var profile = await context.EmployeeProfiles
+            .FirstOrDefaultAsync(ep => ep.UserId == userId, cancellationToken);
+        if (profile is not null)
+        {
+            context.EmployeeProfiles.Remove(profile);
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
     }
 
     private static async Task SeedAnnualLeaves(AppDbContext context)

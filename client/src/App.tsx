@@ -8,16 +8,75 @@ import Container from '@mui/material/Container'
 import Stack from '@mui/material/Stack'
 import Toolbar from '@mui/material/Toolbar'
 import Typography from '@mui/material/Typography'
-import { DashboardHome, LoginForm, Navbar, RegisterForm } from './components'
+import { DashboardHome, LoginForm, MyLeavePage, Navbar, RegisterForm, TeamLeavePage } from './components'
 import { useStore } from './lib/mobx'
+import type { MyLeaveSection } from './lib/mobx/uiStore'
+
+function getSectionFromHash(hash: string): MyLeaveSection | null {
+  if (hash === '#apply-for-leave') return 'apply'
+  if (hash === '#my-requests') return 'requests'
+  if (hash === '#leave-balance') return 'balance'
+  if (hash === '#leave-history') return 'history'
+  return null
+}
+
+function isTeamLeaveHash(hash: string) {
+  return hash === '#team-leave'
+}
+
+function getAdminSectionFromHash(hash: string) {
+  if (hash === '#admin-leave') return 'leave' as const
+  if (hash === '#admin-leave-types') return 'leave-types' as const
+  if (hash === '#admin-departments') return 'departments' as const
+  if (hash === '#admin-users') return 'users' as const
+  return null
+}
 
 const App = observer(function App() {
-  const { authStore } = useStore()
+  const { authStore, uiStore } = useStore()
   const [authView, setAuthView] = useState<'login' | 'register'>('login')
 
   useEffect(() => {
     void authStore.hydrateUser()
   }, [authStore])
+
+  useEffect(() => {
+    if (!authStore.user) {
+      return
+    }
+
+    const syncFromHash = () => {
+      if (window.location.hash === '#dashboard') {
+        uiStore.navigateToDashboard()
+        return
+      }
+
+      if (isTeamLeaveHash(window.location.hash)) {
+        uiStore.navigateToTeamLeave()
+        return
+      }
+
+      const adminSection = getAdminSectionFromHash(window.location.hash)
+
+      if (adminSection) {
+        uiStore.navigateToAdminSection(adminSection)
+        return
+      }
+
+      const section = getSectionFromHash(window.location.hash)
+
+      if (section) {
+        uiStore.navigateToMyLeave(section)
+      }
+    }
+
+    syncFromHash()
+    window.addEventListener('hashchange', syncFromHash)
+
+    return () => {
+      window.removeEventListener('hashchange', syncFromHash)
+    }
+  }, [authStore.user, uiStore])
 
   if (!authStore.hasCheckedAuth && authStore.isLoadingUser) {
     return (
@@ -43,7 +102,9 @@ const App = observer(function App() {
 
       {authStore.user ? (
         <Container component="main" maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
-          <DashboardHome user={authStore.user} />
+          {uiStore.currentPage === 'my-leave' && <MyLeavePage user={authStore.user} />}
+          {uiStore.currentPage === 'team-leave' && <TeamLeavePage user={authStore.user} />}
+          {uiStore.currentPage === 'dashboard' && <DashboardHome user={authStore.user} />}
         </Container>
       ) : (
         <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'grey.50' }}>

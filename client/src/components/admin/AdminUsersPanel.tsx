@@ -43,6 +43,12 @@ function getErrorMessage(error: unknown) {
     return 'Something went wrong. Please try again.'
 }
 
+function roleChipColor(role: UserRole): 'primary' | 'secondary' | 'success' {
+    if (role === 'Admin') return 'secondary'
+    if (role === 'Manager') return 'primary'
+    return 'success'
+}
+
 type EditData = { user: AdminUser; profile: EmployeeProfile | undefined }
 
 function AdminUsersPanel() {
@@ -82,6 +88,7 @@ function AdminUsersPanel() {
             profile: EmployeeProfile | undefined
             departmentId: number
             jobTitle: string
+            leaveBalance: number
         }) => {
             await updateAdminUser(payload.userId, {
                 email: payload.email,
@@ -96,7 +103,7 @@ function AdminUsersPanel() {
                     departmentId: payload.departmentId,
                     managerId: payload.profile.managerId,
                     annualLeaveEntitlement: payload.profile.annualLeaveEntitlement,
-                    leaveBalance: payload.profile.leaveBalance,
+                    leaveBalance: payload.leaveBalance,
                     jobTitle: payload.jobTitle || null,
                 })
             }
@@ -126,11 +133,24 @@ function AdminUsersPanel() {
         [employeeProfiles]
     )
 
+    const departmentsById = useMemo(
+        () => new Map(departments.map((department) => [department.id, department.name])),
+        [departments]
+    )
+
     return (
         <Stack spacing={2}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="h6" fontWeight={700}>User Management</Typography>
-                <Button variant="contained" onClick={() => setCreateOpen(true)}>Create User</Button>
+            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1.5}>
+                <Stack spacing={0.5}>
+                    <Typography variant="h6" fontWeight={800}>User Management</Typography>
+                    <Typography variant="body2" color="text.secondary">Manage user identities, roles, and profile settings.</Typography>
+                </Stack>
+                <Stack direction="row" spacing={1} alignItems="center">
+                    <Chip label={`${sortedUsers.length} users`} size="small" variant="outlined" />
+                    <Button variant="contained" sx={{ textTransform: 'none', borderRadius: 999, px: 2.25 }} onClick={() => setCreateOpen(true)}>
+                        Create User
+                    </Button>
+                </Stack>
             </Stack>
 
             {isLoading ? (
@@ -149,7 +169,19 @@ function AdminUsersPanel() {
 
             {!isLoading && !isError
                 ? sortedUsers.map((user) => (
-                    <Paper key={user.id} elevation={0} sx={{ p: 2.5, border: '1px solid', borderColor: 'divider' }}>
+                    <Paper
+                        key={user.id}
+                        elevation={0}
+                        sx={{
+                            p: 2.5,
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            borderLeft: '4px solid',
+                            borderLeftColor: 'rgba(15,118,110,0.45)',
+                            transition: 'border-color 0.15s, box-shadow 0.15s',
+                            '&:hover': { borderColor: 'rgba(15,118,110,0.35)', boxShadow: '0 8px 20px rgba(15,23,42,0.06)' },
+                        }}
+                    >
                         <Stack spacing={1.5}>
                             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" gap={1}>
                                 <Box>
@@ -160,6 +192,7 @@ function AdminUsersPanel() {
                                     <Button
                                         size="small"
                                         variant="outlined"
+                                        sx={{ textTransform: 'none' }}
                                         onClick={() => setEditData({ user, profile: profilesByUserId.get(user.id) })}
                                     >
                                         Edit
@@ -168,6 +201,7 @@ function AdminUsersPanel() {
                                         size="small"
                                         color="error"
                                         variant="outlined"
+                                        sx={{ textTransform: 'none' }}
                                         disabled={deleteMutation.isPending}
                                         onClick={() => {
                                             if (window.confirm(`Delete user ${user.email}?`)) {
@@ -181,12 +215,14 @@ function AdminUsersPanel() {
                             </Stack>
                             <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                                 {user.roles.map((role) => (
-                                    <Chip key={`${user.id}-${role}`} label={role} size="small" />
+                                    <Chip key={`${user.id}-${role}`} label={role} size="small" color={roleChipColor(role)} variant="outlined" />
                                 ))}
                             </Stack>
                             {profilesByUserId.get(user.id) ? (
                                 <Typography variant="caption" color="text.secondary">
-                                    {profilesByUserId.get(user.id)?.jobTitle || 'No job title'} &nbsp;|&nbsp; Leave balance: {profilesByUserId.get(user.id)?.leaveBalance}
+                                    {profilesByUserId.get(user.id)?.jobTitle || 'No job title'}
+                                    &nbsp;|&nbsp; Department: {departmentsById.get(profilesByUserId.get(user.id)?.departmentId ?? 0) ?? 'Unassigned'}
+                                    &nbsp;|&nbsp; Leave balance: {profilesByUserId.get(user.id)?.leaveBalance}
                                 </Typography>
                             ) : null}
                         </Stack>
@@ -228,6 +264,7 @@ function EditUserDialog(props: {
         profile: EmployeeProfile | undefined
         departmentId: number
         jobTitle: string
+        leaveBalance: number
     }) => void
 }) {
     const open = !!props.data
@@ -238,6 +275,7 @@ function EditUserDialog(props: {
     const [roles, setRoles] = useState<UserRole[]>([])
     const [departmentId, setDepartmentId] = useState(0)
     const [jobTitle, setJobTitle] = useState('')
+    const [leaveBalance, setLeaveBalance] = useState(0)
 
     useEffect(() => {
         if (props.data) {
@@ -246,6 +284,7 @@ function EditUserDialog(props: {
             setRoles(props.data.user.roles)
             setDepartmentId(props.data.profile?.departmentId ?? 0)
             setJobTitle(props.data.profile?.jobTitle ?? '')
+            setLeaveBalance(props.data.profile?.leaveBalance ?? 0)
         }
     }, [props.data])
 
@@ -298,6 +337,14 @@ function EditUserDialog(props: {
                                 onChange={(e) => setJobTitle(e.target.value)}
                                 fullWidth
                             />
+                            <TextField
+                                label="Leave balance"
+                                type="number"
+                                value={leaveBalance}
+                                onChange={(e) => setLeaveBalance(Number(e.target.value))}
+                                inputProps={{ min: 0, step: 0.5 }}
+                                fullWidth
+                            />
                         </>
                     )}
 
@@ -311,7 +358,16 @@ function EditUserDialog(props: {
                     disabled={props.isPending || !user || roles.length === 0}
                     onClick={() =>
                         user &&
-                        props.onSubmit({ userId: user.id, email, displayName, roles, profile, departmentId, jobTitle })
+                        props.onSubmit({
+                            userId: user.id,
+                            email,
+                            displayName,
+                            roles,
+                            profile,
+                            departmentId,
+                            jobTitle,
+                            leaveBalance,
+                        })
                     }
                 >
                     Save

@@ -2,6 +2,8 @@ using API.Middleware;
 using API.Extensions;
 using Application.Core;
 using Application.Annualleaves.Queries;
+using Application.LeaveTypes.Commands;
+using Application.LeaveTypes.DTOs;
 using Domain;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
@@ -49,6 +51,12 @@ builder.Services.AddCors(options =>
 });
 builder.Services.AddMediatR(x =>
 x.RegisterServicesFromAssemblyContaining<GetAnnualleaveList.Handler>());
+
+// Explicit registrations for LeaveType commands to avoid handler resolution issues
+// when running under watch/hot-reload in development.
+builder.Services.AddTransient<IRequestHandler<CreateLeaveType.Command, Result<LeaveTypeDto>>, CreateLeaveType.Handler>();
+builder.Services.AddTransient<IRequestHandler<UpdateLeaveType.Command, Result<LeaveTypeDto>>, UpdateLeaveType.Handler>();
+builder.Services.AddTransient<IRequestHandler<DeleteLeaveType.Command, Result<Unit>>, DeleteLeaveType.Handler>();
 
 builder.Services.AddAutoMapper(cfg => { }, typeof(MappingProfiles).Assembly);
 builder.Services.AddValidatorsFromAssemblyContaining<CreateAnnualLeaveRequestValidator>();
