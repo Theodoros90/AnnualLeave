@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { isAxiosError } from 'axios'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -23,15 +22,11 @@ import {
     updateDepartment,
     type UpsertDepartmentRequest,
 } from '../../lib/api'
+import { getApiErrorMessage } from '../../lib/api/error-utils'
 import type { Department } from '../../lib/types'
 
 function getErrorMessage(error: unknown) {
-    if (isAxiosError(error)) {
-        const data = error.response?.data as { message?: string; errors?: string[] } | undefined
-        if (data?.errors?.length) return data.errors[0]
-        if (data?.message) return data.message
-    }
-    return 'Something went wrong. Please try again.'
+    return getApiErrorMessage(error, 'Something went wrong. Please try again.')
 }
 
 function DepartmentsPanel() {

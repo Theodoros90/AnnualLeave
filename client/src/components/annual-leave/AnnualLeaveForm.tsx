@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { isAxiosError } from 'axios'
 import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
@@ -16,35 +15,11 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { CalendarMonth as CalendarMonthIcon } from '@mui/icons-material'
 import { createAnnualLeave, editAnnualLeave, getLeaveTypes, getAdminUsers } from '../../lib/api'
+import { getApiErrorMessage } from '../../lib/api/error-utils'
 import type { AnnualLeave, CreateAnnualLeaveRequest, EditAnnualLeaveRequest } from '../../lib/types'
 
 function getErrorMessage(error: unknown) {
-    if (isAxiosError(error)) {
-        const data = error.response?.data as {
-            message?: string
-            details?: string
-            errors?: Record<string, string[]>
-        } | undefined
-
-        if (data?.errors) {
-            const first = Object.values(data.errors).flat()[0]
-            if (first) return first
-        }
-
-        if (typeof data?.message === 'string' && data.message.length > 0) {
-            return data.message
-        }
-
-        if (typeof data?.details === 'string' && data.details.length > 0) {
-            return data.details
-        }
-
-        if (error.response?.status === 403) {
-            return 'You do not have permission to perform this action.'
-        }
-    }
-
-    return 'Something went wrong. Please try again.'
+    return getApiErrorMessage(error, 'Something went wrong. Please try again.')
 }
 
 function toInputDate(dateStr: string) {

@@ -3,6 +3,11 @@ export interface ApiMessageResponse {
 }
 
 export interface ApiErrorResponse {
-    message: string
-    errors?: string[]
+    statusCode?: number
+    message?: string
+    path?: string
+    traceId?: string
+    timestamp?: string
+    details?: string
+    errors?: string[] | Record<string, string[]>
 }

@@ -1,4 +1,5 @@
 using Application.Core;
+using API.Models;
 using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -23,26 +24,26 @@ namespace API.Controllers
 
             if (result.ValidationErrors is not null && result.ValidationErrors.Count > 0)
             {
-                return BadRequest(new
+                return BadRequest(new ApiErrorResponse
                 {
-                    statusCode = StatusCodes.Status400BadRequest,
-                    message = string.IsNullOrWhiteSpace(result.Error)
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Message = string.IsNullOrWhiteSpace(result.Error)
                         ? "One or more validation errors occurred."
                         : result.Error,
-                    path = HttpContext.Request.Path.Value,
-                    traceId = HttpContext.TraceIdentifier,
-                    timestamp = DateTime.UtcNow,
-                    errors = result.ValidationErrors
+                    Path = HttpContext.Request.Path.Value ?? string.Empty,
+                    TraceId = HttpContext.TraceIdentifier,
+                    Timestamp = DateTime.UtcNow,
+                    Errors = result.ValidationErrors
                 });
             }
 
-            return NotFound(new
+            return NotFound(new ApiErrorResponse
             {
-                statusCode = StatusCodes.Status404NotFound,
-                message = string.IsNullOrWhiteSpace(result.Error) ? "Resource not found." : result.Error,
-                path = HttpContext.Request.Path.Value,
-                traceId = HttpContext.TraceIdentifier,
-                timestamp = DateTime.UtcNow
+                StatusCode = StatusCodes.Status404NotFound,
+                Message = string.IsNullOrWhiteSpace(result.Error) ? "Resource not found." : result.Error,
+                Path = HttpContext.Request.Path.Value ?? string.Empty,
+                TraceId = HttpContext.TraceIdentifier,
+                Timestamp = DateTime.UtcNow
             });
         }
 

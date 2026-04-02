@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
 import { observer } from 'mobx-react-lite'
+import Alert from '@mui/material/Alert'
 import AppBar from '@mui/material/AppBar'
 import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import Container from '@mui/material/Container'
+import Snackbar from '@mui/material/Snackbar'
 import Stack from '@mui/material/Stack'
 import Toolbar from '@mui/material/Toolbar'
 import Typography from '@mui/material/Typography'
 import { DashboardHome, LoginForm, MyLeavePage, Navbar, RegisterForm, TeamLeavePage } from './components'
+import { API_ERROR_EVENT } from './lib/api/error-events'
 import { useStore } from './lib/mobx'
 import type { MyLeaveSection } from './lib/mobx/uiStore'
 
@@ -35,6 +38,8 @@ function getAdminSectionFromHash(hash: string) {
 const App = observer(function App() {
   const { authStore, uiStore } = useStore()
   const [authView, setAuthView] = useState<'login' | 'register'>('login')
+  const [apiErrorOpen, setApiErrorOpen] = useState(false)
+  const [apiErrorMessage, setApiErrorMessage] = useState('')
 
   useEffect(() => {
     void authStore.hydrateUser()
@@ -77,6 +82,41 @@ const App = observer(function App() {
       window.removeEventListener('hashchange', syncFromHash)
     }
   }, [authStore.user, uiStore])
+
+  useEffect(() => {
+    let lastMessage = ''
+    let lastAt = 0
+
+    const compactMessage = (message: string) => {
+      const firstSentence = message.split('. ')[0]?.trim() ?? message.trim()
+      const normalized = firstSentence.endsWith('.') ? firstSentence : `${firstSentence}.`
+      return normalized.length > 120 ? `${normalized.slice(0, 117)}...` : normalized
+    }
+
+    const onApiError = (event: Event) => {
+      const customEvent = event as CustomEvent<{ message?: string }>
+      const message = customEvent.detail?.message?.trim()
+
+      if (!message) {
+        return
+      }
+
+      const compact = compactMessage(message)
+
+      const now = Date.now()
+      if (compact === lastMessage && now - lastAt < 2000) {
+        return
+      }
+
+      lastMessage = compact
+      lastAt = now
+      setApiErrorMessage(compact)
+      setApiErrorOpen(true)
+    }
+
+    window.addEventListener(API_ERROR_EVENT, onApiError as EventListener)
+    return () => window.removeEventListener(API_ERROR_EVENT, onApiError as EventListener)
+  }, [])
 
   if (!authStore.hasCheckedAuth && authStore.isLoadingUser) {
     return (
@@ -153,6 +193,17 @@ const App = observer(function App() {
           </Box>
         </Box>
       )}
+
+      <Snackbar
+        open={apiErrorOpen}
+        autoHideDuration={4500}
+        onClose={() => setApiErrorOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={() => setApiErrorOpen(false)} severity="error" variant="filled" sx={{ width: '100%' }}>
+          {apiErrorMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 })

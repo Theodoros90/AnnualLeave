@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { isAxiosError } from 'axios'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -28,19 +27,13 @@ import {
     updateEmployeeProfile,
     updateAdminUser,
 } from '../../lib/api'
+import { getApiErrorMessage } from '../../lib/api/error-utils'
 import type { AdminUser, Department, EmployeeProfile, UserRole } from '../../lib/types'
 
 const allRoles: UserRole[] = ['Admin', 'Manager', 'Employee']
 
 function getErrorMessage(error: unknown) {
-    if (isAxiosError(error)) {
-        const data = error.response?.data as { message?: string; errors?: string[]; details?: string } | undefined
-        if (data?.errors?.length) return data.errors[0]
-        if (data?.message) return data.message
-        if (data?.details) return data.details
-        if (error.response?.status === 403) return 'Only admin users can perform this action.'
-    }
-    return 'Something went wrong. Please try again.'
+    return getApiErrorMessage(error, 'Something went wrong. Please try again.')
 }
 
 function roleChipColor(role: UserRole): 'primary' | 'secondary' | 'success' {

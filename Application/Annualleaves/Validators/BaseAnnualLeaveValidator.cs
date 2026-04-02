@@ -20,7 +20,15 @@ public class BaseAnnualLeaveValidator : AbstractValidator<BaseAnnualLeaveDto>
             .WithMessage("EndDate must be on or after StartDate.");
 
         RuleFor(x => x.Reason)
+            .NotEmpty()
+            .WithMessage("Reason is required.")
+            .Must(reason => !string.IsNullOrWhiteSpace(reason))
+            .WithMessage("Reason is required.")
             .MaximumLength(500)
             .WithMessage("Reason must not exceed 500 characters.");
+
+        RuleFor(x => x)
+            .Must(x => x.EndDate.Date.Subtract(x.StartDate.Date).TotalDays <= 365)
+            .WithMessage("Leave request cannot exceed 365 calendar days.");
     }
 }

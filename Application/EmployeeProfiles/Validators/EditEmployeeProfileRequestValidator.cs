@@ -47,7 +47,13 @@ public class EditEmployeeProfileRequestValidator : AbstractValidator<EditEmploye
                 .InclusiveBetween(0, 365)
                 .WithMessage("LeaveBalance must be between 0 and 365.");
 
+            RuleFor(x => x.EmployeeProfile)
+                .Must(profile => profile.LeaveBalance <= profile.AnnualLeaveEntitlement)
+                .WithMessage("LeaveBalance cannot exceed AnnualLeaveEntitlement.");
+
             RuleFor(x => x.EmployeeProfile.JobTitle)
+                .Must(jobTitle => string.IsNullOrEmpty(jobTitle) || !string.IsNullOrWhiteSpace(jobTitle))
+                .WithMessage("JobTitle cannot be whitespace only.")
                 .MaximumLength(150)
                 .WithMessage("JobTitle must not exceed 150 characters.");
         });

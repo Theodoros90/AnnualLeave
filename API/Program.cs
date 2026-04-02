@@ -1,5 +1,6 @@
 using API.Middleware;
 using API.Extensions;
+using API.Models;
 using Application.Core;
 using Application.Annualleaves.Queries;
 using Application.LeaveTypes.Commands;
@@ -7,11 +8,10 @@ using Application.LeaveTypes.DTOs;
 using Domain;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
 using FluentValidation;
-using Application.Annualleaves.Validators;
-using Application.EmployeeProfiles.Validators;
 using System.Text.Json.Serialization;
 
 
@@ -22,6 +22,33 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState
+            .Where(kvp => kvp.Value is { Errors.Count: > 0 })
+            .ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value!.Errors
+                    .Select(e => string.IsNullOrWhiteSpace(e.ErrorMessage)
+                        ? "The input was not valid."
+                        : e.ErrorMessage)
+                    .ToArray());
+
+        var response = new ApiErrorResponse
+        {
+            StatusCode = StatusCodes.Status400BadRequest,
+            Message = "One or more validation errors occurred.",
+            Path = context.HttpContext.Request.Path.Value ?? string.Empty,
+            TraceId = context.HttpContext.TraceIdentifier,
+            Timestamp = DateTime.UtcNow,
+            Errors = errors
+        };
+
+        return new BadRequestObjectResult(response);
+    };
 });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerDocumentation();
@@ -59,9 +86,7 @@ builder.Services.AddTransient<IRequestHandler<UpdateLeaveType.Command, Result<Le
 builder.Services.AddTransient<IRequestHandler<DeleteLeaveType.Command, Result<Unit>>, DeleteLeaveType.Handler>();
 
 builder.Services.AddAutoMapper(cfg => { }, typeof(MappingProfiles).Assembly);
-builder.Services.AddValidatorsFromAssemblyContaining<CreateAnnualLeaveRequestValidator>();
-builder.Services.AddValidatorsFromAssemblyContaining<EditAnnualLeaveRequestValidator>();
-builder.Services.AddValidatorsFromAssemblyContaining<EditEmployeeProfileRequestValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<MappingProfiles>();
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 builder.Services.AddIdentityApiEndpoints<User>(opt =>
 {
@@ -96,7 +121,9 @@ if (app.Environment.IsDevelopment())
 }
 
 // Configure the HTTP request pipeline.
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<ValidationExceptionMiddleware>();
+app.UseMiddleware<RequestValidationMiddleware>();
 app.UseCors("ClientPolicy");
 app.UseAuthentication();
 app.UseAuthorization();

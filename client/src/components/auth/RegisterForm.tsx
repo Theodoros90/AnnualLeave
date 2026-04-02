@@ -11,9 +11,9 @@ import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import { AxiosError } from 'axios'
+import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
-import type { ApiErrorResponse, RegisterRequest } from '../../lib/types'
+import type { RegisterRequest } from '../../lib/types'
 
 const initialValues: RegisterRequest = {
     email: '',
@@ -22,19 +22,7 @@ const initialValues: RegisterRequest = {
 }
 
 function getErrorMessage(error: unknown) {
-    if (error instanceof AxiosError) {
-        const apiError = error.response?.data as ApiErrorResponse | undefined
-
-        if (apiError?.errors?.length) {
-            return apiError.errors.join(' ')
-        }
-
-        if (apiError?.message) {
-            return apiError.message
-        }
-    }
-
-    return 'Unable to create your account. Please review the form and try again.'
+    return getApiErrorMessage(error, 'Unable to create your account. Please review the form and try again.')
 }
 
 interface RegisterFormProps {

@@ -1,4 +1,5 @@
 using Application.Annualleaves.Commands;
+using Domain;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
@@ -34,6 +35,25 @@ public class CreateAnnualLeaveRequestValidator : AbstractValidator<CreateAnnualL
                 .MustAsync(async (leaveTypeId, cancellationToken) =>
                     await context.LeaveTypes.AnyAsync(lt => lt.Id == leaveTypeId && lt.IsActive, cancellationToken))
                 .WithMessage("Selected leave type is invalid or inactive.");
+
+            RuleFor(x => x)
+                .MustAsync(async (command, cancellationToken) =>
+                {
+                    var annualLeave = command.AnnualLeave;
+                    if (string.IsNullOrWhiteSpace(annualLeave.EmployeeId)) return true;
+                    if (annualLeave.StartDate == default || annualLeave.EndDate == default) return true;
+
+                    var start = annualLeave.StartDate.Date;
+                    var end = annualLeave.EndDate.Date;
+
+                    return !await context.AnnualLeaves.AnyAsync(al =>
+                        al.EmployeeId == annualLeave.EmployeeId
+                        && (al.Status == AnnualLeaveStatus.Pending || al.Status == AnnualLeaveStatus.Approved)
+                        && al.StartDate.Date <= end
+                        && al.EndDate.Date >= start,
+                        cancellationToken);
+                })
+                .WithMessage("This request overlaps with an existing pending or approved leave request.");
         });
     }
 }

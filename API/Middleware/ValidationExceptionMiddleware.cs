@@ -1,4 +1,4 @@
-using System.Text.Json;
+using API.Extensions;
 using FluentValidation;
 
 namespace API.Middleware;
@@ -15,6 +15,13 @@ public class ValidationExceptionMiddleware(RequestDelegate next, ILogger<Validat
         {
             logger.LogWarning(ex, "Validation failed for request {Path}", context.Request.Path);
 
+            if (context.Response.HasStarted)
+            {
+                throw;
+            }
+
+            context.Response.Clear();
+
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             context.Response.ContentType = "application/json";
 
@@ -24,66 +31,13 @@ public class ValidationExceptionMiddleware(RequestDelegate next, ILogger<Validat
                     group => group.Key,
                     group => group.Select(error => error.ErrorMessage).ToArray());
 
-            var response = new ErrorResponse
-            {
-                StatusCode = StatusCodes.Status400BadRequest,
-                Message = "One or more validation errors occurred.",
-                Path = context.Request.Path,
-                TraceId = context.TraceIdentifier,
-                Timestamp = DateTime.UtcNow,
-                Errors = errors
-            };
+            var response = ApiErrorResponseExtensions.Create(
+                context,
+                StatusCodes.Status400BadRequest,
+                "One or more validation errors occurred.",
+                errors: errors);
 
-            await context.Response.WriteAsync(JsonSerializer.Serialize(response));
+            await context.Response.WriteAsJsonAsync(response);
         }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Unhandled exception for request {Path}", context.Request.Path);
-
-            if (ex is UnauthorizedAccessException)
-            {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                context.Response.ContentType = "application/json";
-
-                var forbiddenResponse = new ErrorResponse
-                {
-                    StatusCode = StatusCodes.Status403Forbidden,
-                    Message = "You do not have permission to perform this action.",
-                    Path = context.Request.Path,
-                    TraceId = context.TraceIdentifier,
-                    Timestamp = DateTime.UtcNow,
-                    Details = ex.Message
-                };
-
-                await context.Response.WriteAsync(JsonSerializer.Serialize(forbiddenResponse));
-                return;
-            }
-
-            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-            context.Response.ContentType = "application/json";
-
-            var response = new ErrorResponse
-            {
-                StatusCode = StatusCodes.Status500InternalServerError,
-                Message = "An unexpected server error occurred.",
-                Path = context.Request.Path,
-                TraceId = context.TraceIdentifier,
-                Timestamp = DateTime.UtcNow,
-                Details = ex.Message
-            };
-
-            await context.Response.WriteAsync(JsonSerializer.Serialize(response));
-        }
-    }
-
-    private sealed class ErrorResponse
-    {
-        public int StatusCode { get; init; }
-        public string Message { get; init; } = string.Empty;
-        public string Path { get; init; } = string.Empty;
-        public string TraceId { get; init; } = string.Empty;
-        public DateTime Timestamp { get; init; }
-        public object? Details { get; init; }
-        public IDictionary<string, string[]>? Errors { get; init; }
     }
 }

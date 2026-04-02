@@ -13,9 +13,9 @@ import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import { AxiosError } from 'axios'
+import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
-import type { ApiErrorResponse, LoginRequest } from '../../lib/types'
+import type { LoginRequest } from '../../lib/types'
 
 const initialValues: LoginRequest = {
     email: '',
@@ -24,19 +24,7 @@ const initialValues: LoginRequest = {
 }
 
 function getErrorMessage(error: unknown) {
-    if (error instanceof AxiosError) {
-        const apiError = error.response?.data as ApiErrorResponse | undefined
-
-        if (apiError?.errors?.length) {
-            return apiError.errors.join(' ')
-        }
-
-        if (apiError?.message) {
-            return apiError.message
-        }
-    }
-
-    return 'Unable to sign in. Please check your details and try again.'
+    return getApiErrorMessage(error, 'Unable to sign in. Please check your details and try again.')
 }
 
 interface LoginFormProps {
