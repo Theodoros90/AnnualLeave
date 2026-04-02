@@ -1,4 +1,6 @@
 using API.DTOs;
+using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
 using Domain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -11,7 +13,8 @@ namespace API.Controllers;
 public class AccountController(
     UserManager<User> userManager,
     SignInManager<User> signInManager,
-    AppDbContext context) : BaseApiController
+    AppDbContext context,
+    IConfiguration configuration) : BaseApiController
 {
     [AllowAnonymous]
     [HttpPost("register")]
@@ -134,7 +137,72 @@ public class AccountController(
             user.UserName,
             user.Email,
             user.DisplayName,
+            user.ImageUrl,
             Roles = roles
         });
+    }
+
+    [Authorize]
+    [HttpPost("profile-image")]
+    [RequestSizeLimit(5_000_000)]
+    public async Task<ActionResult> UploadProfileImage([FromForm] IFormFile file)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new { message = "Please select an image file." });
+        }
+
+        if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = "Only image files are supported." });
+        }
+
+        var user = await userManager.GetUserAsync(User);
+        if (user is null)
+        {
+            return Unauthorized(new { message = "User is not authenticated." });
+        }
+
+        var cloudName = configuration["Cloudinary:CloudName"];
+        var apiKey = configuration["Cloudinary:ApiKey"];
+        var apiSecret = configuration["Cloudinary:ApiSecret"];
+
+        if (string.IsNullOrWhiteSpace(cloudName)
+            || string.IsNullOrWhiteSpace(apiKey)
+            || string.IsNullOrWhiteSpace(apiSecret))
+        {
+            return BadRequest(new { message = "Cloudinary is not configured." });
+        }
+
+        var account = new Account(cloudName, apiKey, apiSecret);
+        var cloudinary = new Cloudinary(account)
+        {
+            Api = { Secure = true }
+        };
+
+        await using var stream = file.OpenReadStream();
+        var uploadParams = new ImageUploadParams
+        {
+            File = new FileDescription(file.FileName, stream),
+            Folder = "annualleave/users",
+            PublicId = $"user-{user.Id}-{DateTime.UtcNow:yyyyMMddHHmmss}",
+            UseFilename = false,
+            UniqueFilename = true,
+            Overwrite = true
+        };
+
+        var uploadResult = await cloudinary.UploadAsync(uploadParams);
+        if (uploadResult.Error is not null || uploadResult.SecureUrl is null)
+        {
+            return BadRequest(new
+            {
+                message = uploadResult.Error?.Message ?? "Failed to upload image."
+            });
+        }
+
+        user.ImageUrl = uploadResult.SecureUrl.ToString();
+        await userManager.UpdateAsync(user);
+
+        return Ok(new { imageUrl = user.ImageUrl });
     }
 }

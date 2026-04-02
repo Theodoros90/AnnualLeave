@@ -1,5 +1,6 @@
 using System;
 using Application.Annualleaves.DTOs;
+using Application.Core;
 using Domain;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -30,16 +31,22 @@ public class EditAnnualLeave
             }
 
             var isInManagedDepartment = false;
-            if (request.IsManager && annualLeave.DepartmentId.HasValue)
+            var isDirectReport = false;
+            if (request.IsManager)
             {
-                isInManagedDepartment = await context.UserDepartments
-                    .AnyAsync(ud => ud.UserId == request.ChangedByUserId && ud.DepartmentId == annualLeave.DepartmentId.Value,
-                        cancellationToken);
+                var managerScope = await ManagerAccessScopeResolver.ResolveAsync(
+                    context,
+                    request.ChangedByUserId,
+                    cancellationToken);
+
+                isInManagedDepartment = annualLeave.DepartmentId.HasValue
+                    && managerScope.ManagedDepartmentIds.Contains(annualLeave.DepartmentId.Value);
+                isDirectReport = managerScope.DirectReportUserIds.Contains(annualLeave.EmployeeId);
             }
 
             var canEdit = request.IsAdmin || annualLeave.EmployeeId == request.ChangedByUserId;
 
-            if (!canEdit && isInManagedDepartment)
+            if (!canEdit && (isInManagedDepartment || isDirectReport))
             {
                 canEdit = true;
             }
@@ -47,6 +54,11 @@ public class EditAnnualLeave
             if (!canEdit)
             {
                 throw new UnauthorizedAccessException("You can only update your own leave requests or requests in your managed departments.");
+            }
+
+            if ((annualLeave.Status == AnnualLeaveStatus.Rejected || annualLeave.Status == AnnualLeaveStatus.Approved) && !request.IsAdmin)
+            {
+                throw new UnauthorizedAccessException("Approved and rejected leave requests cannot be edited.");
             }
 
             var previousStatus = annualLeave.Status;
@@ -77,7 +89,7 @@ public class EditAnnualLeave
                 }
             }
 
-            var canChangeStatus = request.IsAdmin || isInManagedDepartment;
+            var canChangeStatus = request.IsAdmin || isInManagedDepartment || isDirectReport;
             if (request.AnnualLeave.Status.HasValue && !canChangeStatus)
             {
                 throw new UnauthorizedAccessException("Only admins or managers of the request's department can change leave status.");

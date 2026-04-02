@@ -5,6 +5,7 @@ export interface AdminUser {
     userName: string
     email: string
     displayName: string
+    imageUrl: string
     roles: UserRole[]
 }
 

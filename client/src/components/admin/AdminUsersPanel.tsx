@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Alert from '@mui/material/Alert'
+import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
@@ -36,9 +37,9 @@ function getErrorMessage(error: unknown) {
     return getApiErrorMessage(error, 'Something went wrong. Please try again.')
 }
 
-function roleChipColor(role: UserRole): 'primary' | 'secondary' | 'success' {
-    if (role === 'Admin') return 'secondary'
-    if (role === 'Manager') return 'primary'
+function roleChipColor(role: UserRole): 'error' | 'warning' | 'success' {
+    if (role === 'Admin') return 'error'
+    if (role === 'Manager') return 'warning'
     return 'success'
 }
 
@@ -81,7 +82,7 @@ function AdminUsersPanel() {
             profile: EmployeeProfile | undefined
             departmentId: number
             jobTitle: string
-            leaveBalance: number
+            annualLeaveEntitlement: number
         }) => {
             await updateAdminUser(payload.userId, {
                 email: payload.email,
@@ -95,8 +96,8 @@ function AdminUsersPanel() {
                     id: payload.profile.id,
                     departmentId: payload.departmentId,
                     managerId: payload.profile.managerId,
-                    annualLeaveEntitlement: payload.profile.annualLeaveEntitlement,
-                    leaveBalance: payload.leaveBalance,
+                    annualLeaveEntitlement: payload.annualLeaveEntitlement,
+                    leaveBalance: payload.profile.leaveBalance,
                     jobTitle: payload.jobTitle || null,
                 })
             }
@@ -170,54 +171,61 @@ function AdminUsersPanel() {
                             border: '1px solid',
                             borderColor: 'divider',
                             borderLeft: '4px solid',
-                            borderLeftColor: 'rgba(15,118,110,0.45)',
+                            borderLeftColor: 'rgba(15,118,110,0.55)',
                             transition: 'border-color 0.15s, box-shadow 0.15s',
                             '&:hover': { borderColor: 'rgba(15,118,110,0.35)', boxShadow: '0 8px 20px rgba(15,23,42,0.06)' },
                         }}
                     >
-                        <Stack spacing={1.5}>
-                            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" gap={1}>
-                                <Box>
-                                    <Typography fontWeight={700}>{user.displayName || user.email}</Typography>
-                                    <Typography variant="body2" color="text.secondary">{user.email}</Typography>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1}>
+                            <Stack direction="row" spacing={2} alignItems="center" flex={1}>
+                                <Avatar
+                                    src={user.imageUrl}
+                                    alt={user.displayName || user.email}
+                                    sx={{ width: 48, height: 48, flexShrink: 0, fontSize: '1.2rem', fontWeight: 600 }}
+                                >
+                                    {user.displayName?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
+                                </Avatar>
+                                <Box flex={1}>
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                        <Typography fontWeight={700}>{user.displayName || user.email}</Typography>
+                                        {user.roles.map((role) => (
+                                            <Chip key={`${user.id}-${role}`} label={role} size="small" color={roleChipColor(role)} variant="outlined" />
+                                        ))}
+                                    </Stack>
+                                    <Typography variant="caption" color="text.secondary">
+                                        {user.email}
+                                    </Typography>
+                                    {profilesByUserId.get(user.id) ? (
+                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                                            Department: {departmentsById.get(profilesByUserId.get(user.id)?.departmentId ?? 0) ?? 'Unassigned'} | Leave balance: {profilesByUserId.get(user.id)?.leaveBalance}
+                                        </Typography>
+                                    ) : null}
                                 </Box>
-                                <Stack direction="row" spacing={1}>
-                                    <Button
-                                        size="small"
-                                        variant="outlined"
-                                        sx={{ textTransform: 'none' }}
-                                        onClick={() => setEditData({ user, profile: profilesByUserId.get(user.id) })}
-                                    >
-                                        Edit
-                                    </Button>
-                                    <Button
-                                        size="small"
-                                        color="error"
-                                        variant="outlined"
-                                        sx={{ textTransform: 'none' }}
-                                        disabled={deleteMutation.isPending}
-                                        onClick={() => {
-                                            if (window.confirm(`Delete user ${user.email}?`)) {
-                                                deleteMutation.mutate(user.id)
-                                            }
-                                        }}
-                                    >
-                                        Delete
-                                    </Button>
-                                </Stack>
                             </Stack>
-                            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                                {user.roles.map((role) => (
-                                    <Chip key={`${user.id}-${role}`} label={role} size="small" color={roleChipColor(role)} variant="outlined" />
-                                ))}
+                            <Stack direction="row" spacing={1}>
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ textTransform: 'none' }}
+                                    onClick={() => setEditData({ user, profile: profilesByUserId.get(user.id) })}
+                                >
+                                    Edit
+                                </Button>
+                                <Button
+                                    size="small"
+                                    color="error"
+                                    variant="outlined"
+                                    sx={{ textTransform: 'none' }}
+                                    disabled={deleteMutation.isPending}
+                                    onClick={() => {
+                                        if (window.confirm(`Delete user ${user.email}?`)) {
+                                            deleteMutation.mutate(user.id)
+                                        }
+                                    }}
+                                >
+                                    Delete
+                                </Button>
                             </Stack>
-                            {profilesByUserId.get(user.id) ? (
-                                <Typography variant="caption" color="text.secondary">
-                                    {profilesByUserId.get(user.id)?.jobTitle || 'No job title'}
-                                    &nbsp;|&nbsp; Department: {departmentsById.get(profilesByUserId.get(user.id)?.departmentId ?? 0) ?? 'Unassigned'}
-                                    &nbsp;|&nbsp; Leave balance: {profilesByUserId.get(user.id)?.leaveBalance}
-                                </Typography>
-                            ) : null}
                         </Stack>
                     </Paper>
                 ))
@@ -257,7 +265,7 @@ function EditUserDialog(props: {
         profile: EmployeeProfile | undefined
         departmentId: number
         jobTitle: string
-        leaveBalance: number
+        annualLeaveEntitlement: number
     }) => void
 }) {
     const open = !!props.data
@@ -268,7 +276,7 @@ function EditUserDialog(props: {
     const [roles, setRoles] = useState<UserRole[]>([])
     const [departmentId, setDepartmentId] = useState(0)
     const [jobTitle, setJobTitle] = useState('')
-    const [leaveBalance, setLeaveBalance] = useState(0)
+    const [annualLeaveEntitlement, setAnnualLeaveEntitlement] = useState(0)
 
     useEffect(() => {
         if (props.data) {
@@ -277,7 +285,7 @@ function EditUserDialog(props: {
             setRoles(props.data.user.roles)
             setDepartmentId(props.data.profile?.departmentId ?? 0)
             setJobTitle(props.data.profile?.jobTitle ?? '')
-            setLeaveBalance(props.data.profile?.leaveBalance ?? 0)
+            setAnnualLeaveEntitlement(props.data.profile?.annualLeaveEntitlement ?? 0)
         }
     }, [props.data])
 
@@ -331,10 +339,10 @@ function EditUserDialog(props: {
                                 fullWidth
                             />
                             <TextField
-                                label="Leave balance"
+                                label="Annual leave entitlement"
                                 type="number"
-                                value={leaveBalance}
-                                onChange={(e) => setLeaveBalance(Number(e.target.value))}
+                                value={annualLeaveEntitlement}
+                                onChange={(e) => setAnnualLeaveEntitlement(Number(e.target.value))}
                                 inputProps={{ min: 0, step: 0.5 }}
                                 fullWidth
                             />
@@ -359,7 +367,7 @@ function EditUserDialog(props: {
                             profile,
                             departmentId,
                             jobTitle,
-                            leaveBalance,
+                            annualLeaveEntitlement,
                         })
                     }
                 >

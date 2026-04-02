@@ -12,6 +12,7 @@ public class BaseAnnualLeaveDto
     [Range(1, int.MaxValue)]
     public int LeaveTypeId { get; set; }
 
-    [StringLength(500, MinimumLength = 1)]
+    [Required(ErrorMessage = "Reason is required.")]
+    [StringLength(500, MinimumLength = 1, ErrorMessage = "Reason is required and must be at most 500 characters.")]
     public string Reason { get; set; } = string.Empty;
 }

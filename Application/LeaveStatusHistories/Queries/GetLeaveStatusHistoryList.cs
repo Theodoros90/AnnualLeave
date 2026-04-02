@@ -1,4 +1,5 @@
 using Application.LeaveStatusHistories.DTOs;
+using Application.Core;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
@@ -20,7 +21,8 @@ public class GetLeaveStatusHistoryList
         {
             IQueryable<Domain.LeaveStatusHistory> query = context.LeaveStatusHistories
                 .AsNoTracking()
-                .Include(h => h.AnnualLeave);
+                .Include(h => h.AnnualLeave)
+                    .ThenInclude(a => a!.Employee);
 
             if (request.IsAdmin)
             {
@@ -28,16 +30,16 @@ public class GetLeaveStatusHistoryList
             }
             else if (request.IsManager)
             {
-                var managedDepartmentIds = await context.UserDepartments
-                    .Where(ud => ud.UserId == request.RequestingUserId)
-                    .Select(ud => ud.DepartmentId)
-                    .Distinct()
-                    .ToListAsync(cancellationToken);
+                var managerScope = await ManagerAccessScopeResolver.ResolveAsync(
+                    context,
+                    request.RequestingUserId,
+                    cancellationToken);
 
                 query = query.Where(h =>
                     h.AnnualLeave != null &&
-                    h.AnnualLeave.DepartmentId.HasValue &&
-                    managedDepartmentIds.Contains(h.AnnualLeave.DepartmentId.Value));
+                    ((h.AnnualLeave.DepartmentId.HasValue &&
+                      managerScope.ManagedDepartmentIds.Contains(h.AnnualLeave.DepartmentId.Value))
+                     || managerScope.DirectReportUserIds.Contains(h.AnnualLeave.EmployeeId)));
             }
             else
             {
@@ -53,7 +55,18 @@ public class GetLeaveStatusHistoryList
                 {
                     Id = h.Id,
                     AnnualLeaveId = h.AnnualLeaveId,
+                    EmployeeId = h.AnnualLeave != null ? h.AnnualLeave.EmployeeId : string.Empty,
+                    EmployeeName = h.AnnualLeave != null && h.AnnualLeave.Employee != null
+                        ? (!string.IsNullOrWhiteSpace(h.AnnualLeave.Employee.DisplayName)
+                            ? h.AnnualLeave.Employee.DisplayName
+                            : (h.AnnualLeave.Employee.Email ?? h.AnnualLeave.EmployeeId))
+                        : string.Empty,
                     ChangedByUserId = h.ChangedByUserId,
+                    ChangedByUserName = h.ChangedByUser != null
+                        ? (!string.IsNullOrWhiteSpace(h.ChangedByUser.DisplayName)
+                            ? h.ChangedByUser.DisplayName
+                            : (h.ChangedByUser.Email ?? h.ChangedByUserId))
+                        : h.ChangedByUserId,
                     OldStatus = h.OldStatus.HasValue ? h.OldStatus.Value.ToString() : null,
                     NewStatus = h.NewStatus.ToString(),
                     Comment = h.Comment,

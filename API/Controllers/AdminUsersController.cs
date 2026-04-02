@@ -321,6 +321,7 @@ public class AdminUsersController(
             UserName = user.UserName ?? string.Empty,
             Email = user.Email ?? string.Empty,
             DisplayName = user.DisplayName,
+            ImageUrl = user.ImageUrl ?? string.Empty,
             Roles = roles.OrderBy(r => r).ToList()
         };
     }

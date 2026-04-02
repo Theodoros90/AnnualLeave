@@ -1,21 +1,43 @@
 using Application.Annualleaves.Commands;
 using Application.Annualleaves.DTOs;
 using Application.Annualleaves.Queries;
+using API.Hubs;
 using Domain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 
 namespace API.Controllers;
 
 public class AnnualLeavesController : BaseApiController
 {
+    private readonly IHubContext<NotificationsHub> _notificationsHub;
+
+    public AnnualLeavesController(IHubContext<NotificationsHub> notificationsHub)
+    {
+        _notificationsHub = notificationsHub;
+    }
+
     // Visibility is role-scoped: Admin all, Manager by assigned departments, Employee own requests.
     [HttpGet]
     [Authorize(Policy = "AnnualLeaveRead")]
     public async Task<ActionResult<List<AnnualLeaveDto>>> GetAnnualLeaves()
     {
         return await Mediator.Send(new GetAnnualleaveList.Query
+        {
+            RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsManager = User.IsInRole(AppRoles.Manager),
+            IsEmployee = User.IsInRole(AppRoles.Employee)
+        });
+    }
+
+    [HttpGet("team-away-this-week/count")]
+    [Authorize(Policy = "AnnualLeaveRead")]
+    public async Task<ActionResult<int>> GetTeamAwayThisWeekCount()
+    {
+        return await Mediator.Send(new GetTeamAwayThisWeekCount.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
             IsAdmin = User.IsInRole(AppRoles.Admin),
@@ -51,7 +73,9 @@ public class AnnualLeavesController : BaseApiController
         if (!isAdmin || string.IsNullOrWhiteSpace(request.EmployeeId))
             request.EmployeeId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 
-        return await Mediator.Send(new CreateAnnualLeave.Command { AnnualLeave = request });
+        var createdId = await Mediator.Send(new CreateAnnualLeave.Command { AnnualLeave = request });
+        await _notificationsHub.Clients.All.SendAsync("notificationsUpdated");
+        return createdId;
     }
 
     // Admin can edit all leaves; Employee can edit own leaves; Manager can edit own and managed-department leaves.
@@ -66,6 +90,7 @@ public class AnnualLeavesController : BaseApiController
             IsAdmin = User.IsInRole(AppRoles.Admin),
             IsManager = User.IsInRole(AppRoles.Manager)
         });
+        await _notificationsHub.Clients.All.SendAsync("notificationsUpdated");
         return NoContent();
     }
 
@@ -82,6 +107,7 @@ public class AnnualLeavesController : BaseApiController
             IsAdmin = User.IsInRole(AppRoles.Admin),
             IsManager = User.IsInRole(AppRoles.Manager),
         });
+        await _notificationsHub.Clients.All.SendAsync("notificationsUpdated");
         return NoContent();
     }
 
@@ -97,6 +123,7 @@ public class AnnualLeavesController : BaseApiController
             IsAdmin = User.IsInRole(AppRoles.Admin),
             IsManager = User.IsInRole(AppRoles.Manager)
         });
+        await _notificationsHub.Clients.All.SendAsync("notificationsUpdated");
         return Ok();
     }
 }

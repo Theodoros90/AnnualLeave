@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { observer } from 'mobx-react-lite'
 import Alert from '@mui/material/Alert'
+import Badge from '@mui/material/Badge'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
-import Divider from '@mui/material/Divider'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Tab from '@mui/material/Tab'
@@ -16,6 +16,21 @@ import AnnualLeaveList from './AnnualLeaveList'
 
 const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo }) {
     const [teamTab, setTeamTab] = useState(user.roles.includes('Manager') ? 1 : 0)
+
+    useEffect(() => {
+        const syncTeamTabFromHash = () => {
+            if (window.location.hash === '#team-leave-approvals') {
+                setTeamTab(1)
+            }
+        }
+
+        syncTeamTabFromHash()
+        window.addEventListener('hashchange', syncTeamTabFromHash)
+
+        return () => {
+            window.removeEventListener('hashchange', syncTeamTabFromHash)
+        }
+    }, [])
 
     const { data: profiles = [] } = useQuery({
         queryKey: ['employeeProfiles'],
@@ -37,6 +52,8 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
         queryFn: getLeaveStatusHistories,
     })
 
+    const isAdmin = user.roles.includes('Admin')
+
     const myProfile = profiles.find((profile) => profile.userId === user.id)
     const myDepartmentId = myProfile?.departmentId
     const myDepartmentName = departments.find((department) => department.id === myDepartmentId)?.name
@@ -48,9 +65,13 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
         [teamLeaves]
     )
 
+    // Admins see all employee profiles regardless of whether they have leave requests.
+    // Managers only see profiles of people who have submitted leaves (existing behaviour).
     const teamProfiles = useMemo(
-        () => profiles.filter((profile) => teamMemberIds.has(profile.userId)),
-        [profiles, teamMemberIds]
+        () => isAdmin
+            ? profiles.filter((profile) => profile.userId !== user.id)
+            : profiles.filter((profile) => teamMemberIds.has(profile.userId)),
+        [isAdmin, profiles, teamMemberIds, user.id]
     )
 
     const teamApprovalRequests = useMemo(
@@ -115,16 +136,31 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                     </Box>
                 )}
 
-                <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, px: 1.5 }}>
+                <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, px: 1.5, overflow: 'visible' }}>
                     <Tabs
                         value={teamTab}
                         onChange={(_event, value: number) => setTeamTab(value)}
                         variant="scrollable"
                         scrollButtons="auto"
-                        sx={{ '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, minHeight: 52 } }}
+                        sx={{
+                            overflow: 'visible',
+                            '& .MuiTabs-scroller': { overflow: 'visible !important' },
+                            '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, minHeight: 52, overflow: 'visible' },
+                        }}
                     >
                         <Tab label="Team Calendar / Leave List" />
-                        <Tab label="Approvals" />
+                        <Tab
+                            label={
+                                <Badge
+                                    badgeContent={teamApprovalRequests.length}
+                                    color="error"
+                                    max={99}
+                                    invisible={teamApprovalRequests.length === 0}
+                                >
+                                    <Box sx={{ pr: teamApprovalRequests.length > 0 ? 1.5 : 0 }}>Approvals</Box>
+                                </Badge>
+                            }
+                        />
                         <Tab label="Team Balances" />
                         <Tab label="Team History" />
                     </Tabs>
@@ -148,9 +184,22 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                             <Chip
                                 label={`${teamApprovalRequests.length} pending`}
                                 color={teamApprovalRequests.length > 0 ? 'warning' : 'default'}
+                                variant={teamApprovalRequests.length > 0 ? 'filled' : 'outlined'}
                                 size="small"
+                                sx={teamApprovalRequests.length > 0 ? { fontWeight: 700, fontSize: '0.8rem' } : {}}
                             />
                         </Stack>
+
+                        {teamApprovalRequests.length > 0 && (
+                            <Alert
+                                severity="warning"
+                                sx={{ fontWeight: 600 }}
+                            >
+                                {teamApprovalRequests.length === 1
+                                    ? '1 leave request is awaiting your approval.'
+                                    : `${teamApprovalRequests.length} leave requests are awaiting your approval.`}
+                            </Alert>
+                        )}
 
                         <AnnualLeaveList
                             user={user}
@@ -185,7 +234,7 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                                             spacing={1}
                                         >
                                             <Typography fontWeight={700}>
-                                                {teamEmployeeNameById.get(profile.userId) ?? profile.userId}
+                                                {profile.displayName}
                                             </Typography>
                                             <Stack direction="row" spacing={1}>
                                                 <Chip label={`Balance: ${profile.leaveBalance} days`} color="primary" size="small" />
@@ -214,20 +263,72 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
 
                         {!isHistoryLoading && !isHistoryError && teamHistoryItems.length > 0 && (
                             <Stack spacing={1.2}>
-                                {teamHistoryItems.slice(0, 20).map((item) => (
-                                    <Box key={item.id}>
-                                        <Typography fontWeight={700}>Status changed to {item.newStatus}</Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                            {new Date(item.changedAt).toLocaleString()}
-                                        </Typography>
-                                        {item.comment && (
-                                            <Typography variant="body2" color="text.secondary">
-                                                Comment: {item.comment}
-                                            </Typography>
-                                        )}
-                                        <Divider sx={{ mt: 1.25 }} />
-                                    </Box>
-                                ))}
+                                {teamHistoryItems.slice(0, 20).map((item) => {
+                                    const isApproved = item.newStatus === 'Approved'
+                                    const isRejected = item.newStatus === 'Rejected'
+                                    const isCancelled = item.newStatus === 'Cancelled'
+                                    const accentColor = isApproved
+                                        ? 'success.main'
+                                        : isRejected
+                                            ? 'error.main'
+                                            : isCancelled
+                                                ? 'grey.500'
+                                                : 'warning.main'
+                                    const isSelfAction = item.employeeId === item.changedByUserId
+
+                                    return (
+                                        <Box
+                                            key={item.id}
+                                            sx={{
+                                                py: 1.4,
+                                                px: 1.8,
+                                                borderRadius: 1.5,
+                                                border: '1px solid',
+                                                borderColor: 'divider',
+                                                borderLeft: '4px solid',
+                                                borderLeftColor: accentColor,
+                                            }}
+                                        >
+                                            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                                                <Chip
+                                                    label={item.newStatus}
+                                                    size="small"
+                                                    color={isApproved ? 'success' : isRejected ? 'error' : isCancelled ? 'default' : 'warning'}
+                                                    sx={{ fontWeight: 700 }}
+                                                />
+                                                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                                                    {new Date(item.changedAt).toLocaleString()}
+                                                </Typography>
+                                            </Stack>
+
+                                            <Stack spacing={0.3} sx={{ mt: 1 }}>
+                                                <Typography variant="body2">
+                                                    <Typography component="span" variant="body2" color="text.secondary">Requested by: </Typography>
+                                                    <Typography component="span" variant="body2" fontWeight={700}>
+                                                        {item.employeeName || item.employeeId}
+                                                    </Typography>
+                                                </Typography>
+
+                                                {!isSelfAction && (
+                                                    <Typography variant="body2">
+                                                        <Typography component="span" variant="body2" color="text.secondary">
+                                                            {isApproved ? 'Approved by: ' : isRejected ? 'Rejected by: ' : 'Changed by: '}
+                                                        </Typography>
+                                                        <Typography component="span" variant="body2" fontWeight={700}>
+                                                            {item.changedByUserName || item.changedByUserId}
+                                                        </Typography>
+                                                    </Typography>
+                                                )}
+
+                                                {item.comment && (
+                                                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                                        "{item.comment}"
+                                                    </Typography>
+                                                )}
+                                            </Stack>
+                                        </Box>
+                                    )
+                                })}
                             </Stack>
                         )}
                     </Paper>

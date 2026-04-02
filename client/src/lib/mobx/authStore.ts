@@ -87,6 +87,17 @@ class AuthStore {
             })
         }
     }
+
+    setUserImageUrl(imageUrl: string) {
+        if (!this.user) {
+            return
+        }
+
+        this.user = {
+            ...this.user,
+            imageUrl,
+        }
+    }
 }
 
 export default AuthStore

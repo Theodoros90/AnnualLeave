@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import Alert from '@mui/material/Alert'
 import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
@@ -31,6 +32,7 @@ interface RegisterFormProps {
 
 function RegisterForm({ onSwitch }: RegisterFormProps) {
     const { authStore } = useStore()
+    const queryClient = useQueryClient()
     const [values, setValues] = useState<RegisterRequest>(initialValues)
 
     const mutation = useMutation({
@@ -48,6 +50,10 @@ function RegisterForm({ onSwitch }: RegisterFormProps) {
         event.preventDefault()
         mutation.reset()
         await mutation.mutateAsync(values)
+        await queryClient.cancelQueries()
+        queryClient.clear()
+        window.location.hash = '#dashboard'
+        window.location.reload()
         setValues(initialValues)
     }
 

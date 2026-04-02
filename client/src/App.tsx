@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
 import { observer } from 'mobx-react-lite'
 import Alert from '@mui/material/Alert'
 import AppBar from '@mui/material/AppBar'
@@ -12,6 +14,7 @@ import Toolbar from '@mui/material/Toolbar'
 import Typography from '@mui/material/Typography'
 import { DashboardHome, LoginForm, MyLeavePage, Navbar, RegisterForm, TeamLeavePage } from './components'
 import { API_ERROR_EVENT } from './lib/api/error-events'
+import { apiBaseUrl } from './lib/api/client'
 import { useStore } from './lib/mobx'
 import type { MyLeaveSection } from './lib/mobx/uiStore'
 
@@ -24,11 +27,12 @@ function getSectionFromHash(hash: string): MyLeaveSection | null {
 }
 
 function isTeamLeaveHash(hash: string) {
-  return hash === '#team-leave'
+  return hash === '#team-leave' || hash === '#team-leave-approvals'
 }
 
 function getAdminSectionFromHash(hash: string) {
-  if (hash === '#admin-leave') return 'leave' as const
+  if (hash === '#admin-settings') return 'leave-types' as const
+  if (hash === '#admin-leave') return 'leave-types' as const
   if (hash === '#admin-leave-types') return 'leave-types' as const
   if (hash === '#admin-departments') return 'departments' as const
   if (hash === '#admin-users') return 'users' as const
@@ -37,6 +41,7 @@ function getAdminSectionFromHash(hash: string) {
 
 const App = observer(function App() {
   const { authStore, uiStore } = useStore()
+  const queryClient = useQueryClient()
   const [authView, setAuthView] = useState<'login' | 'register'>('login')
   const [apiErrorOpen, setApiErrorOpen] = useState(false)
   const [apiErrorMessage, setApiErrorMessage] = useState('')
@@ -72,7 +77,10 @@ const App = observer(function App() {
 
       if (section) {
         uiStore.navigateToMyLeave(section)
+        return
       }
+
+      uiStore.navigateToDashboard()
     }
 
     syncFromHash()
@@ -117,6 +125,34 @@ const App = observer(function App() {
     window.addEventListener(API_ERROR_EVENT, onApiError as EventListener)
     return () => window.removeEventListener(API_ERROR_EVENT, onApiError as EventListener)
   }, [])
+
+  useEffect(() => {
+    if (!authStore.user) {
+      return
+    }
+
+    const hubBaseUrl = apiBaseUrl.endsWith('/api') ? apiBaseUrl.slice(0, -4) : apiBaseUrl
+    const connection = new HubConnectionBuilder()
+      .withUrl(`${hubBaseUrl}/hubs/notifications`, { withCredentials: true })
+      .withAutomaticReconnect()
+      .configureLogging(LogLevel.Warning)
+      .build()
+
+    connection.on('notificationsUpdated', () => {
+      void queryClient.invalidateQueries({ queryKey: ['leaveStatusHistories'] })
+      void queryClient.invalidateQueries({ queryKey: ['annualLeaves'] })
+      void queryClient.invalidateQueries({ queryKey: ['teamAwayThisWeekCount'] })
+    })
+
+    void connection.start().catch(() => {
+      // Keep polling as fallback if realtime connect fails.
+    })
+
+    return () => {
+      connection.off('notificationsUpdated')
+      void connection.stop()
+    }
+  }, [authStore.user, queryClient])
 
   if (!authStore.hasCheckedAuth && authStore.isLoadingUser) {
     return (

@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Application.Annualleaves.DTOs;
+using Application.Core;
 using AutoMapper;
 using Domain;
 using MediatR;
@@ -34,14 +35,16 @@ public class GetAnnualleaveList
             }
             else if (request.IsManager)
             {
-                var profileDepartmentId = await context.EmployeeProfiles
-                    .Where(ep => ep.UserId == request.RequestingUserId)
-                    .Select(ep => (int?)ep.DepartmentId)
-                    .FirstOrDefaultAsync(cancellationToken);
+                var managerScope = await ManagerAccessScopeResolver.ResolveAsync(
+                    context,
+                    request.RequestingUserId,
+                    cancellationToken);
 
-                annualLeavesQuery = profileDepartmentId.HasValue
-                    ? annualLeavesQuery.Where(al => al.DepartmentId == profileDepartmentId.Value)
-                    : annualLeavesQuery.Where(_ => false);
+                annualLeavesQuery = managerScope.ManagedDepartmentIds.Count == 0
+                    ? annualLeavesQuery.Where(_ => false)
+                    : annualLeavesQuery.Where(al =>
+                        (al.DepartmentId.HasValue && managerScope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
+                        || managerScope.DirectReportUserIds.Contains(al.EmployeeId));
             }
             else if (request.IsEmployee)
             {

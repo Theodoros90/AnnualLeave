@@ -1,6 +1,7 @@
 using API.Middleware;
 using API.Extensions;
 using API.Models;
+using API.Hubs;
 using Application.Core;
 using Application.Annualleaves.Queries;
 using Application.LeaveTypes.Commands;
@@ -52,6 +53,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerDocumentation();
+builder.Services.AddSignalR();
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
 
@@ -130,6 +132,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapGroup("api").MapIdentityApi<User>();
+app.MapHub<NotificationsHub>("/hubs/notifications");
 
 using var scope = app.Services.CreateScope();
 var services = scope.ServiceProvider;

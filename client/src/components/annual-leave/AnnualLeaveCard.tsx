@@ -62,8 +62,10 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
     // Approve / Reject: Admin any, Manager dept-team-only (server enforces), Employee never
     const canApproveReject = (isAdmin || isManager) && leave.status === 'Pending'
 
-    // Edit dates/type/reason: Admin any, Manager any, Employee own only
-    const canEdit = isAdmin || isManager || isOwnLeave
+    // Edit dates/type/reason: Approved/Rejected requests are admin-only; otherwise Admin any, Manager any, Employee own only
+    const isLockedStatus = leave.status === 'Rejected' || leave.status === 'Approved'
+    const canEdit = isLockedStatus ? isAdmin : (isAdmin || isManager || isOwnLeave)
+    const showLockedStatusNote = isLockedStatus && !isAdmin
 
     // Cancel: Admin any, Manager own, Employee own-pending-only
     const canCancel =
@@ -104,6 +106,7 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
     return (
         <>
             <Paper
+                id={`leave-card-${leave.id}`}
                 elevation={0}
                 sx={{
                     p: { xs: 2.25, sm: 3 },
@@ -184,6 +187,12 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
                             ) : null}
                         </Stack>
                     </Stack>
+
+                    {showLockedStatusNote ? (
+                        <Typography variant="caption" color="text.secondary">
+                            Approved and rejected requests are locked and cannot be edited.
+                        </Typography>
+                    ) : null}
 
                     {leave.reason ? (
                         <>

@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { observer } from 'mobx-react-lite'
 import CircleRoundedIcon from '@mui/icons-material/CircleRounded'
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded'
 import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded'
+import UploadRoundedIcon from '@mui/icons-material/UploadRounded'
 import AppBar from '@mui/material/AppBar'
 import Avatar from '@mui/material/Avatar'
 import Badge from '@mui/material/Badge'
@@ -20,19 +21,14 @@ import Stack from '@mui/material/Stack'
 import Toolbar from '@mui/material/Toolbar'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
-import { getLeaveStatusHistories } from '../../lib/api'
+import { getAnnualLeaves, getLeaveStatusHistories, uploadProfileImage } from '../../lib/api'
 import { useStore } from '../../lib/mobx'
 
 const employeeNavLinks = ['Dashboard', 'My Leave']
 
 const managerNavLinks = ['Dashboard', 'My Leave', 'Team Leave']
 
-const adminNavLinks = [
-    'Dashboard',
-    'Leave',
-    'Departments',
-    'Users',
-]
+const adminNavLinks = ['Dashboard', 'Team Leave', 'Settings']
 
 function getRoleBasedNavLinks(roles: string[] | undefined) {
     if (!roles?.length) {
@@ -51,6 +47,26 @@ function getRoleBasedNavLinks(roles: string[] | undefined) {
 }
 
 const recentWindowDays = 7
+const managerReadNotificationsStoragePrefix = 'manager-read-leave-notifications:'
+const employeeReadNotificationsStoragePrefix = 'employee-read-status-notifications:'
+const notificationRefreshMs = 15000
+
+function getStoredReadNotificationIds(storageKey: string) {
+    const raw = window.localStorage.getItem(storageKey)
+    if (!raw) {
+        return [] as string[]
+    }
+
+    try {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+            return parsed.filter((id): id is string => typeof id === 'string')
+        }
+        return [] as string[]
+    } catch {
+        return [] as string[]
+    }
+}
 
 function scrollToElementById(elementId: string) {
     const target = document.getElementById(elementId)
@@ -80,16 +96,45 @@ function formatChangedAt(changedAt: string) {
 const Navbar = observer(function Navbar() {
     const { authStore, uiStore } = useStore()
     const isAdminUser = authStore.user?.roles?.includes('Admin') ?? false
+    const isManagerUser = authStore.user?.roles?.includes('Manager') ?? false
+    const shouldUseManagerRequestNotifications = isManagerUser && !isAdminUser
+    const shouldUseEmployeeStatusNotifications = !shouldUseManagerRequestNotifications
+    const managerReadStorageKey = `${managerReadNotificationsStoragePrefix}${authStore.user?.id ?? ''}`
+    const employeeReadStorageKey = `${employeeReadNotificationsStoragePrefix}${authStore.user?.id ?? ''}`
     const navLinks = getRoleBasedNavLinks(authStore.user?.roles)
     const [notificationsAnchorEl, setNotificationsAnchorEl] = useState<null | HTMLElement>(null)
     const [profileAnchorEl, setProfileAnchorEl] = useState<null | HTMLElement>(null)
+    const [readManagerNotificationIds, setReadManagerNotificationIds] = useState<string[]>(() =>
+        getStoredReadNotificationIds(managerReadStorageKey)
+    )
+    const [readEmployeeNotificationIds, setReadEmployeeNotificationIds] = useState<string[]>(() =>
+        getStoredReadNotificationIds(employeeReadStorageKey)
+    )
+    const fileInputRef = useRef<HTMLInputElement | null>(null)
     const isNotificationsMenuOpen = Boolean(notificationsAnchorEl)
     const isProfileMenuOpen = Boolean(profileAnchorEl)
+
+    const uploadProfileImageMutation = useMutation({
+        mutationFn: (file: File) => uploadProfileImage(file),
+        onSuccess: (result) => {
+            authStore.setUserImageUrl(result.imageUrl)
+        },
+    })
 
     const { data: statusHistories, isLoading: isLoadingNotifications } = useQuery({
         queryKey: ['leaveStatusHistories'],
         queryFn: getLeaveStatusHistories,
         enabled: authStore.isAuthenticated,
+        refetchInterval: authStore.isAuthenticated ? notificationRefreshMs : false,
+        refetchIntervalInBackground: true,
+    })
+
+    const { data: annualLeaves, isLoading: isLoadingManagerNotifications } = useQuery({
+        queryKey: ['annualLeaves'],
+        queryFn: getAnnualLeaves,
+        enabled: authStore.isAuthenticated && shouldUseManagerRequestNotifications,
+        refetchInterval: authStore.isAuthenticated && shouldUseManagerRequestNotifications ? notificationRefreshMs : false,
+        refetchIntervalInBackground: true,
     })
 
     const sortedNotifications = (statusHistories ?? [])
@@ -97,8 +142,88 @@ const Navbar = observer(function Navbar() {
         .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime())
         .slice(0, 6)
 
+    const employeeStatusNotifications = sortedNotifications
+        .filter((item) => item.changedByUserId !== authStore.user?.id)
+
+    const managerPendingRequests = (annualLeaves ?? [])
+        .filter((leave) => leave.status === 'Pending' && leave.employeeId !== authStore.user?.id)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+    const readManagerNotificationSet = useMemo(() => new Set(readManagerNotificationIds), [readManagerNotificationIds])
+    const readEmployeeNotificationSet = useMemo(() => new Set(readEmployeeNotificationIds), [readEmployeeNotificationIds])
+    const unreadManagerPendingRequests = managerPendingRequests
+        .filter((item) => !readManagerNotificationSet.has(item.id))
+    const unreadEmployeeStatusNotifications = employeeStatusNotifications
+        .filter((item) => !readEmployeeNotificationSet.has(item.id))
+    const managerNotifications = unreadManagerPendingRequests.slice(0, 6)
+
+    useEffect(() => {
+        if (!shouldUseManagerRequestNotifications) {
+            setReadManagerNotificationIds([])
+            return
+        }
+
+        setReadManagerNotificationIds(getStoredReadNotificationIds(managerReadStorageKey))
+    }, [managerReadStorageKey, shouldUseManagerRequestNotifications])
+
+    useEffect(() => {
+        if (!shouldUseEmployeeStatusNotifications) {
+            setReadEmployeeNotificationIds([])
+            return
+        }
+
+        setReadEmployeeNotificationIds(getStoredReadNotificationIds(employeeReadStorageKey))
+    }, [employeeReadStorageKey, shouldUseEmployeeStatusNotifications])
+
+    useEffect(() => {
+        if (!shouldUseManagerRequestNotifications) {
+            return
+        }
+
+        // Avoid pruning while requests are still loading; otherwise read ids can be cleared on refresh.
+        if (isLoadingManagerNotifications || !annualLeaves) {
+            return
+        }
+
+        const pendingIds = new Set(managerPendingRequests.map((item) => item.id))
+        const pruned = readManagerNotificationIds.filter((id) => pendingIds.has(id))
+
+        if (pruned.length !== readManagerNotificationIds.length) {
+            setReadManagerNotificationIds(pruned)
+            window.localStorage.setItem(managerReadStorageKey, JSON.stringify(pruned))
+        }
+    }, [
+        annualLeaves,
+        isLoadingManagerNotifications,
+        managerPendingRequests,
+        managerReadStorageKey,
+        readManagerNotificationIds,
+        shouldUseManagerRequestNotifications,
+    ])
+
+    useEffect(() => {
+        if (!shouldUseEmployeeStatusNotifications || !statusHistories) {
+            return
+        }
+
+        const statusHistoryIds = new Set(statusHistories.map((item) => item.id))
+        const pruned = readEmployeeNotificationIds.filter((id) => statusHistoryIds.has(id))
+
+        if (pruned.length !== readEmployeeNotificationIds.length) {
+            setReadEmployeeNotificationIds(pruned)
+            window.localStorage.setItem(employeeReadStorageKey, JSON.stringify(pruned))
+        }
+    }, [
+        employeeReadStorageKey,
+        readEmployeeNotificationIds,
+        shouldUseEmployeeStatusNotifications,
+        statusHistories,
+    ])
+
     const recentThreshold = Date.now() - recentWindowDays * 24 * 60 * 60 * 1000
-    const unreadCount = sortedNotifications.filter((item) => new Date(item.changedAt).getTime() >= recentThreshold).length
+    const unreadCount = shouldUseManagerRequestNotifications
+        ? unreadManagerPendingRequests.length
+        : unreadEmployeeStatusNotifications.filter((item) => new Date(item.changedAt).getTime() >= recentThreshold).length
 
     const displayName = authStore.user?.displayName ?? authStore.user?.userName ?? 'Guest'
     const initials = displayName
@@ -122,6 +247,31 @@ const Navbar = observer(function Navbar() {
 
     const handleCloseProfileMenu = () => {
         setProfileAnchorEl(null)
+    }
+
+    const handleManagerNotificationClick = (leaveRequestId: string) => {
+        const updated = Array.from(new Set([...readManagerNotificationIds, leaveRequestId]))
+        setReadManagerNotificationIds(updated)
+        window.localStorage.setItem(managerReadStorageKey, JSON.stringify(updated))
+        handleCloseNotificationsMenu()
+        uiStore.navigateToTeamLeave()
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#team-leave-approvals`)
+        window.dispatchEvent(new HashChangeEvent('hashchange'))
+    }
+
+    const handleEmployeeNotificationClick = (notificationId: string, annualLeaveId: string) => {
+        const updated = Array.from(new Set([...readEmployeeNotificationIds, notificationId]))
+        setReadEmployeeNotificationIds(updated)
+        window.localStorage.setItem(employeeReadStorageKey, JSON.stringify(updated))
+
+        handleCloseNotificationsMenu()
+        uiStore.navigateToMyLeave('requests')
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#my-requests`)
+        window.dispatchEvent(new HashChangeEvent('hashchange'))
+
+        window.setTimeout(() => {
+            scrollToElementById(`leave-card-${annualLeaveId}`)
+        }, 100)
     }
 
     const handleApplyForLeave = () => {
@@ -163,19 +313,9 @@ const Navbar = observer(function Navbar() {
         uiStore.navigateToMyLeave('history')
     }
 
-    const handleAdminLeaveSectionClick = () => {
-        uiStore.navigateToAdminSection('leave')
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-leave`)
-    }
-
-    const handleAdminUsersSectionClick = () => {
-        uiStore.navigateToAdminSection('users')
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-users`)
-    }
-
-    const handleAdminDepartmentsSectionClick = () => {
-        uiStore.navigateToAdminSection('departments')
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-departments`)
+    const handleAdminSettingsClick = () => {
+        uiStore.navigateToAdminSection('leave-types')
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-leave-types`)
     }
 
     const handleSignOut = async () => {
@@ -184,21 +324,27 @@ const Navbar = observer(function Navbar() {
         uiStore.resetAfterSignOut()
     }
 
+    const handleUploadProfileImageClick = () => {
+        handleCloseProfileMenu()
+        fileInputRef.current?.click()
+    }
+
+    const handleProfileImageSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+
+        if (!file) {
+            return
+        }
+
+        await uploadProfileImageMutation.mutateAsync(file)
+        event.target.value = ''
+    }
+
     const isMyLeaveGroupLink = (link: string) =>
         ['My Leave', 'Apply for Leave', 'My Requests', 'Leave Balance', 'History'].includes(link)
 
-    const isAdminLeaveLink = (link: string) =>
-        ['Leave'].includes(link)
-
-    const isAdminUsersLink = (link: string) =>
-        ['Users'].includes(link)
-
-    const isAdminDashboardLink = (link: string) =>
-        [
-            'Leave',
-            'Departments',
-            'Users',
-        ].includes(link)
+    const isAdminSettingsLink = (link: string) =>
+        ['Settings'].includes(link)
 
     const isLinkActive = (link: string) => {
         if (link === 'Dashboard') {
@@ -216,20 +362,9 @@ const Navbar = observer(function Navbar() {
             return uiStore.currentPage === 'team-leave'
         }
 
-        if (link === 'Departments') {
-            return uiStore.currentPage === 'dashboard' && uiStore.adminSection === 'departments'
-        }
-
-        if (isAdminUsersLink(link)) {
-            return uiStore.currentPage === 'dashboard' && uiStore.adminSection === 'users'
-        }
-
-        if (isAdminLeaveLink(link)) {
-            return uiStore.currentPage === 'dashboard' && (uiStore.adminSection === 'leave' || uiStore.adminSection === 'leave-types')
-        }
-
-        if (isAdminDashboardLink(link)) {
+        if (isAdminSettingsLink(link)) {
             return uiStore.currentPage === 'dashboard'
+                && ['settings', 'leave', 'leave-types', 'departments', 'users'].includes(uiStore.adminSection)
         }
 
         return false
@@ -243,10 +378,7 @@ const Navbar = observer(function Navbar() {
         if (link === 'Team Leave') return handleTeamLeaveClick
         if (link === 'Leave Balance') return handleLeaveBalanceClick
         if (link === 'History') return handleHistoryClick
-        if (link === 'Departments') return handleAdminDepartmentsSectionClick
-        if (isAdminUsersLink(link)) return handleAdminUsersSectionClick
-        if (isAdminLeaveLink(link)) return handleAdminLeaveSectionClick
-        if (isAdminDashboardLink(link)) return handleDashboardClick
+        if (isAdminSettingsLink(link)) return handleAdminSettingsClick
         return undefined
     }
 
@@ -362,26 +494,53 @@ const Navbar = observer(function Navbar() {
                                         </Typography>
                                     </MenuItem>
                                     <Divider />
-                                    {isLoadingNotifications && (
+                                    {(shouldUseManagerRequestNotifications ? isLoadingManagerNotifications : isLoadingNotifications) && (
                                         <MenuItem disabled>
                                             <ListItemText primary="Loading notifications..." />
                                         </MenuItem>
                                     )}
-                                    {!isLoadingNotifications && sortedNotifications.length === 0 && (
-                                        <MenuItem disabled>
-                                            <ListItemText primary="No notifications yet" />
-                                        </MenuItem>
-                                    )}
-                                    {!isLoadingNotifications &&
-                                        sortedNotifications.map((item) => {
+                                    {!(shouldUseManagerRequestNotifications ? isLoadingManagerNotifications : isLoadingNotifications)
+                                        && shouldUseManagerRequestNotifications
+                                        && managerNotifications.length === 0 && (
+                                            <MenuItem disabled>
+                                                <ListItemText primary="No notifications yet" />
+                                            </MenuItem>
+                                        )}
+                                    {!(shouldUseManagerRequestNotifications ? isLoadingManagerNotifications : isLoadingNotifications)
+                                        && !shouldUseManagerRequestNotifications
+                                        && employeeStatusNotifications.length === 0 && (
+                                            <MenuItem disabled>
+                                                <ListItemText primary="No notifications yet" />
+                                            </MenuItem>
+                                        )}
+                                    {!(shouldUseManagerRequestNotifications ? isLoadingManagerNotifications : isLoadingNotifications)
+                                        && shouldUseManagerRequestNotifications
+                                        && managerNotifications.map((item) => (
+                                            <MenuItem key={item.id} onClick={() => handleManagerNotificationClick(item.id)}>
+                                                <ListItemIcon>
+                                                    <CircleRoundedIcon
+                                                        sx={{ fontSize: 10, color: 'error.main' }}
+                                                    />
+                                                </ListItemIcon>
+                                                <ListItemText
+                                                    primary={`New leave request from ${item.employeeName}`}
+                                                    secondary={`Submitted ${formatChangedAt(item.createdAt)}`}
+                                                />
+                                            </MenuItem>
+                                        ))}
+                                    {!(shouldUseManagerRequestNotifications ? isLoadingManagerNotifications : isLoadingNotifications)
+                                        && !shouldUseManagerRequestNotifications
+                                        && employeeStatusNotifications.map((item) => {
                                             const changedAt = new Date(item.changedAt).getTime()
+                                            const isUnread = !readEmployeeNotificationSet.has(item.id)
                                             const isRecent = !Number.isNaN(changedAt) && changedAt >= recentThreshold
+                                            const dotColor = isUnread && isRecent ? 'error.main' : 'divider'
 
                                             return (
-                                                <MenuItem key={item.id} onClick={handleCloseNotificationsMenu}>
+                                                <MenuItem key={item.id} onClick={() => handleEmployeeNotificationClick(item.id, item.annualLeaveId)}>
                                                     <ListItemIcon>
                                                         <CircleRoundedIcon
-                                                            sx={{ fontSize: 10, color: isRecent ? 'error.main' : 'divider' }}
+                                                            sx={{ fontSize: 10, color: dotColor }}
                                                         />
                                                     </ListItemIcon>
                                                     <ListItemText
@@ -407,7 +566,12 @@ const Navbar = observer(function Navbar() {
                                     }}
                                 >
                                     <Stack direction="row" spacing={1} alignItems="center">
-                                        <Avatar sx={{ width: 32, height: 32, fontSize: 13 }}>{initials}</Avatar>
+                                        <Avatar
+                                            src={authStore.user?.imageUrl || undefined}
+                                            sx={{ width: 32, height: 32, fontSize: 13 }}
+                                        >
+                                            {initials}
+                                        </Avatar>
                                         <Typography
                                             variant="body2"
                                             fontWeight={600}
@@ -436,6 +600,17 @@ const Navbar = observer(function Navbar() {
                                         />
                                     </MenuItem>
                                     <Divider />
+                                    <MenuItem
+                                        onClick={() => void handleUploadProfileImageClick()}
+                                        disabled={uploadProfileImageMutation.isPending}
+                                    >
+                                        <ListItemIcon>
+                                            <UploadRoundedIcon fontSize="small" />
+                                        </ListItemIcon>
+                                        <ListItemText
+                                            primary={uploadProfileImageMutation.isPending ? 'Uploading photo...' : 'Upload photo'}
+                                        />
+                                    </MenuItem>
                                     <MenuItem onClick={() => void handleSignOut()}>
                                         <ListItemIcon>
                                             <LogoutRoundedIcon fontSize="small" />
@@ -449,6 +624,15 @@ const Navbar = observer(function Navbar() {
                                 Sign in
                             </Button>
                         )}
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            hidden
+                            onChange={(event) => {
+                                void handleProfileImageSelected(event)
+                            }}
+                        />
                     </Stack>
                 </Toolbar>
 

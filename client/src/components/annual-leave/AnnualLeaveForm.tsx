@@ -16,6 +16,7 @@ import Typography from '@mui/material/Typography'
 import { CalendarMonth as CalendarMonthIcon } from '@mui/icons-material'
 import { createAnnualLeave, editAnnualLeave, getLeaveTypes, getAdminUsers } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
+import { useStore } from '../../lib/mobx'
 import type { AnnualLeave, CreateAnnualLeaveRequest, EditAnnualLeaveRequest } from '../../lib/types'
 
 function getErrorMessage(error: unknown) {
@@ -38,6 +39,7 @@ interface AnnualLeaveFormProps {
 function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveFormProps) {
     const isEdit = !!leave
     const queryClient = useQueryClient()
+    const { authStore } = useStore()
 
     const [startDate, setStartDate] = useState(leave ? toInputDate(leave.startDate) : '')
     const [endDate, setEndDate] = useState(leave ? toInputDate(leave.endDate) : '')
@@ -106,8 +108,14 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveF
         if (isEdit && leave) {
             editMutation.mutate({ id: leave.id, startDate, endDate, leaveTypeId, reason })
         } else {
-            // Admin can assign to a specific user; others create for themselves (server sets employeeId)
-            createMutation.mutate({ startDate, endDate, leaveTypeId, reason, employeeId: isAdmin ? assignedUserId : '' })
+            // Admin can assign a target user; non-admins must post their own user id.
+            createMutation.mutate({
+                startDate,
+                endDate,
+                leaveTypeId,
+                reason,
+                employeeId: isAdmin ? assignedUserId : (authStore.user?.id ?? ''),
+            })
         }
     }
 
@@ -206,12 +214,14 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveF
                         ))}
                     </TextField>
                     <TextField
-                        label="Reason (optional)"
+                        label="Reason"
                         value={reason}
                         onChange={(e) => setReason(e.target.value)}
                         multiline
                         rows={3}
+                        required
                         fullWidth
+                        helperText="Required"
                         placeholder="Add a short reason for this request"
                     />
 
@@ -227,7 +237,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveF
                     type="submit"
                     form="leave-form"
                     variant="contained"
-                    disabled={isPending || leaveTypeId <= 0 || isLoadingLeaveTypes || (isAdmin && !isEdit && !assignedUserId)}
+                    disabled={isPending || leaveTypeId <= 0 || !reason.trim() || isLoadingLeaveTypes || (isAdmin && !isEdit && !assignedUserId)}
                     startIcon={isPending ? <CircularProgress size={16} color="inherit" /> : null}
                 >
                     {isPending ? 'Saving...' : isEdit ? 'Save Changes' : 'Submit Request'}

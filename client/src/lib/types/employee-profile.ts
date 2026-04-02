@@ -1,6 +1,7 @@
 export interface EmployeeProfile {
     id: string
     userId: string
+    displayName: string
     departmentId: number
     managerId: string | null
     annualLeaveEntitlement: number

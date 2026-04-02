@@ -1,4 +1,5 @@
 using Application.Annualleaves.DTOs;
+using Application.Core;
 using Domain;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -33,20 +34,17 @@ public class UpdateLeaveStatus
                 if (!request.IsManager)
                     throw new UnauthorizedAccessException("Only admins or managers can change leave status.");
 
-                // Manager must own the department
-                if (!annualLeave.DepartmentId.HasValue)
-                    throw new UnauthorizedAccessException("Leave has no department assigned.");
+                var managerScope = await ManagerAccessScopeResolver.ResolveAsync(
+                    context,
+                    request.ChangedByUserId,
+                    cancellationToken);
 
-                var profileDepartmentId = await context.EmployeeProfiles
-                    .Where(ep => ep.UserId == request.ChangedByUserId)
-                    .Select(ep => (int?)ep.DepartmentId)
-                    .FirstOrDefaultAsync(cancellationToken);
+                var isInManagedDepartment = annualLeave.DepartmentId.HasValue
+                    && managerScope.ManagedDepartmentIds.Contains(annualLeave.DepartmentId.Value);
+                var isDirectReport = managerScope.DirectReportUserIds.Contains(annualLeave.EmployeeId);
 
-                var isInManagedDepartment = profileDepartmentId.HasValue
-                    && annualLeave.DepartmentId.Value == profileDepartmentId.Value;
-
-                if (!isInManagedDepartment)
-                    throw new UnauthorizedAccessException("You can only change status for leaves in your department.");
+                if (!isInManagedDepartment && !isDirectReport)
+                    throw new UnauthorizedAccessException("You can only change status for leaves in your managed scope.");
             }
 
             var oldStatus = annualLeave.Status;

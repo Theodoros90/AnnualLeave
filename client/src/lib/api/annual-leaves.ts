@@ -6,6 +6,11 @@ export async function getAnnualLeaves() {
     return response.data
 }
 
+export async function getTeamAwayThisWeekCount() {
+    const response = await apiClient.get<number>('/annualleaves/team-away-this-week/count')
+    return response.data
+}
+
 export async function getAnnualLeaveDetails(id: string) {
     const response = await apiClient.get<AnnualLeave>(`/annualleaves/${id}`)
     return response.data

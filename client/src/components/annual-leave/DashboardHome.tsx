@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { observer } from 'mobx-react-lite'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
 import Grid from '@mui/material/Grid'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
@@ -17,7 +19,7 @@ import {
     ArrowForwardIos as ArrowForwardIosIcon,
     EventAvailable as EventAvailableIcon,
 } from '@mui/icons-material'
-import { getAdminUsers, getAnnualLeaves, getDepartments, getEmployeeProfiles } from '../../lib/api'
+import { getAdminUsers, getAnnualLeaves, getDepartments, getEmployeeProfiles, getTeamAwayThisWeekCount } from '../../lib/api'
 import { useStore } from '../../lib/mobx'
 import { AdminUsersPanel, DepartmentsPanel, LeaveTypesPanel } from '..'
 import type { UserInfo } from '../../lib/types'
@@ -58,6 +60,13 @@ const DashboardHome = observer(function DashboardHome({ user }: DashboardHomePro
     const { data: annualLeaves = [] } = useQuery({
         queryKey: ['annualLeaves'],
         queryFn: getAnnualLeaves,
+        enabled: isManager || isAdmin,
+    })
+
+    const { data: awayThisWeekCount = 0 } = useQuery({
+        queryKey: ['teamAwayThisWeekCount'],
+        queryFn: getTeamAwayThisWeekCount,
+        enabled: isEmployee || isManager || isAdmin,
     })
 
     const { data: departments = [] } = useQuery({
@@ -79,28 +88,6 @@ const DashboardHome = observer(function DashboardHome({ user }: DashboardHomePro
         (adminUser) => adminUser.roles.includes('Employee') || adminUser.roles.includes('Manager')
     ).length
     const totalDepartmentsCount = departments.length
-
-    const now = new Date()
-    const dayOfWeek = now.getDay()
-    const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
-    const weekStart = new Date(now)
-    weekStart.setHours(0, 0, 0, 0)
-    weekStart.setDate(now.getDate() - daysSinceMonday)
-
-    const weekEnd = new Date(weekStart)
-    weekEnd.setDate(weekStart.getDate() + 6)
-    weekEnd.setHours(23, 59, 59, 999)
-
-    const awayThisWeekCount = new Set(
-        annualLeaves
-            .filter((leave) => leave.status === 'Approved')
-            .filter((leave) => {
-                const leaveStart = new Date(leave.startDate)
-                const leaveEnd = new Date(leave.endDate)
-                return leaveStart <= weekEnd && leaveEnd >= weekStart
-            })
-            .map((leave) => leave.employeeId)
-    ).size
 
     const statCards: StatCard[] = []
 
@@ -172,6 +159,42 @@ const DashboardHome = observer(function DashboardHome({ user }: DashboardHomePro
         uiStore.navigateToMyLeave('apply')
         uiStore.openCreateDrawer()
     }
+
+    const handleSettingsLeaveTypes = () => {
+        uiStore.navigateToAdminSection('leave-types')
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-leave-types`)
+    }
+
+    const handleSettingsDepartments = () => {
+        uiStore.navigateToAdminSection('departments')
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-departments`)
+    }
+
+    const handleSettingsUsers = () => {
+        uiStore.navigateToAdminSection('users')
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-users`)
+    }
+
+    const settingsTabValue =
+        uiStore.adminSection === 'leave-types' ? 0
+            : uiStore.adminSection === 'departments' ? 1
+                : uiStore.adminSection === 'users' ? 2
+                    : false
+
+    const settingsLinks = (
+        <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, px: 1.5 }}>
+            <Tabs
+                value={settingsTabValue}
+                variant="scrollable"
+                scrollButtons="auto"
+                sx={{ '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, minHeight: 52 } }}
+            >
+                <Tab label="Leave Types" onClick={handleSettingsLeaveTypes} />
+                <Tab label="Departments" onClick={handleSettingsDepartments} />
+                <Tab label="Users" onClick={handleSettingsUsers} />
+            </Tabs>
+        </Paper>
+    )
 
     const dashboardOverview = (
         <Stack spacing={4} id="dashboard-section">
@@ -317,46 +340,16 @@ const DashboardHome = observer(function DashboardHome({ user }: DashboardHomePro
         return dashboardOverview
     }
 
-    if (uiStore.adminSection === 'leave') {
-        return (
-            <Stack spacing={2.5}>
-                <Typography variant="h5" fontWeight={800}>Leave</Typography>
-                <Paper elevation={0} sx={{ p: 0.6, border: '1px solid', borderColor: 'divider', borderRadius: 999 }}>
-                    <Stack direction="row" spacing={0.5}>
-                        <Button
-                            variant="text"
-                            sx={{
-                                borderRadius: 999,
-                                px: 2,
-                                textTransform: 'none',
-                                fontWeight: 700,
-                                bgcolor: 'rgba(15,118,110,0.14)',
-                                color: 'primary.dark',
-                            }}
-                        >
-                            All Leave Requests
-                        </Button>
-                        <Button
-                            variant="text"
-                            sx={{ borderRadius: 999, px: 2, textTransform: 'none', fontWeight: 700 }}
-                            onClick={() => {
-                                uiStore.navigateToAdminSection('leave-types')
-                                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-leave-types`)
-                            }}
-                        >
-                            Leave Types
-                        </Button>
-                    </Stack>
-                </Paper>
-                <AnnualLeaveList user={user} isAdmin={true} />
-            </Stack>
-        )
+    if (uiStore.adminSection === 'settings' || uiStore.adminSection === 'leave') {
+        uiStore.navigateToAdminSection('leave-types')
+        return null
     }
 
     if (uiStore.adminSection === 'users') {
         return (
             <Stack spacing={2.5}>
-                <Typography variant="h5" fontWeight={800}>Users</Typography>
+                <Typography variant="h5" fontWeight={800}>Settings</Typography>
+                {settingsLinks}
                 <AdminUsersPanel />
             </Stack>
         )
@@ -365,34 +358,8 @@ const DashboardHome = observer(function DashboardHome({ user }: DashboardHomePro
     if (uiStore.adminSection === 'leave-types') {
         return (
             <Stack spacing={2.5}>
-                <Typography variant="h5" fontWeight={800}>Leave</Typography>
-                <Paper elevation={0} sx={{ p: 0.6, border: '1px solid', borderColor: 'divider', borderRadius: 999 }}>
-                    <Stack direction="row" spacing={0.5}>
-                        <Button
-                            variant="text"
-                            sx={{ borderRadius: 999, px: 2, textTransform: 'none', fontWeight: 700 }}
-                            onClick={() => {
-                                uiStore.navigateToAdminSection('leave')
-                                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-leave`)
-                            }}
-                        >
-                            All Leave Requests
-                        </Button>
-                        <Button
-                            variant="text"
-                            sx={{
-                                borderRadius: 999,
-                                px: 2,
-                                textTransform: 'none',
-                                fontWeight: 700,
-                                bgcolor: 'rgba(15,118,110,0.14)',
-                                color: 'primary.dark',
-                            }}
-                        >
-                            Leave Types
-                        </Button>
-                    </Stack>
-                </Paper>
+                <Typography variant="h5" fontWeight={800}>Settings</Typography>
+                {settingsLinks}
                 <LeaveTypesPanel />
             </Stack>
         )
@@ -401,7 +368,8 @@ const DashboardHome = observer(function DashboardHome({ user }: DashboardHomePro
     if (uiStore.adminSection === 'departments') {
         return (
             <Stack spacing={2.5}>
-                <Typography variant="h5" fontWeight={800}>Departments</Typography>
+                <Typography variant="h5" fontWeight={800}>Settings</Typography>
+                {settingsLinks}
                 <DepartmentsPanel />
             </Stack>
         )

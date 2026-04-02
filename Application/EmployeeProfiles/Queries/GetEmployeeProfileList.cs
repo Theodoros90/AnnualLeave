@@ -1,4 +1,5 @@
 using Application.EmployeeProfiles.DTOs;
+using Application.Core;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
@@ -18,7 +19,9 @@ public class GetEmployeeProfileList
     {
         public async Task<List<EmployeeProfileDto>> Handle(Query request, CancellationToken cancellationToken)
         {
-            IQueryable<Domain.EmployeeProfile> query = context.EmployeeProfiles.AsNoTracking();
+            IQueryable<Domain.EmployeeProfile> query = context.EmployeeProfiles
+                .AsNoTracking()
+                .Include(ep => ep.User);
 
             if (request.IsAdmin)
             {
@@ -26,28 +29,14 @@ public class GetEmployeeProfileList
             }
             else if (request.IsManager)
             {
-                var managedDepartmentIds = await context.UserDepartments
-                    .Where(ud => ud.UserId == request.RequestingUserId)
-                    .Select(ud => ud.DepartmentId)
-                    .Distinct()
-                    .ToListAsync(cancellationToken);
-
-                var profileDepartmentId = await context.EmployeeProfiles
-                    .Where(ep => ep.UserId == request.RequestingUserId)
-                    .Select(ep => (int?)ep.DepartmentId)
-                    .FirstOrDefaultAsync(cancellationToken);
-
-                if (profileDepartmentId.HasValue && !managedDepartmentIds.Contains(profileDepartmentId.Value))
-                    managedDepartmentIds.Add(profileDepartmentId.Value);
-
-                var managerProfileIds = await context.EmployeeProfiles
-                    .Where(ep => ep.UserId == request.RequestingUserId)
-                    .Select(ep => ep.Id)
-                    .ToListAsync(cancellationToken);
+                var managerScope = await ManagerAccessScopeResolver.ResolveAsync(
+                    context,
+                    request.RequestingUserId,
+                    cancellationToken);
 
                 query = query.Where(ep =>
-                    managedDepartmentIds.Contains(ep.DepartmentId)
-                    || (ep.ManagerId != null && managerProfileIds.Contains(ep.ManagerId))
+                    managerScope.ManagedDepartmentIds.Contains(ep.DepartmentId)
+                    || (ep.ManagerId != null && managerScope.ManagerProfileIds.Contains(ep.ManagerId))
                     || ep.UserId == request.RequestingUserId);
             }
             else
@@ -62,6 +51,9 @@ public class GetEmployeeProfileList
                 {
                     Id = ep.Id,
                     UserId = ep.UserId,
+                    DisplayName = ep.User != null
+                        ? (ep.User.DisplayName ?? ep.User.UserName ?? ep.UserId)
+                        : ep.UserId,
                     DepartmentId = ep.DepartmentId,
                     ManagerId = ep.ManagerId,
                     AnnualLeaveEntitlement = ep.AnnualLeaveEntitlement,
