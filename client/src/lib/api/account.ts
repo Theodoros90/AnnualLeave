@@ -1,5 +1,13 @@
 import apiClient from './client'
-import type { ApiMessageResponse, LoginRequest, RegisterRequest, UserInfo } from '../types'
+import type {
+    ApiMessageResponse,
+    ForgotPasswordRequest,
+    LoginRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+    UpdateProfileRequest,
+    UserInfo,
+} from '../types'
 
 export async function login(request: LoginRequest) {
     const response = await apiClient.post<ApiMessageResponse>('/account/login', request)
@@ -21,6 +29,26 @@ export async function logout() {
     return response.data
 }
 
+export async function forgotPassword(request: ForgotPasswordRequest) {
+    const response = await apiClient.post<ApiMessageResponse>('/account/forgot-password', request, {
+        headers: {
+            'x-suppress-global-error': 'true',
+        },
+    })
+
+    return response.data
+}
+
+export async function resetPassword(request: ResetPasswordRequest) {
+    const response = await apiClient.post<ApiMessageResponse>('/account/reset-password', request, {
+        headers: {
+            'x-suppress-global-error': 'true',
+        },
+    })
+
+    return response.data
+}
+
 export async function uploadProfileImage(file: File) {
     const formData = new FormData()
     formData.append('file', file)
@@ -31,5 +59,15 @@ export async function uploadProfileImage(file: File) {
         },
     })
 
+    return response.data
+}
+
+export async function updateProfile(request: UpdateProfileRequest) {
+    const response = await apiClient.put<ApiMessageResponse & {
+        displayName: string
+        email: string
+        departmentId: number
+        departmentName: string
+    }>('/account/profile', request)
     return response.data
 }

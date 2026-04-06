@@ -63,6 +63,7 @@ public class EditAnnualLeave
 
             var previousStatus = annualLeave.Status;
             var previousDays = annualLeave.TotalDays;
+            var previousLeaveTypeId = annualLeave.LeaveTypeId;
 
             annualLeave.StartDate = request.AnnualLeave.StartDate;
             annualLeave.EndDate = request.AnnualLeave.EndDate;
@@ -73,9 +74,12 @@ public class EditAnnualLeave
             var employeeProfile = await context.EmployeeProfiles
                 .FirstOrDefaultAsync(ep => ep.Id == annualLeave.EmployeeProfileId, cancellationToken);
 
-            if (previousStatus == AnnualLeaveStatus.Approved && employeeProfile is not null && previousDays != newDays)
+            var previousDeductedDays = await GetDeductedDaysAsync(previousLeaveTypeId, previousDays, cancellationToken);
+            var newDeductedDays = await GetDeductedDaysAsync(annualLeave.LeaveTypeId, newDays, cancellationToken);
+
+            if (previousStatus == AnnualLeaveStatus.Approved && employeeProfile is not null && previousDeductedDays != newDeductedDays)
             {
-                var dayDiff = newDays - previousDays;
+                var dayDiff = newDeductedDays - previousDeductedDays;
                 if (dayDiff > 0)
                 {
                     if (employeeProfile.LeaveBalance < dayDiff)
@@ -109,16 +113,16 @@ public class EditAnnualLeave
                 var newStatus = request.AnnualLeave.Status.Value;
                 annualLeave.Status = newStatus;
 
-                if (employeeProfile is not null && oldStatus != AnnualLeaveStatus.Approved && newStatus == AnnualLeaveStatus.Approved)
+                if (employeeProfile is not null && oldStatus != AnnualLeaveStatus.Approved && newStatus == AnnualLeaveStatus.Approved && newDeductedDays > 0)
                 {
-                    if (employeeProfile.LeaveBalance < newDays)
+                    if (employeeProfile.LeaveBalance < newDeductedDays)
                         throw new InvalidOperationException("Insufficient leave balance.");
 
-                    employeeProfile.LeaveBalance -= newDays;
+                    employeeProfile.LeaveBalance -= newDeductedDays;
                 }
-                else if (employeeProfile is not null && oldStatus == AnnualLeaveStatus.Approved && newStatus != AnnualLeaveStatus.Approved)
+                else if (employeeProfile is not null && oldStatus == AnnualLeaveStatus.Approved && newStatus != AnnualLeaveStatus.Approved && newDeductedDays > 0)
                 {
-                    employeeProfile.LeaveBalance += newDays;
+                    employeeProfile.LeaveBalance += newDeductedDays;
                 }
 
                 if (newStatus == AnnualLeaveStatus.Approved)
@@ -145,6 +149,23 @@ public class EditAnnualLeave
             }
 
             await context.SaveChangesAsync(cancellationToken);
+        }
+
+        private async Task<int> GetDeductedDaysAsync(int? leaveTypeId, int totalDays, CancellationToken cancellationToken)
+        {
+            if (!leaveTypeId.HasValue || totalDays <= 0)
+            {
+                return 0;
+            }
+
+            var isAnnualLeave = await context.LeaveTypes
+                .AsNoTracking()
+                .AnyAsync(
+                    leaveType => leaveType.Id == leaveTypeId.Value
+                        && leaveType.Name == "Annual Leave",
+                    cancellationToken);
+
+            return isAnnualLeave ? totalDays : 0;
         }
     }
 }

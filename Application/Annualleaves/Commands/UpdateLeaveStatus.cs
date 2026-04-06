@@ -58,17 +58,18 @@ public class UpdateLeaveStatus
                 .FirstOrDefaultAsync(ep => ep.Id == annualLeave.EmployeeProfileId, cancellationToken);
 
             var leaveDays = annualLeave.TotalDays;
+            var deductedDays = await GetDeductedDaysAsync(annualLeave.LeaveTypeId, leaveDays, cancellationToken);
 
-            if (employeeProfile is not null && oldStatus != AnnualLeaveStatus.Approved && newStatus == AnnualLeaveStatus.Approved)
+            if (employeeProfile is not null && oldStatus != AnnualLeaveStatus.Approved && newStatus == AnnualLeaveStatus.Approved && deductedDays > 0)
             {
-                if (employeeProfile.LeaveBalance < leaveDays)
+                if (employeeProfile.LeaveBalance < deductedDays)
                     throw new InvalidOperationException("Insufficient leave balance.");
 
-                employeeProfile.LeaveBalance -= leaveDays;
+                employeeProfile.LeaveBalance -= deductedDays;
             }
-            else if (employeeProfile is not null && oldStatus == AnnualLeaveStatus.Approved && newStatus != AnnualLeaveStatus.Approved)
+            else if (employeeProfile is not null && oldStatus == AnnualLeaveStatus.Approved && newStatus != AnnualLeaveStatus.Approved && deductedDays > 0)
             {
-                employeeProfile.LeaveBalance += leaveDays;
+                employeeProfile.LeaveBalance += deductedDays;
             }
 
             if (newStatus == AnnualLeaveStatus.Approved)
@@ -94,6 +95,23 @@ public class UpdateLeaveStatus
             });
 
             await context.SaveChangesAsync(cancellationToken);
+        }
+
+        private async Task<int> GetDeductedDaysAsync(int? leaveTypeId, int totalDays, CancellationToken cancellationToken)
+        {
+            if (!leaveTypeId.HasValue || totalDays <= 0)
+            {
+                return 0;
+            }
+
+            var isAnnualLeave = await context.LeaveTypes
+                .AsNoTracking()
+                .AnyAsync(
+                    leaveType => leaveType.Id == leaveTypeId.Value
+                        && leaveType.Name == "Annual Leave",
+                    cancellationToken);
+
+            return isAnnualLeave ? totalDays : 0;
         }
     }
 }

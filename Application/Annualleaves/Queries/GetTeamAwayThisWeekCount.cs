@@ -44,8 +44,9 @@ public class GetTeamAwayThisWeekCount
                 query = managerScope.ManagedDepartmentIds.Count == 0
                     ? query.Where(_ => false)
                     : query.Where(al =>
-                        (al.DepartmentId.HasValue && managerScope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
-                        || managerScope.DirectReportUserIds.Contains(al.EmployeeId));
+                        ((al.DepartmentId.HasValue && managerScope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
+                         || managerScope.DirectReportUserIds.Contains(al.EmployeeId))
+                        && (al.Employee == null || !al.Employee.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin)));
             }
             else if (request.IsEmployee)
             {

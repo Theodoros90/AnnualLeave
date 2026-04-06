@@ -1,27 +1,37 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { observer } from 'mobx-react-lite'
 import CircleRoundedIcon from '@mui/icons-material/CircleRounded'
+import EditRoundedIcon from '@mui/icons-material/EditRounded'
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded'
 import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded'
 import UploadRoundedIcon from '@mui/icons-material/UploadRounded'
+import Alert from '@mui/material/Alert'
 import AppBar from '@mui/material/AppBar'
 import Avatar from '@mui/material/Avatar'
 import Badge from '@mui/material/Badge'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import CircularProgress from '@mui/material/CircularProgress'
 import Container from '@mui/material/Container'
 import Divider from '@mui/material/Divider'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
 import IconButton from '@mui/material/IconButton'
 import ListItemIcon from '@mui/material/ListItemIcon'
 import ListItemText from '@mui/material/ListItemText'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Stack from '@mui/material/Stack'
+import TextField from '@mui/material/TextField'
 import Toolbar from '@mui/material/Toolbar'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
-import { getAnnualLeaves, getLeaveStatusHistories, uploadProfileImage } from '../../lib/api'
+import { getAnnualLeaves, getDepartments, getLeaveStatusHistories, updateProfile, uploadProfileImage } from '../../lib/api'
+import { getApiErrorMessage } from '../../lib/api/error-utils'
+import type { Department } from '../../lib/types'
 import { useStore } from '../../lib/mobx'
 
 const employeeNavLinks = ['Dashboard', 'My Leave']
@@ -95,7 +105,9 @@ function formatChangedAt(changedAt: string) {
 
 const Navbar = observer(function Navbar() {
     const { authStore, uiStore } = useStore()
+    const queryClient = useQueryClient()
     const isAdminUser = authStore.user?.roles?.includes('Admin') ?? false
+    const shouldShowDepartmentField = !isAdminUser
     const isManagerUser = authStore.user?.roles?.includes('Manager') ?? false
     const shouldUseManagerRequestNotifications = isManagerUser && !isAdminUser
     const shouldUseEmployeeStatusNotifications = !shouldUseManagerRequestNotifications
@@ -104,13 +116,19 @@ const Navbar = observer(function Navbar() {
     const navLinks = getRoleBasedNavLinks(authStore.user?.roles)
     const [notificationsAnchorEl, setNotificationsAnchorEl] = useState<null | HTMLElement>(null)
     const [profileAnchorEl, setProfileAnchorEl] = useState<null | HTMLElement>(null)
+    const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
+    const [profileDisplayName, setProfileDisplayName] = useState('')
+    const [profileNameError, setProfileNameError] = useState('')
+    const [profileEmail, setProfileEmail] = useState('')
+    const [profileEmailError, setProfileEmailError] = useState('')
+    const [profileDepartmentId, setProfileDepartmentId] = useState(0)
+    const [profileDepartmentError, setProfileDepartmentError] = useState('')
     const [readManagerNotificationIds, setReadManagerNotificationIds] = useState<string[]>(() =>
         getStoredReadNotificationIds(managerReadStorageKey)
     )
     const [readEmployeeNotificationIds, setReadEmployeeNotificationIds] = useState<string[]>(() =>
         getStoredReadNotificationIds(employeeReadStorageKey)
     )
-    const fileInputRef = useRef<HTMLInputElement | null>(null)
     const isNotificationsMenuOpen = Boolean(notificationsAnchorEl)
     const isProfileMenuOpen = Boolean(profileAnchorEl)
 
@@ -118,6 +136,20 @@ const Navbar = observer(function Navbar() {
         mutationFn: (file: File) => uploadProfileImage(file),
         onSuccess: (result) => {
             authStore.setUserImageUrl(result.imageUrl)
+        },
+    })
+
+    const updateProfileMutation = useMutation({
+        mutationFn: updateProfile,
+        onSuccess: async (result) => {
+            authStore.setUserProfile({
+                displayName: result.displayName,
+                email: result.email,
+                departmentId: result.departmentId,
+                departmentName: result.departmentName,
+            })
+            await queryClient.invalidateQueries({ queryKey: ['employeeProfiles'] })
+            setIsEditProfileOpen(false)
         },
     })
 
@@ -136,6 +168,14 @@ const Navbar = observer(function Navbar() {
         refetchInterval: authStore.isAuthenticated && shouldUseManagerRequestNotifications ? notificationRefreshMs : false,
         refetchIntervalInBackground: true,
     })
+
+    const { data: departments = [], isLoading: isLoadingDepartments, isError: isDepartmentsError } = useQuery({
+        queryKey: ['departments'],
+        queryFn: getDepartments,
+        enabled: authStore.isAuthenticated,
+    })
+
+    const activeDepartments = departments.filter((department: Department) => department.isActive)
 
     const sortedNotifications = (statusHistories ?? [])
         .slice()
@@ -324,9 +364,51 @@ const Navbar = observer(function Navbar() {
         uiStore.resetAfterSignOut()
     }
 
-    const handleUploadProfileImageClick = () => {
+    const handleEditProfileClick = () => {
+        setProfileDisplayName(authStore.user?.displayName ?? '')
+        setProfileEmail(authStore.user?.email ?? '')
+        setProfileDepartmentId(authStore.user?.departmentId ?? 0)
+        setProfileNameError('')
+        setProfileEmailError('')
+        setProfileDepartmentError('')
+        updateProfileMutation.reset()
+        setIsEditProfileOpen(true)
         handleCloseProfileMenu()
-        fileInputRef.current?.click()
+    }
+
+    const handleEditProfileSubmit = async () => {
+        const trimmedDisplayName = profileDisplayName.trim()
+        const trimmedEmail = profileEmail.trim()
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+        if (!trimmedDisplayName) {
+            setProfileNameError('Display name is required.')
+            return
+        }
+
+        if (!trimmedEmail) {
+            setProfileEmailError('Email is required.')
+            return
+        }
+
+        if (!emailPattern.test(trimmedEmail)) {
+            setProfileEmailError('Enter a valid email address.')
+            return
+        }
+
+        if (shouldShowDepartmentField && !profileDepartmentId) {
+            setProfileDepartmentError('Department is required.')
+            return
+        }
+
+        setProfileNameError('')
+        setProfileEmailError('')
+        setProfileDepartmentError('')
+        await updateProfileMutation.mutateAsync({
+            displayName: trimmedDisplayName,
+            email: trimmedEmail,
+            departmentId: profileDepartmentId,
+        })
     }
 
     const handleProfileImageSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -341,7 +423,7 @@ const Navbar = observer(function Navbar() {
     }
 
     const isMyLeaveGroupLink = (link: string) =>
-        ['My Leave', 'Apply for Leave', 'My Requests', 'Leave Balance', 'History'].includes(link)
+        ['My Leave', 'Apply for Leave', 'My Requests', 'Annual Leave Balance', 'History'].includes(link)
 
     const isAdminSettingsLink = (link: string) =>
         ['Settings'].includes(link)
@@ -376,7 +458,7 @@ const Navbar = observer(function Navbar() {
         if (link === 'Dashboard') return handleDashboardClick
         if (link === 'My Leave') return handleMyLeaveClick
         if (link === 'Team Leave') return handleTeamLeaveClick
-        if (link === 'Leave Balance') return handleLeaveBalanceClick
+        if (link === 'Annual Leave Balance') return handleLeaveBalanceClick
         if (link === 'History') return handleHistoryClick
         if (isAdminSettingsLink(link)) return handleAdminSettingsClick
         return undefined
@@ -600,16 +682,11 @@ const Navbar = observer(function Navbar() {
                                         />
                                     </MenuItem>
                                     <Divider />
-                                    <MenuItem
-                                        onClick={() => void handleUploadProfileImageClick()}
-                                        disabled={uploadProfileImageMutation.isPending}
-                                    >
+                                    <MenuItem onClick={handleEditProfileClick}>
                                         <ListItemIcon>
-                                            <UploadRoundedIcon fontSize="small" />
+                                            <EditRoundedIcon fontSize="small" />
                                         </ListItemIcon>
-                                        <ListItemText
-                                            primary={uploadProfileImageMutation.isPending ? 'Uploading photo...' : 'Upload photo'}
-                                        />
+                                        Edit profile
                                     </MenuItem>
                                     <MenuItem onClick={() => void handleSignOut()}>
                                         <ListItemIcon>
@@ -618,21 +695,125 @@ const Navbar = observer(function Navbar() {
                                         Sign out
                                     </MenuItem>
                                 </Menu>
+
+                                <Dialog
+                                    open={isEditProfileOpen}
+                                    onClose={() => setIsEditProfileOpen(false)}
+                                    fullWidth
+                                    maxWidth="xs"
+                                >
+                                    <DialogTitle>Edit profile</DialogTitle>
+                                    <DialogContent>
+                                        <Stack spacing={2} sx={{ pt: 1 }}>
+                                            <Stack direction="row" spacing={1.5} alignItems="center">
+                                                <Avatar
+                                                    src={authStore.user?.imageUrl || undefined}
+                                                    sx={{ width: 44, height: 44 }}
+                                                >
+                                                    {initials}
+                                                </Avatar>
+                                                <Button
+                                                    component="label"
+                                                    variant="outlined"
+                                                    startIcon={uploadProfileImageMutation.isPending ? <CircularProgress size={16} color="inherit" /> : <UploadRoundedIcon />}
+                                                    disabled={uploadProfileImageMutation.isPending}
+                                                    sx={{ textTransform: 'none' }}
+                                                >
+                                                    {uploadProfileImageMutation.isPending ? 'Uploading photo...' : 'Upload photo'}
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        hidden
+                                                        onChange={(event) => {
+                                                            void handleProfileImageSelected(event)
+                                                        }}
+                                                    />
+                                                </Button>
+                                            </Stack>
+                                            <TextField
+                                                label="Display name"
+                                                value={profileDisplayName}
+                                                onChange={(event) => {
+                                                    setProfileDisplayName(event.target.value)
+                                                    setProfileNameError('')
+                                                }}
+                                                error={Boolean(profileNameError)}
+                                                helperText={profileNameError}
+                                                required
+                                                fullWidth
+                                            />
+                                            <TextField
+                                                label="Email"
+                                                type="email"
+                                                value={profileEmail}
+                                                onChange={(event) => {
+                                                    setProfileEmail(event.target.value)
+                                                    setProfileEmailError('')
+                                                }}
+                                                error={Boolean(profileEmailError)}
+                                                helperText={profileEmailError}
+                                                required
+                                                fullWidth
+                                            />
+                                            {shouldShowDepartmentField ? (
+                                                <>
+                                                    <TextField
+                                                        select
+                                                        label="Department"
+                                                        value={profileDepartmentId ? String(profileDepartmentId) : ''}
+                                                        onChange={(event) => {
+                                                            setProfileDepartmentId(Number(event.target.value))
+                                                            setProfileDepartmentError('')
+                                                        }}
+                                                        error={Boolean(profileDepartmentError)}
+                                                        helperText={profileDepartmentError || (isLoadingDepartments ? 'Loading departments...' : 'Select your department.')}
+                                                        disabled={isLoadingDepartments || activeDepartments.length === 0}
+                                                        required
+                                                        fullWidth
+                                                    >
+                                                        {activeDepartments.map((department) => (
+                                                            <MenuItem key={department.id} value={department.id}>
+                                                                {department.name}
+                                                            </MenuItem>
+                                                        ))}
+                                                    </TextField>
+                                                    {isDepartmentsError ? (
+                                                        <Alert severity="error">
+                                                            Unable to load departments. Please refresh and try again.
+                                                        </Alert>
+                                                    ) : null}
+                                                </>
+                                            ) : null}
+                                            {updateProfileMutation.isError ? (
+                                                <Alert severity="error">
+                                                    {getApiErrorMessage(updateProfileMutation.error, 'Unable to update profile.')}
+                                                </Alert>
+                                            ) : null}
+                                        </Stack>
+                                    </DialogContent>
+                                    <DialogActions>
+                                        <Button
+                                            onClick={() => setIsEditProfileOpen(false)}
+                                            disabled={updateProfileMutation.isPending}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            variant="contained"
+                                            onClick={() => void handleEditProfileSubmit()}
+                                            disabled={updateProfileMutation.isPending || (shouldShowDepartmentField && (isLoadingDepartments || activeDepartments.length === 0))}
+                                            startIcon={updateProfileMutation.isPending ? <CircularProgress size={16} color="inherit" /> : null}
+                                        >
+                                            Save
+                                        </Button>
+                                    </DialogActions>
+                                </Dialog>
                             </>
                         ) : (
                             <Button variant="contained" disableElevation>
                                 Sign in
                             </Button>
                         )}
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/*"
-                            hidden
-                            onChange={(event) => {
-                                void handleProfileImageSelected(event)
-                            }}
-                        />
                     </Stack>
                 </Toolbar>
 

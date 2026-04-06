@@ -12,7 +12,7 @@ import Snackbar from '@mui/material/Snackbar'
 import Stack from '@mui/material/Stack'
 import Toolbar from '@mui/material/Toolbar'
 import Typography from '@mui/material/Typography'
-import { DashboardHome, LoginForm, MyLeavePage, Navbar, RegisterForm, TeamLeavePage } from './components'
+import { DashboardHome, ForgotPasswordForm, LoginForm, MyLeavePage, Navbar, RegisterForm, ResetPasswordForm, TeamLeavePage } from './components'
 import { API_ERROR_EVENT } from './lib/api/error-events'
 import { apiBaseUrl } from './lib/api/client'
 import { useStore } from './lib/mobx'
@@ -22,6 +22,7 @@ function getSectionFromHash(hash: string): MyLeaveSection | null {
   if (hash === '#apply-for-leave') return 'apply'
   if (hash === '#my-requests') return 'requests'
   if (hash === '#leave-balance') return 'balance'
+  if (hash === '#other-leaves') return 'other'
   if (hash === '#leave-history') return 'history'
   return null
 }
@@ -39,16 +40,69 @@ function getAdminSectionFromHash(hash: string) {
   return null
 }
 
+function getAuthViewFromHash(hash: string): 'login' | 'register' | 'forgot-password' | 'reset-password' {
+  const [route] = hash.split('?')
+
+  if (route === '#register') return 'register'
+  if (route === '#forgot-password') return 'forgot-password'
+  if (route === '#reset-password') return 'reset-password'
+
+  return 'login'
+}
+
 const App = observer(function App() {
   const { authStore, uiStore } = useStore()
   const queryClient = useQueryClient()
-  const [authView, setAuthView] = useState<'login' | 'register'>('login')
+  const [authView, setAuthView] = useState<'login' | 'register' | 'forgot-password' | 'reset-password'>(() => getAuthViewFromHash(window.location.hash))
+  const [authNotice, setAuthNotice] = useState<{ severity: 'success' | 'info' | 'error'; message: string } | null>(null)
   const [apiErrorOpen, setApiErrorOpen] = useState(false)
   const [apiErrorMessage, setApiErrorMessage] = useState('')
 
   useEffect(() => {
     void authStore.hydrateUser()
   }, [authStore])
+
+  useEffect(() => {
+    if (authStore.user) {
+      return
+    }
+
+    const syncAuthViewFromHash = () => {
+      setAuthView(getAuthViewFromHash(window.location.hash))
+    }
+
+    syncAuthViewFromHash()
+    window.addEventListener('hashchange', syncAuthViewFromHash)
+
+    return () => {
+      window.removeEventListener('hashchange', syncAuthViewFromHash)
+    }
+  }, [authStore.user])
+
+  useEffect(() => {
+    if (authStore.user) {
+      return
+    }
+
+    const params = new URLSearchParams(window.location.search)
+    const authStatus = params.get('authStatus')
+    const authMessage = params.get('authMessage')?.trim()
+
+    if (!authStatus && !authMessage) {
+      return
+    }
+
+    setAuthNotice({
+      severity: authStatus === 'error' ? 'error' : authStatus === 'info' ? 'info' : 'success',
+      message: authMessage || 'Your account status has been updated. You can now continue.',
+    })
+
+    params.delete('authStatus')
+    params.delete('authMessage')
+    const query = params.toString()
+    const cleanUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`
+    window.history.replaceState({}, document.title, cleanUrl)
+  }, [authStore.user])
 
   useEffect(() => {
     if (!authStore.user) {
@@ -221,10 +275,47 @@ const App = observer(function App() {
             }}
           >
             <Box sx={{ width: '100%', maxWidth: 440 }}>
-              {authView === 'login'
-                ? <LoginForm onSwitch={() => setAuthView('register')} />
-                : <RegisterForm onSwitch={() => setAuthView('login')} />
-              }
+              <Stack spacing={2}>
+                {authNotice ? (
+                  <Alert severity={authNotice.severity} onClose={() => setAuthNotice(null)}>
+                    {authNotice.message}
+                  </Alert>
+                ) : null}
+
+                {authView === 'login' ? (
+                  <LoginForm
+                    onSwitch={() => {
+                      setAuthView('register')
+                      window.location.hash = '#register'
+                    }}
+                    onForgotPassword={() => {
+                      setAuthView('forgot-password')
+                      window.location.hash = '#forgot-password'
+                    }}
+                  />
+                ) : authView === 'register' ? (
+                  <RegisterForm onSwitch={() => {
+                    setAuthView('login')
+                    window.location.hash = '#login'
+                  }} />
+                ) : authView === 'forgot-password' ? (
+                  <ForgotPasswordForm onBackToLogin={() => {
+                    setAuthView('login')
+                    window.location.hash = '#login'
+                  }} />
+                ) : (
+                  <ResetPasswordForm
+                    onBackToLogin={() => {
+                      setAuthView('login')
+                      window.location.hash = '#login'
+                    }}
+                    onRequestNewLink={() => {
+                      setAuthView('forgot-password')
+                      window.location.hash = '#forgot-password'
+                    }}
+                  />
+                )}
+              </Stack>
             </Box>
           </Box>
         </Box>

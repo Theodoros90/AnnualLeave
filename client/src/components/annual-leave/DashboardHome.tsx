@@ -19,11 +19,10 @@ import {
     ArrowForwardIos as ArrowForwardIosIcon,
     EventAvailable as EventAvailableIcon,
 } from '@mui/icons-material'
-import { getAdminUsers, getAnnualLeaves, getDepartments, getEmployeeProfiles, getTeamAwayThisWeekCount } from '../../lib/api'
+import { getAdminUsers, getAnnualLeaves, getDepartments, getEmployeeProfiles, getLeaveTypes, getTeamAwayThisWeekCount } from '../../lib/api'
 import { useStore } from '../../lib/mobx'
 import { AdminUsersPanel, DepartmentsPanel, LeaveTypesPanel } from '..'
 import type { UserInfo } from '../../lib/types'
-import AnnualLeaveList from './AnnualLeaveList'
 
 type DashboardHomeProps = {
     user: UserInfo
@@ -60,7 +59,13 @@ const DashboardHome = observer(function DashboardHome({ user }: DashboardHomePro
     const { data: annualLeaves = [] } = useQuery({
         queryKey: ['annualLeaves'],
         queryFn: getAnnualLeaves,
-        enabled: isManager || isAdmin,
+        enabled: isEmployee || isManager || isAdmin,
+    })
+
+    const { data: leaveTypes = [] } = useQuery({
+        queryKey: ['leaveTypes'],
+        queryFn: getLeaveTypes,
+        enabled: isEmployee || isManager || isAdmin,
     })
 
     const { data: awayThisWeekCount = 0 } = useQuery({
@@ -83,6 +88,22 @@ const DashboardHome = observer(function DashboardHome({ user }: DashboardHomePro
 
     const myProfile = profiles.find((p) => p.userId === user.id)
     const myBalance = myProfile?.leaveBalance ?? 22
+    const currentYear = new Date().getFullYear()
+    const leaveTypeNameById = new Map(leaveTypes.map((leaveType) => [leaveType.id, leaveType.name]))
+    const myOtherApprovedLeaves = annualLeaves.filter((leave) => {
+        if (leave.employeeId !== user.id || leave.status !== 'Approved' || leave.leaveTypeId == null) {
+            return false
+        }
+
+        if (new Date(leave.startDate).getFullYear() !== currentYear) {
+            return false
+        }
+
+        const leaveTypeName = leaveTypeNameById.get(leave.leaveTypeId)?.trim().toLowerCase()
+        return Boolean(leaveTypeName && !leaveTypeName.includes('annual'))
+    })
+    const myOtherLeaveDays = myOtherApprovedLeaves.reduce((total, leave) => total + leave.totalDays, 0)
+    const myOtherLeaveRequests = myOtherApprovedLeaves.length
     const pendingApprovalsCount = annualLeaves.filter((leave) => leave.status === 'Pending').length
     const totalEmployeesCount = adminUsers.filter(
         (adminUser) => adminUser.roles.includes('Employee') || adminUser.roles.includes('Manager')
@@ -98,6 +119,26 @@ const DashboardHome = observer(function DashboardHome({ user }: DashboardHomePro
             value: `${myBalance} days`,
             subtitle: 'Annual leave available',
             color: 'primary',
+            onClick: () => {
+                uiStore.navigateToMyLeave('balance')
+                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#leave-balance`)
+            },
+        })
+    }
+
+    if (isEmployee || isManager || isAdmin) {
+        statCards.push({
+            icon: <EventAvailableIcon sx={{ fontSize: 28 }} />,
+            title: 'Other Leaves',
+            value: `${myOtherLeaveDays} day${myOtherLeaveDays === 1 ? '' : 's'}`,
+            subtitle: myOtherLeaveRequests > 0
+                ? `${myOtherLeaveRequests} approved request${myOtherLeaveRequests === 1 ? '' : 's'} this year`
+                : 'No approved non-annual leave yet',
+            color: 'secondary',
+            onClick: () => {
+                uiStore.navigateToMyLeave('other')
+                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#other-leaves`)
+            },
         })
     }
 
@@ -158,6 +199,11 @@ const DashboardHome = observer(function DashboardHome({ user }: DashboardHomePro
     const handleApplyLeave = () => {
         uiStore.navigateToMyLeave('apply')
         uiStore.openCreateDrawer()
+    }
+
+    const handleOpenOtherLeaves = () => {
+        uiStore.navigateToMyLeave('other')
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#other-leaves`)
     }
 
     const handleSettingsLeaveTypes = () => {
@@ -318,13 +364,16 @@ const DashboardHome = observer(function DashboardHome({ user }: DashboardHomePro
                                     My Leave Hub
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
-                                    Requests, balances &amp; history
+                                    Requests, annual balance, other leaves &amp; history
                                 </Typography>
                             </Stack>
                         </Stack>
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} flexWrap="wrap" useFlexGap>
                             <Button variant="contained" onClick={handleOpenMyLeave} sx={{ textTransform: 'none', fontWeight: 600 }}>
                                 Open My Leave
+                            </Button>
+                            <Button variant="outlined" onClick={handleOpenOtherLeaves} sx={{ textTransform: 'none', fontWeight: 600 }}>
+                                View Other Leaves
                             </Button>
                             <Button variant="outlined" onClick={handleApplyLeave} sx={{ textTransform: 'none', fontWeight: 600 }}>
                                 Apply for Leave

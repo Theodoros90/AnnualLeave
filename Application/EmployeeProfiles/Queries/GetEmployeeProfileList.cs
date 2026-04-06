@@ -1,5 +1,6 @@
 using Application.EmployeeProfiles.DTOs;
 using Application.Core;
+using Domain;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
@@ -35,9 +36,10 @@ public class GetEmployeeProfileList
                     cancellationToken);
 
                 query = query.Where(ep =>
-                    managerScope.ManagedDepartmentIds.Contains(ep.DepartmentId)
-                    || (ep.ManagerId != null && managerScope.ManagerProfileIds.Contains(ep.ManagerId))
-                    || ep.UserId == request.RequestingUserId);
+                    (managerScope.ManagedDepartmentIds.Contains(ep.DepartmentId)
+                     || (ep.ManagerId != null && managerScope.ManagerProfileIds.Contains(ep.ManagerId))
+                     || ep.UserId == request.RequestingUserId)
+                    && (ep.User == null || !ep.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin)));
             }
             else
             {

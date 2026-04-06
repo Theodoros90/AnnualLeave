@@ -63,12 +63,14 @@ class AuthStore {
         this.isLoadingUser = true
 
         try {
-            await register(details)
-            return await this.signIn({
-                email: details.email,
-                password: details.password,
-                rememberMe: true,
+            const response = await register(details)
+
+            runInAction(() => {
+                this.user = null
+                this.hasCheckedAuth = true
             })
+
+            return response
         } finally {
             runInAction(() => {
                 this.isLoadingUser = false
@@ -96,6 +98,32 @@ class AuthStore {
         this.user = {
             ...this.user,
             imageUrl,
+        }
+    }
+
+    setUserDisplayName(displayName: string) {
+        if (!this.user) {
+            return
+        }
+
+        this.user = {
+            ...this.user,
+            displayName,
+        }
+    }
+
+    setUserProfile(profile: { displayName: string; email: string; departmentId?: number | null; departmentName?: string | null }) {
+        if (!this.user) {
+            return
+        }
+
+        this.user = {
+            ...this.user,
+            displayName: profile.displayName,
+            email: profile.email,
+            userName: profile.email,
+            departmentId: profile.departmentId ?? this.user.departmentId ?? null,
+            departmentName: profile.departmentName ?? this.user.departmentName ?? null,
         }
     }
 }

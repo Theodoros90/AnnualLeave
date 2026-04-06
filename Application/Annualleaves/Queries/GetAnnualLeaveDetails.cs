@@ -2,6 +2,7 @@ using System;
 using Application.Core;
 using Application.Annualleaves.DTOs;
 using AutoMapper;
+using Domain;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
@@ -39,8 +40,9 @@ public class GetAnnualLeaveDetails
 
                 annualLeaveQuery = annualLeaveQuery
                     .Where(al =>
-                        (al.DepartmentId.HasValue && managerScope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
-                        || managerScope.DirectReportUserIds.Contains(al.EmployeeId));
+                        ((al.DepartmentId.HasValue && managerScope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
+                         || managerScope.DirectReportUserIds.Contains(al.EmployeeId))
+                        && (al.Employee == null || !al.Employee.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin)));
             }
             else if (request.IsEmployee)
             {

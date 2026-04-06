@@ -10,7 +10,7 @@ namespace API.Controllers;
 public class DepartmentsController : BaseApiController
 {
     [HttpGet]
-    [Authorize]
+    [AllowAnonymous]
     public async Task<ActionResult<List<DepartmentDto>>> GetDepartments()
     {
         return await Mediator.Send(new GetDepartmentList.Query());

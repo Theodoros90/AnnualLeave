@@ -1,7 +1,7 @@
 import { makeAutoObservable } from 'mobx'
 
 export type AppPage = 'dashboard' | 'my-leave' | 'team-leave'
-export type MyLeaveSection = 'apply' | 'requests' | 'balance' | 'history'
+export type MyLeaveSection = 'apply' | 'requests' | 'balance' | 'other' | 'history'
 export type AdminSection = 'dashboard' | 'settings' | 'leave' | 'leave-types' | 'users' | 'departments'
 
 class UiStore {

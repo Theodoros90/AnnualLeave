@@ -6,5 +6,7 @@ export interface UserInfo {
     email: string
     displayName: string
     imageUrl: string
+    departmentId?: number | null
+    departmentName?: string | null
     roles: UserRole[]
 }

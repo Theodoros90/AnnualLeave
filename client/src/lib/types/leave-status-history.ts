@@ -5,6 +5,7 @@ export interface LeaveStatusHistory {
     employeeName: string
     changedByUserId: string
     changedByUserName: string
+    leaveTypeName: string | null
     oldStatus: string | null
     newStatus: string
     comment: string | null

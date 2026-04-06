@@ -15,4 +15,8 @@ public class RegisterDto
     [Required]
     [StringLength(100)]
     public string DisplayName { get; set; } = string.Empty;
+
+    [Required]
+    [Range(1, int.MaxValue)]
+    public int DepartmentId { get; set; }
 }

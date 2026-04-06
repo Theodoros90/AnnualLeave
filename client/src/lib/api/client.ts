@@ -3,7 +3,7 @@ import { getApiErrorMessage } from './error-utils'
 import { emitApiError } from './error-events'
 
 export const apiBaseUrl =
-    import.meta.env.VITE_API_BASE_URL?.trim() || 'https://localhost:5001/api'
+    import.meta.env.VITE_API_BASE_URL?.trim() || '/api'
 
 const apiClient = axios.create({
     baseURL: apiBaseUrl,

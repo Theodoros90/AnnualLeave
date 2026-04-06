@@ -6,17 +6,29 @@ using Application.Core;
 using Application.Annualleaves.Queries;
 using Application.LeaveTypes.Commands;
 using Application.LeaveTypes.DTOs;
+using AspNet.Security.OAuth.GitHub;
 using Domain;
+using FluentValidation;
+using Infrastructure;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
-using FluentValidation;
 using System.Text.Json.Serialization;
 
 
 var builder = WebApplication.CreateBuilder(args);
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddUserSecrets<Program>(optional: true);
+}
+
+var googleClientId = builder.Configuration["Authentication:Google:ClientId"]?.Trim();
+var googleClientSecret = builder.Configuration["Authentication:Google:ClientSecret"]?.Trim();
+var githubClientId = builder.Configuration["Authentication:GitHub:ClientId"]?.Trim();
+var githubClientSecret = builder.Configuration["Authentication:GitHub:ClientSecret"]?.Trim();
 
 // Add services to the container.
 
@@ -54,6 +66,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerDocumentation();
 builder.Services.AddSignalR();
+builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddDbContext<AppDbContext>(opt =>
 {
 
@@ -93,11 +106,35 @@ builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBeh
 builder.Services.AddIdentityApiEndpoints<User>(opt =>
 {
     opt.User.RequireUniqueEmail = true;
-    opt.SignIn.RequireConfirmedEmail = false;
-    opt.SignIn.RequireConfirmedAccount = false;
+    opt.SignIn.RequireConfirmedEmail = true;
+    opt.SignIn.RequireConfirmedAccount = true;
 })
 .AddRoles<Role>()
     .AddEntityFrameworkStores<AppDbContext>();
+
+var authenticationBuilder = builder.Services.AddAuthentication();
+
+if (!string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(googleClientSecret))
+{
+    authenticationBuilder.AddGoogle(options =>
+    {
+        options.SignInScheme = IdentityConstants.ExternalScheme;
+        options.ClientId = googleClientId;
+        options.ClientSecret = googleClientSecret;
+    });
+}
+
+if (!string.IsNullOrWhiteSpace(githubClientId) && !string.IsNullOrWhiteSpace(githubClientSecret))
+{
+    authenticationBuilder.AddGitHub(options =>
+    {
+        options.SignInScheme = IdentityConstants.ExternalScheme;
+        options.ClientId = githubClientId;
+        options.ClientSecret = githubClientSecret;
+        options.Scope.Add("user:email");
+    });
+}
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AnnualLeaveRead", policy =>

@@ -1,5 +1,6 @@
 using Application.LeaveStatusHistories.DTOs;
 using Application.Core;
+using Domain;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
@@ -22,7 +23,9 @@ public class GetLeaveStatusHistoryList
             IQueryable<Domain.LeaveStatusHistory> query = context.LeaveStatusHistories
                 .AsNoTracking()
                 .Include(h => h.AnnualLeave)
-                    .ThenInclude(a => a!.Employee);
+                    .ThenInclude(a => a!.Employee)
+                .Include(h => h.AnnualLeave)
+                    .ThenInclude(a => a!.LeaveType);
 
             if (request.IsAdmin)
             {
@@ -39,7 +42,8 @@ public class GetLeaveStatusHistoryList
                     h.AnnualLeave != null &&
                     ((h.AnnualLeave.DepartmentId.HasValue &&
                       managerScope.ManagedDepartmentIds.Contains(h.AnnualLeave.DepartmentId.Value))
-                     || managerScope.DirectReportUserIds.Contains(h.AnnualLeave.EmployeeId)));
+                     || managerScope.DirectReportUserIds.Contains(h.AnnualLeave.EmployeeId))
+                    && (h.AnnualLeave.Employee == null || !h.AnnualLeave.Employee.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin)));
             }
             else
             {
@@ -61,6 +65,9 @@ public class GetLeaveStatusHistoryList
                             ? h.AnnualLeave.Employee.DisplayName
                             : (h.AnnualLeave.Employee.Email ?? h.AnnualLeave.EmployeeId))
                         : string.Empty,
+                    LeaveTypeName = h.AnnualLeave != null && h.AnnualLeave.LeaveType != null
+                        ? h.AnnualLeave.LeaveType.Name
+                        : null,
                     ChangedByUserId = h.ChangedByUserId,
                     ChangedByUserName = h.ChangedByUser != null
                         ? (!string.IsNullOrWhiteSpace(h.ChangedByUser.DisplayName)

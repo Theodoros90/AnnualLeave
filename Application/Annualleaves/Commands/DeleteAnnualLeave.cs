@@ -55,13 +55,32 @@ public class DeleteAnnualLeave
                 var employeeProfile = await context.EmployeeProfiles
                     .FirstOrDefaultAsync(ep => ep.Id == annualLeave.EmployeeProfileId, cancellationToken);
 
-                if (employeeProfile is not null)
-                    employeeProfile.LeaveBalance += annualLeave.TotalDays;
+                var deductedDays = await GetDeductedDaysAsync(annualLeave.LeaveTypeId, annualLeave.TotalDays, cancellationToken);
+
+                if (employeeProfile is not null && deductedDays > 0)
+                    employeeProfile.LeaveBalance += deductedDays;
             }
 
             context.Remove(annualLeave);
 
             await context.SaveChangesAsync(cancellationToken);
+        }
+
+        private async Task<int> GetDeductedDaysAsync(int? leaveTypeId, int totalDays, CancellationToken cancellationToken)
+        {
+            if (!leaveTypeId.HasValue || totalDays <= 0)
+            {
+                return 0;
+            }
+
+            var isAnnualLeave = await context.LeaveTypes
+                .AsNoTracking()
+                .AnyAsync(
+                    leaveType => leaveType.Id == leaveTypeId.Value
+                        && leaveType.Name == "Annual Leave",
+                    cancellationToken);
+
+            return isAnnualLeave ? totalDays : 0;
         }
     }
 }
