@@ -114,6 +114,7 @@ const Navbar = observer(function Navbar() {
     const managerReadStorageKey = `${managerReadNotificationsStoragePrefix}${authStore.user?.id ?? ''}`
     const employeeReadStorageKey = `${employeeReadNotificationsStoragePrefix}${authStore.user?.id ?? ''}`
     const navLinks = getRoleBasedNavLinks(authStore.user?.roles)
+    const shouldShowApplyCta = authStore.isAuthenticated && !isAdminUser
     const [notificationsAnchorEl, setNotificationsAnchorEl] = useState<null | HTMLElement>(null)
     const [profileAnchorEl, setProfileAnchorEl] = useState<null | HTMLElement>(null)
     const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
@@ -315,19 +316,22 @@ const Navbar = observer(function Navbar() {
     }
 
     const handleApplyForLeave = () => {
+        if (isAdminUser) {
+            uiStore.navigateToTeamLeave()
+            window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#team-leave`)
+            window.dispatchEvent(new HashChangeEvent('hashchange'))
+            uiStore.openCreateDrawer()
+            return
+        }
+
         uiStore.navigateToMyLeave('apply')
         uiStore.openCreateDrawer()
     }
 
-    const scrollToMyLeaveRequests = () => {
-        window.setTimeout(() => {
-            scrollToElementById('my-leave-requests')
-        }, 100)
-    }
-
     const handleMyRequestsClick = () => {
         uiStore.navigateToMyLeave('requests')
-        scrollToMyLeaveRequests()
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#my-requests`)
+        window.dispatchEvent(new HashChangeEvent('hashchange'))
     }
 
     const handleDashboardClick = () => {
@@ -337,7 +341,8 @@ const Navbar = observer(function Navbar() {
 
     const handleMyLeaveClick = () => {
         uiStore.navigateToMyLeave('requests')
-        scrollToMyLeaveRequests()
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#my-requests`)
+        window.dispatchEvent(new HashChangeEvent('hashchange'))
     }
 
     const handleTeamLeaveClick = () => {
@@ -548,14 +553,48 @@ const Navbar = observer(function Navbar() {
                         ))}
                     </Stack>
 
-                    <Stack direction="row" spacing={1.5} alignItems="center">
+                    <Stack
+                        direction="row"
+                        spacing={{ xs: 0.75, md: 1.1 }}
+                        alignItems="center"
+                        sx={{ minHeight: 40 }}
+                    >
                         {authStore.isAuthenticated ? (
                             <>
+                                {shouldShowApplyCta && (
+                                    <Button
+                                        variant="contained"
+                                        onClick={handleApplyForLeave}
+                                        sx={{
+                                            display: { xs: 'none', md: 'inline-flex' },
+                                            alignSelf: 'center',
+                                            textTransform: 'none',
+                                            fontWeight: 700,
+                                            borderRadius: 999,
+                                            px: 1.75,
+                                            py: 0.8,
+                                            minHeight: 40,
+                                            whiteSpace: 'nowrap',
+                                            boxShadow: 'none',
+                                            '&:hover': {
+                                                boxShadow: 'none',
+                                            },
+                                        }}
+                                    >
+                                        Apply for Leave
+                                    </Button>
+                                )}
+
                                 <Tooltip title="Notifications">
                                     <IconButton
                                         color="inherit"
                                         aria-label="notifications"
                                         onClick={handleOpenNotificationsMenu}
+                                        sx={{
+                                            width: 40,
+                                            height: 40,
+                                            alignSelf: 'center',
+                                        }}
                                     >
                                         <Badge badgeContent={unreadCount} color="error">
                                             <NotificationsNoneRoundedIcon />
@@ -644,7 +683,9 @@ const Navbar = observer(function Navbar() {
                                         borderRadius: 999,
                                         px: 1,
                                         py: 0.5,
+                                        minHeight: 40,
                                         textTransform: 'none',
+                                        alignSelf: 'center',
                                     }}
                                 >
                                     <Stack direction="row" spacing={1} alignItems="center">

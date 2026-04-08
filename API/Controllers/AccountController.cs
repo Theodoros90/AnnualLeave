@@ -2,11 +2,13 @@ using API.DTOs;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using Domain;
+using Infrastructure.Configuration;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Persistence;
 using Resend;
 using System.Net;
@@ -20,6 +22,7 @@ public class AccountController(
     SignInManager<User> signInManager,
     AppDbContext context,
     IConfiguration configuration,
+    IOptions<AppUrlOptions> appUrlOptions,
     IResend resend,
     ILogger<AccountController> logger) : BaseApiController
 {
@@ -73,20 +76,11 @@ public class AccountController(
             });
         }
 
-        var employeeProfile = new EmployeeProfile
-        {
-            UserId = user.Id,
-            DepartmentId = request.DepartmentId,
-            JobTitle = "Employee",
-            AnnualLeaveEntitlement = 22,
-            LeaveBalance = 22,
-            CreatedAt = DateTime.UtcNow
-        };
+        EmployeeProfile employeeProfile;
 
         try
         {
-            context.EmployeeProfiles.Add(employeeProfile);
-            await context.SaveChangesAsync();
+            employeeProfile = await CreateEmployeeProfileAsync(user.Id, request.DepartmentId, "Employee");
         }
         catch
         {
@@ -277,17 +271,7 @@ public class AccountController(
 
             try
             {
-                context.EmployeeProfiles.Add(new EmployeeProfile
-                {
-                    UserId = user.Id,
-                    DepartmentId = defaultDepartment.Id,
-                    JobTitle = "Employee",
-                    AnnualLeaveEntitlement = 22,
-                    LeaveBalance = 22,
-                    CreatedAt = DateTime.UtcNow
-                });
-
-                await context.SaveChangesAsync();
+                await CreateEmployeeProfileAsync(user.Id, defaultDepartment.Id, "Employee");
             }
             catch (Exception ex)
             {
@@ -555,6 +539,26 @@ public class AccountController(
         return Ok(new { imageUrl = user.ImageUrl });
     }
 
+    private async Task<EmployeeProfile> CreateEmployeeProfileAsync(string userId, int departmentId, string jobTitle, CancellationToken cancellationToken = default)
+    {
+        var employeeProfile = new EmployeeProfile
+        {
+            UserId = userId,
+            DepartmentId = departmentId,
+            JobTitle = jobTitle,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        context.EmployeeProfiles.Add(employeeProfile);
+        await context.SaveChangesAsync(cancellationToken);
+        await context.Entry(employeeProfile).ReloadAsync(cancellationToken);
+
+        employeeProfile.LeaveBalance = employeeProfile.AnnualLeaveEntitlement;
+        await context.SaveChangesAsync(cancellationToken);
+
+        return employeeProfile;
+    }
+
     private bool TryGetExternalProviderSettings(string provider, out string normalizedProvider, out string? clientId, out string? clientSecret)
     {
         if (string.Equals(provider, "google", StringComparison.OrdinalIgnoreCase))
@@ -597,10 +601,10 @@ public class AccountController(
 
     private string BuildClientAuthUrl(string hashRoute, IDictionary<string, string?>? query = null)
     {
-        var clientBaseUrl = configuration["ClientApp:BaseUrl"];
+        var clientBaseUrl = appUrlOptions.Value.ClientBaseUrl;
         if (string.IsNullOrWhiteSpace(clientBaseUrl))
         {
-            clientBaseUrl = "https://localhost:5173";
+            clientBaseUrl = new AppUrlOptions().ClientBaseUrl;
         }
 
         clientBaseUrl = clientBaseUrl.TrimEnd('/');
@@ -914,7 +918,7 @@ public class AccountController(
         var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
         var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
 
-        var baseUrl = configuration["App:BaseUrl"];
+        var baseUrl = appUrlOptions.Value.ApiBaseUrl;
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
             baseUrl = $"{Request.Scheme}://{Request.Host.Value}";

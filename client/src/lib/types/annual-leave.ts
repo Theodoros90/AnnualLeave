@@ -9,6 +9,7 @@ export interface AnnualLeaveBase {
     endDate: string
     leaveTypeId: number
     reason: string
+    evidenceUrl?: string | null
 }
 
 export interface AnnualLeave {
@@ -18,6 +19,7 @@ export interface AnnualLeave {
     endDate: string
     leaveTypeId: number | null
     reason: string
+    evidenceUrl: string | null
     status: AnnualLeaveStatus
     createdAt: string
     approvedAt: string | null

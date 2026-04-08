@@ -1,6 +1,8 @@
+using System.Net;
 using Application.Annualleaves.DTOs;
 using Application.Core;
 using Domain;
+using Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
@@ -18,7 +20,7 @@ public class UpdateLeaveStatus
         public bool IsManager { get; set; }
     }
 
-    public class Handler(AppDbContext context) : IRequestHandler<Command>
+    public class Handler(AppDbContext context, IEmailService emailService) : IRequestHandler<Command>
     {
         public async Task Handle(Command request, CancellationToken cancellationToken)
         {
@@ -57,19 +59,14 @@ public class UpdateLeaveStatus
             var employeeProfile = await context.EmployeeProfiles
                 .FirstOrDefaultAsync(ep => ep.Id == annualLeave.EmployeeProfileId, cancellationToken);
 
-            var leaveDays = annualLeave.TotalDays;
-            var deductedDays = await GetDeductedDaysAsync(annualLeave.LeaveTypeId, leaveDays, cancellationToken);
-
-            if (employeeProfile is not null && oldStatus != AnnualLeaveStatus.Approved && newStatus == AnnualLeaveStatus.Approved && deductedDays > 0)
+            if (employeeProfile is not null && oldStatus != AnnualLeaveStatus.Approved && newStatus == AnnualLeaveStatus.Approved)
             {
-                if (employeeProfile.LeaveBalance < deductedDays)
-                    throw new InvalidOperationException("Insufficient leave balance.");
-
-                employeeProfile.LeaveBalance -= deductedDays;
-            }
-            else if (employeeProfile is not null && oldStatus == AnnualLeaveStatus.Approved && newStatus != AnnualLeaveStatus.Approved && deductedDays > 0)
-            {
-                employeeProfile.LeaveBalance += deductedDays;
+                await AnnualLeaveBalanceCalculator.EnsureSufficientBalanceAsync(
+                    context,
+                    employeeProfile,
+                    annualLeave,
+                    excludeLeaveId: annualLeave.Id,
+                    cancellationToken);
             }
 
             if (newStatus == AnnualLeaveStatus.Approved)
@@ -95,23 +92,83 @@ public class UpdateLeaveStatus
             });
 
             await context.SaveChangesAsync(cancellationToken);
-        }
 
-        private async Task<int> GetDeductedDaysAsync(int? leaveTypeId, int totalDays, CancellationToken cancellationToken)
-        {
-            if (!leaveTypeId.HasValue || totalDays <= 0)
+            if (employeeProfile is not null)
             {
-                return 0;
+                await AnnualLeaveBalanceCalculator.SyncCurrentYearBalanceAsync(context, employeeProfile, cancellationToken);
+                await context.SaveChangesAsync(cancellationToken);
             }
 
-            var isAnnualLeave = await context.LeaveTypes
+            var employeeContact = await context.Users
                 .AsNoTracking()
-                .AnyAsync(
-                    leaveType => leaveType.Id == leaveTypeId.Value
-                        && leaveType.Name == "Annual Leave",
-                    cancellationToken);
+                .Where(user => user.Id == annualLeave.EmployeeId)
+                .Select(user => new
+                {
+                    user.Email,
+                    Name = !string.IsNullOrWhiteSpace(user.DisplayName)
+                        ? user.DisplayName
+                        : (user.Email ?? user.UserName ?? "Employee")
+                })
+                .FirstOrDefaultAsync(cancellationToken);
 
-            return isAnnualLeave ? totalDays : 0;
+            if (employeeContact is null || string.IsNullOrWhiteSpace(employeeContact.Email))
+            {
+                return;
+            }
+
+            var changedByName = await context.Users
+                .AsNoTracking()
+                .Where(user => user.Id == request.ChangedByUserId)
+                .Select(user => !string.IsNullOrWhiteSpace(user.DisplayName)
+                    ? user.DisplayName
+                    : (user.Email ?? user.UserName ?? "Manager"))
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? "Manager";
+
+            var leaveTypeName = annualLeave.LeaveTypeId.HasValue
+                ? await context.LeaveTypes
+                    .AsNoTracking()
+                    .Where(leaveType => leaveType.Id == annualLeave.LeaveTypeId.Value)
+                    .Select(leaveType => leaveType.Name)
+                    .FirstOrDefaultAsync(cancellationToken)
+                : null;
+
+            var statusLabel = newStatus.ToString();
+            var subject = $"Your leave request was {statusLabel.ToLowerInvariant()}";
+            var comment = string.IsNullOrWhiteSpace(request.Request.StatusComment)
+                ? "No additional comment was provided."
+                : request.Request.StatusComment!;
+            var leaveName = leaveTypeName ?? "leave request";
+            var dateRange = $"{annualLeave.StartDate:dd MMM yyyy} to {annualLeave.EndDate:dd MMM yyyy}";
+            var safeEmployeeName = WebUtility.HtmlEncode(employeeContact.Name);
+            var safeChangedByName = WebUtility.HtmlEncode(changedByName);
+            var safeLeaveName = WebUtility.HtmlEncode(leaveName);
+            var safeDateRange = WebUtility.HtmlEncode(dateRange);
+            var safeStatusLabel = WebUtility.HtmlEncode(statusLabel);
+            var safeComment = WebUtility.HtmlEncode(comment);
+
+            var htmlBody = $"""
+<p>Hello {safeEmployeeName},</p>
+<p>Your <strong>{safeLeaveName}</strong> request for <strong>{safeDateRange}</strong> has been <strong>{safeStatusLabel}</strong> by {safeChangedByName}.</p>
+<p><strong>Comment:</strong> {safeComment}</p>
+<p>Please log in to the Annual Leave system to review the latest update.</p>
+""";
+
+            var textBody = $"""
+Hello {employeeContact.Name},
+
+Your {leaveName} request for {dateRange} has been {statusLabel} by {changedByName}.
+Comment: {comment}
+
+Please log in to the Annual Leave system to review the latest update.
+""";
+
+            await emailService.SendEmailAsync(
+                employeeContact.Email,
+                subject,
+                htmlBody,
+                textBody,
+                cancellationToken);
         }
     }
 }

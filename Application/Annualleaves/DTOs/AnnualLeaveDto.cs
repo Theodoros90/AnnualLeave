@@ -22,6 +22,7 @@ public class AnnualLeaveDto
 
     public string Reason { get; set; } = string.Empty;
 
+    public string? EvidenceUrl { get; set; }
 
     public string Status { get; set; } = string.Empty;
 

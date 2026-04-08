@@ -15,4 +15,7 @@ public class BaseAnnualLeaveDto
     [Required(ErrorMessage = "Reason is required.")]
     [StringLength(500, MinimumLength = 1, ErrorMessage = "Reason is required and must be at most 500 characters.")]
     public string Reason { get; set; } = string.Empty;
+
+    [StringLength(2048)]
+    public string? EvidenceUrl { get; set; }
 }

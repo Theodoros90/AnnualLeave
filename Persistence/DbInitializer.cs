@@ -411,8 +411,6 @@ public class DbInitializer
             DepartmentId = engineering.Id,
             ManagerId = null,
             JobTitle = "Engineering Manager",
-            AnnualLeaveEntitlement = 22,
-            LeaveBalance = 22,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -424,8 +422,6 @@ public class DbInitializer
             DepartmentId = engineering.Id,
             ManagerId = adminProfile.Id,
             JobTitle = "Engineering Team Lead",
-            AnnualLeaveEntitlement = 22,
-            LeaveBalance = 22,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -437,12 +433,19 @@ public class DbInitializer
             DepartmentId = hr.Id,
             ManagerId = adminProfile.Id,
             JobTitle = "HR Coordinator",
-            AnnualLeaveEntitlement = 22,
-            LeaveBalance = 22,
             CreatedAt = DateTime.UtcNow
         };
 
         await context.EmployeeProfiles.AddRangeAsync(adminProfile, managerProfile, employeeProfile);
+        await context.SaveChangesAsync();
+
+        var profiles = new[] { adminProfile, managerProfile, employeeProfile };
+        foreach (var profile in profiles)
+        {
+            await context.Entry(profile).ReloadAsync();
+            profile.LeaveBalance = profile.AnnualLeaveEntitlement;
+        }
+
         await context.SaveChangesAsync();
     }
 

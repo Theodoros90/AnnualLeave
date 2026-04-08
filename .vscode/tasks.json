@@ -4,7 +4,7 @@
         {
             "label": "Run API",
             "type": "shell",
-            "command": "dotnet watch --project ${workspaceFolder}/API/API.csproj",
+            "command": "Get-CimInstance Win32_Process | Where-Object { ($_.Name -match '^(dotnet|API)\\.exe$') -and ($_.CommandLine -match 'Annualleave\\\\API|Annualleave/API') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; dotnet watch --project ${workspaceFolder}/API/API.csproj",
             "isBackground": true,
             "problemMatcher": {
                 "pattern": {
@@ -22,6 +22,17 @@
                     "endsPattern": "Now listening on:"
                 }
             },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Build API (Clean)",
+            "type": "shell",
+            "command": "Get-CimInstance Win32_Process | Where-Object { ($_.Name -match '^(dotnet|API)\\.exe$') -and ($_.CommandLine -match 'Annualleave\\\\API|Annualleave/API') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; dotnet build ${workspaceFolder}/API/API.csproj",
+            "problemMatcher": [
+                "$msCompile"
+            ],
             "options": {
                 "cwd": "${workspaceFolder}"
             }

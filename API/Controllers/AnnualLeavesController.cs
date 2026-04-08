@@ -2,6 +2,8 @@ using Application.Annualleaves.Commands;
 using Application.Annualleaves.DTOs;
 using Application.Annualleaves.Queries;
 using API.Hubs;
+using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
 using Domain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -13,10 +15,12 @@ namespace API.Controllers;
 public class AnnualLeavesController : BaseApiController
 {
     private readonly IHubContext<NotificationsHub> _notificationsHub;
+    private readonly IConfiguration _configuration;
 
-    public AnnualLeavesController(IHubContext<NotificationsHub> notificationsHub)
+    public AnnualLeavesController(IHubContext<NotificationsHub> notificationsHub, IConfiguration configuration)
     {
         _notificationsHub = notificationsHub;
+        _configuration = configuration;
     }
 
     // Visibility is role-scoped: Admin all, Manager by assigned departments, Employee own requests.
@@ -62,7 +66,7 @@ public class AnnualLeavesController : BaseApiController
         return HandleResult(result);
     }
 
-    // All roles can create leaves; status is defaulted to Pending in mapping profile.
+    // All roles can create leaves; status is determined by the selected leave type's approval settings.
     // Admin can supply a target EmployeeId to create on behalf of another user.
     [HttpPost]
     [Authorize(Policy = "AnnualLeaveCreate")]
@@ -76,6 +80,83 @@ public class AnnualLeavesController : BaseApiController
         var createdId = await Mediator.Send(new CreateAnnualLeave.Command { AnnualLeave = request });
         await _notificationsHub.Clients.All.SendAsync("notificationsUpdated");
         return createdId;
+    }
+
+    [HttpPost("evidence-upload")]
+    [Authorize(Policy = "AnnualLeaveCreate")]
+    [RequestSizeLimit(10_000_000)]
+    public async Task<ActionResult> UploadEvidence([FromForm] IFormFile file)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new { message = "Please select an evidence file." });
+        }
+
+        var allowedExtensions = new[] { ".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx" };
+        var extension = Path.GetExtension(file.FileName);
+        if (string.IsNullOrWhiteSpace(extension) || !allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = "Supported evidence files are PDF, JPG, PNG, DOC, and DOCX." });
+        }
+
+        var cloudName = _configuration["Cloudinary:CloudName"];
+        var apiKey = _configuration["Cloudinary:ApiKey"];
+        var apiSecret = _configuration["Cloudinary:ApiSecret"];
+
+        if (string.IsNullOrWhiteSpace(cloudName)
+            || string.IsNullOrWhiteSpace(apiKey)
+            || string.IsNullOrWhiteSpace(apiSecret))
+        {
+            return BadRequest(new { message = "Cloudinary is not configured." });
+        }
+
+        var cloudinary = new Cloudinary(new Account(cloudName, apiKey, apiSecret))
+        {
+            Api = { Secure = true }
+        };
+
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous";
+
+        await using var stream = file.OpenReadStream();
+
+        if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            var imageUpload = new ImageUploadParams
+            {
+                File = new FileDescription(file.FileName, stream),
+                Folder = "annualleave/evidence",
+                PublicId = $"leave-evidence-{userId}-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
+                UseFilename = true,
+                UniqueFilename = true,
+                Overwrite = false
+            };
+
+            var imageResult = await cloudinary.UploadAsync(imageUpload);
+            if (imageResult.Error is not null || imageResult.SecureUrl is null)
+            {
+                return BadRequest(new { message = imageResult.Error?.Message ?? "Failed to upload evidence." });
+            }
+
+            return Ok(new { evidenceUrl = imageResult.SecureUrl.ToString(), fileName = file.FileName });
+        }
+
+        var rawUpload = new RawUploadParams
+        {
+            File = new FileDescription(file.FileName, stream),
+            Folder = "annualleave/evidence",
+            PublicId = $"leave-evidence-{userId}-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
+            UseFilename = true,
+            UniqueFilename = true,
+            Overwrite = false
+        };
+
+        var rawResult = await cloudinary.UploadAsync(rawUpload);
+        if (rawResult.Error is not null || rawResult.SecureUrl is null)
+        {
+            return BadRequest(new { message = rawResult.Error?.Message ?? "Failed to upload evidence." });
+        }
+
+        return Ok(new { evidenceUrl = rawResult.SecureUrl.ToString(), fileName = file.FileName });
     }
 
     // Admin can edit all leaves; Employee can edit own leaves; Manager can edit own and managed-department leaves.

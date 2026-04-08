@@ -5,11 +5,15 @@ import Alert from '@mui/material/Alert'
 import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import type { SxProps, Theme } from '@mui/material/styles'
+import VisibilityOffRoundedIcon from '@mui/icons-material/VisibilityOffRounded'
+import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import IconButton from '@mui/material/IconButton'
+import InputAdornment from '@mui/material/InputAdornment'
 import Link from '@mui/material/Link'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
@@ -30,11 +34,96 @@ const googleLoginUrl = `https://localhost:5001/api/account/external-login/google
 const githubLoginUrl = `https://localhost:5001/api/account/external-login/github?returnUrl=${socialReturnUrl}`
 
 const socialButtonSx: SxProps<Theme> = {
-    minHeight: 48,
+    minHeight: 41,
     borderRadius: 2,
     justifyContent: 'flex-start',
     textTransform: 'none',
     fontWeight: 600,
+    color: 'text.primary',
+    borderColor: 'rgba(15, 23, 42, 0.12)',
+    bgcolor: 'rgba(255, 255, 255, 0.78)',
+    px: 1.25,
+    transition: 'border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease',
+    '& .MuiButton-startIcon': {
+        marginRight: 1,
+    },
+    '&:hover': {
+        borderColor: 'rgba(15, 23, 42, 0.18)',
+        bgcolor: 'rgba(248, 250, 252, 0.96)',
+        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06)',
+    },
+    '&:focus-visible': {
+        outline: 'none',
+        boxShadow: '0 0 0 3px rgba(15,118,110,0.12)',
+    },
+}
+
+const authInputSx: SxProps<Theme> = {
+    '& .MuiInputLabel-root': {
+        color: 'text.secondary',
+        transition: 'color 0.18s ease',
+    },
+    '& .MuiInputLabel-root.Mui-focused': {
+        color: 'primary.main',
+    },
+    '& .MuiInputLabel-root.Mui-error': {
+        color: 'error.main',
+    },
+    '& .MuiInputLabel-root.MuiInputLabel-shrink': {
+        transform: 'translate(14px, -8px) scale(0.75)',
+    },
+    '& .MuiOutlinedInput-root': {
+        borderRadius: 2,
+        bgcolor: 'rgba(248, 250, 252, 0.88)',
+        transition: 'background-color 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease',
+        '& fieldset': {
+            borderColor: 'rgba(15, 23, 42, 0.12)',
+        },
+        '&:hover': {
+            bgcolor: 'rgba(248, 250, 252, 0.96)',
+        },
+        '&:hover fieldset': {
+            borderColor: 'rgba(15, 23, 42, 0.18)',
+        },
+        '&.Mui-focused': {
+            bgcolor: '#fff',
+            boxShadow: '0 0 0 3px rgba(15,118,110,0.10)',
+        },
+        '&.Mui-focused fieldset': {
+            borderColor: 'primary.main',
+            borderWidth: 1,
+        },
+        '&.Mui-error': {
+            bgcolor: 'rgba(254, 242, 242, 0.7)',
+        },
+        '&.Mui-error fieldset': {
+            borderColor: 'rgba(220, 38, 38, 0.45)',
+        },
+        '&.Mui-error.Mui-focused': {
+            boxShadow: '0 0 0 3px rgba(220,38,38,0.08)',
+        },
+    },
+}
+
+const signInButtonSx: SxProps<Theme> = {
+    minHeight: 42,
+    borderRadius: 2,
+    py: 0.85,
+    fontWeight: 700,
+    boxShadow: 'none',
+    transition: 'transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease',
+    '&:hover': {
+        boxShadow: '0 6px 16px rgba(15,118,110,0.18)',
+        transform: 'translateY(-1px)',
+    },
+    '&:focus-visible': {
+        outline: 'none',
+        boxShadow: '0 0 0 3px rgba(15,118,110,0.14)',
+    },
+    '&.Mui-disabled': {
+        color: 'rgba(255,255,255,0.82)',
+        bgcolor: 'rgba(15,118,110,0.6)',
+    },
 }
 
 function GoogleIcon() {
@@ -82,6 +171,7 @@ function LoginForm({ onSwitch, onForgotPassword }: LoginFormProps) {
     const { authStore } = useStore()
     const queryClient = useQueryClient()
     const [values, setValues] = useState<LoginRequest>(initialValues)
+    const [showPassword, setShowPassword] = useState(false)
 
     const mutation = useMutation({
         mutationFn: authStore.signIn,
@@ -96,6 +186,10 @@ function LoginForm({ onSwitch, onForgotPassword }: LoginFormProps) {
 
     function handleRememberMeChange(event: React.ChangeEvent<HTMLInputElement>) {
         setValues((current) => ({ ...current, rememberMe: event.target.checked }))
+    }
+
+    function handleTogglePasswordVisibility() {
+        setShowPassword((current) => !current)
     }
 
     async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -113,24 +207,24 @@ function LoginForm({ onSwitch, onForgotPassword }: LoginFormProps) {
         <Paper
             elevation={3}
             sx={{
-                p: { xs: 4, md: 5 },
+                p: { xs: 3, md: 3.5 },
                 borderRadius: 3,
                 bgcolor: 'background.paper',
             }}
         >
-            <Stack spacing={3} component="form" onSubmit={handleSubmit} noValidate>
-                <Stack spacing={2} alignItems="center">
+            <Stack spacing={2.1} component="form" onSubmit={handleSubmit} noValidate aria-busy={mutation.isPending}>
+                <Stack spacing={1.25} alignItems="center">
                     <Avatar
                         variant="rounded"
-                        sx={{ width: 52, height: 52, bgcolor: 'primary.main', fontWeight: 700, fontSize: 18 }}
+                        sx={{ width: 48, height: 48, bgcolor: 'primary.main', fontWeight: 700, fontSize: 17 }}
                     >
                         AL
                     </Avatar>
-                    <Stack spacing={0.5} alignItems="center">
-                        <Typography variant="h5" fontWeight={700}>
+                    <Stack spacing={0.35} alignItems="center">
+                        <Typography variant="h5" fontWeight={700} lineHeight={1.15}>
                             Welcome back
                         </Typography>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.35 }}>
                             Sign in to your Annual Leave account
                         </Typography>
                     </Stack>
@@ -138,7 +232,7 @@ function LoginForm({ onSwitch, onForgotPassword }: LoginFormProps) {
 
                 <Divider />
 
-                <Stack spacing={1.5}>
+                <Stack spacing={1}>
                     <Button
                         component="a"
                         href={googleLoginUrl}
@@ -161,46 +255,125 @@ function LoginForm({ onSwitch, onForgotPassword }: LoginFormProps) {
                     </Button>
                 </Stack>
 
-                <Divider>or continue with email</Divider>
+                <Divider
+                    sx={{
+                        color: 'text.secondary',
+                        fontSize: 13,
+                        '&::before, &::after': {
+                            borderColor: 'rgba(15, 23, 42, 0.08)',
+                        },
+                    }}
+                >
+                    Or sign in with email
+                </Divider>
 
-                <TextField
-                    label="Email"
-                    name="email"
-                    type="email"
-                    value={values.email}
-                    onChange={handleChange}
-                    autoComplete="email"
-                    required
-                    fullWidth
-                />
-
-                <TextField
-                    label="Password"
-                    name="password"
-                    type="password"
-                    value={values.password}
-                    onChange={handleChange}
-                    autoComplete="current-password"
-                    required
-                    fullWidth
-                />
-
-                <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
-                    <FormControlLabel
-                        control={<Checkbox checked={values.rememberMe} onChange={handleRememberMeChange} />}
-                        label="Keep me signed in"
+                <Stack spacing={1}>
+                    <TextField
+                        label="Email"
+                        name="email"
+                        type="email"
+                        value={values.email}
+                        onChange={handleChange}
+                        autoComplete="email"
+                        required
+                        fullWidth
+                        margin="dense"
+                        disabled={mutation.isPending}
+                        sx={authInputSx}
                     />
-                    <Link component="button" type="button" variant="body2" onClick={onForgotPassword} underline="hover">
+
+                    <TextField
+                        label="Password"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        value={values.password}
+                        onChange={handleChange}
+                        autoComplete="current-password"
+                        required
+                        fullWidth
+                        margin="dense"
+                        disabled={mutation.isPending}
+                        sx={authInputSx}
+                        InputProps={{
+                            endAdornment: (
+                                <InputAdornment position="end">
+                                    <IconButton
+                                        onClick={handleTogglePasswordVisibility}
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        edge="end"
+                                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                        aria-pressed={showPassword}
+                                        size="small"
+                                        sx={{
+                                            color: 'text.secondary',
+                                            '&:hover': {
+                                                bgcolor: 'rgba(15, 23, 42, 0.04)',
+                                            },
+                                        }}
+                                    >
+                                        {showPassword ? (
+                                            <VisibilityOffRoundedIcon fontSize="small" />
+                                        ) : (
+                                            <VisibilityRoundedIcon fontSize="small" />
+                                        )}
+                                    </IconButton>
+                                </InputAdornment>
+                            ),
+                        }}
+                    />
+                </Stack>
+
+                <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: 'flex-start', sm: 'center' }}
+                    spacing={0.45}
+                >
+                    <FormControlLabel
+                        control={<Checkbox checked={values.rememberMe} onChange={handleRememberMeChange} size="small" disabled={mutation.isPending} />}
+                        label="Keep me signed in"
+                        sx={{
+                            m: 0,
+                            gap: 0.6,
+                            alignItems: 'center',
+                            '& .MuiFormControlLabel-label': {
+                                fontSize: 14,
+                                color: 'text.secondary',
+                            },
+                        }}
+                    />
+                    <Link
+                        component="button"
+                        type="button"
+                        variant="body2"
+                        onClick={onForgotPassword}
+                        underline="hover"
+                        sx={{
+                            color: 'text.secondary',
+                            fontWeight: 500,
+                            textUnderlineOffset: '2px',
+                            transition: 'color 0.18s ease',
+                            pointerEvents: mutation.isPending ? 'none' : 'auto',
+                            opacity: mutation.isPending ? 0.7 : 1,
+                            '&:hover': {
+                                color: 'primary.main',
+                            },
+                        }}
+                    >
                         Forgot password?
                     </Link>
                 </Stack>
 
                 {mutation.isSuccess ? (
-                    <Alert severity="success">Welcome back, {mutation.data.displayName}.</Alert>
+                    <Alert severity="success" variant="outlined" sx={{ borderRadius: 2, bgcolor: 'rgba(236, 253, 245, 0.8)' }}>
+                        Welcome back, {mutation.data.displayName}.
+                    </Alert>
                 ) : null}
 
                 {mutation.isError ? (
-                    <Alert severity="error">{getErrorMessage(mutation.error)}</Alert>
+                    <Alert severity="error" variant="outlined" sx={{ borderRadius: 2, bgcolor: 'rgba(254, 242, 242, 0.82)' }}>
+                        {getErrorMessage(mutation.error)}
+                    </Alert>
                 ) : null}
 
                 <Button
@@ -210,7 +383,7 @@ function LoginForm({ onSwitch, onForgotPassword }: LoginFormProps) {
                     fullWidth
                     disabled={mutation.isPending}
                     startIcon={mutation.isPending ? <CircularProgress size={18} color="inherit" /> : null}
-                    sx={{ minHeight: 48, borderRadius: 2 }}
+                    sx={signInButtonSx}
                 >
                     {mutation.isPending ? 'Signing in...' : 'Sign in'}
                 </Button>

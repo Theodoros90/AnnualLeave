@@ -16,6 +16,23 @@ export async function getAnnualLeaveDetails(id: string) {
     return response.data
 }
 
+export async function uploadLeaveEvidence(file: File) {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await apiClient.post<{ evidenceUrl: string; fileName: string }>(
+        '/annualleaves/evidence-upload',
+        formData,
+        {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        }
+    )
+
+    return response.data
+}
+
 export async function createAnnualLeave(request: CreateAnnualLeaveRequest) {
     const response = await apiClient.post<string>('/annualleaves', request)
     return response.data

@@ -1,4 +1,7 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Domain.Interfaces;
+using Infrastructure.Configuration;
+using Infrastructure.Services;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Resend;
 
@@ -9,6 +12,8 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions();
+        services.Configure<AppUrlOptions>(configuration.GetSection(AppUrlOptions.SectionName));
+        services.AddScoped<IEmailService, EmailService>();
         services.AddHttpClient<ResendClient>();
         services.Configure<ResendClientOptions>(options =>
         {

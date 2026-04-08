@@ -50,37 +50,18 @@ public class DeleteAnnualLeave
                 throw new UnauthorizedAccessException("You are not allowed to cancel this leave request.");
             }
 
-            if (annualLeave.Status == AnnualLeaveStatus.Approved)
-            {
-                var employeeProfile = await context.EmployeeProfiles
-                    .FirstOrDefaultAsync(ep => ep.Id == annualLeave.EmployeeProfileId, cancellationToken);
-
-                var deductedDays = await GetDeductedDaysAsync(annualLeave.LeaveTypeId, annualLeave.TotalDays, cancellationToken);
-
-                if (employeeProfile is not null && deductedDays > 0)
-                    employeeProfile.LeaveBalance += deductedDays;
-            }
+            var employeeProfile = await context.EmployeeProfiles
+                .FirstOrDefaultAsync(ep => ep.Id == annualLeave.EmployeeProfileId, cancellationToken);
 
             context.Remove(annualLeave);
 
             await context.SaveChangesAsync(cancellationToken);
-        }
 
-        private async Task<int> GetDeductedDaysAsync(int? leaveTypeId, int totalDays, CancellationToken cancellationToken)
-        {
-            if (!leaveTypeId.HasValue || totalDays <= 0)
+            if (employeeProfile is not null)
             {
-                return 0;
+                await AnnualLeaveBalanceCalculator.SyncCurrentYearBalanceAsync(context, employeeProfile, cancellationToken);
+                await context.SaveChangesAsync(cancellationToken);
             }
-
-            var isAnnualLeave = await context.LeaveTypes
-                .AsNoTracking()
-                .AnyAsync(
-                    leaveType => leaveType.Id == leaveTypeId.Value
-                        && leaveType.Name == "Annual Leave",
-                    cancellationToken);
-
-            return isAnnualLeave ? totalDays : 0;
         }
     }
 }

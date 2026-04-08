@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { observer } from 'mobx-react-lite'
 import AssignmentIcon from '@mui/icons-material/Assignment'
-import FilterListRoundedIcon from '@mui/icons-material/FilterListRounded'
 import HistoryIcon from '@mui/icons-material/History'
 import SavingsIcon from '@mui/icons-material/Savings'
 import Alert from '@mui/material/Alert'
@@ -26,9 +25,9 @@ import type { UserInfo } from '../../lib/types'
 import AnnualLeaveList from './AnnualLeaveList'
 
 const myLeaveTabs = [
-    { key: 'requests', label: 'My Requests' },
-    { key: 'balance', label: 'Annual Leave Balance' },
-    { key: 'other', label: 'Other Leaves' },
+    { key: 'requests', label: 'Requests' },
+    { key: 'balance', label: 'Balance' },
+    { key: 'other', label: 'Other Leave' },
     { key: 'history', label: 'History' },
 ] as const
 
@@ -40,14 +39,6 @@ const hashBySection: Record<MyLeaveSection, string> = {
     history: '#leave-history',
 }
 
-function sectionId(section: MyLeaveSection) {
-    if (section === 'requests') return 'my-leave-requests'
-    if (section === 'balance') return 'my-leave-balance'
-    if (section === 'other') return 'my-other-leaves'
-    if (section === 'history') return 'my-leave-history'
-    return 'my-leave-requests'
-}
-
 function formatDate(date: string) {
     return new Date(date).toLocaleDateString('en-GB')
 }
@@ -56,7 +47,12 @@ const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) {
     const { uiStore } = useStore()
-    const [selectedHistoryYear, setSelectedHistoryYear] = useState<number | 'all'>(new Date().getFullYear())
+    const isAdminUser = user.roles.includes('Admin')
+    const currentYear = new Date().getFullYear()
+    const [selectedYear, setSelectedYear] = useState<number | 'all'>(currentYear)
+    const [historyStatusFilter, setHistoryStatusFilter] = useState('all')
+    const [historyTypeFilter, setHistoryTypeFilter] = useState('all')
+    const [historySortOrder, setHistorySortOrder] = useState<'newest' | 'oldest'>('newest')
 
     const { data: profiles = [] } = useQuery({
         queryKey: ['employeeProfiles'],
@@ -88,40 +84,27 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
     )
 
     const myProfile = profiles.find((p) => p.userId === user.id)
-    const myBalance = myProfile?.leaveBalance ?? 0
     const myEntitlement = myProfile?.annualLeaveEntitlement ?? 0
-    const currentYear = new Date().getFullYear()
-    const usedDays = Math.max(0, myEntitlement - myBalance)
-    const effectiveEntitlement = Math.max(0, myEntitlement)
-    const usedPercentage = effectiveEntitlement > 0
-        ? Math.min(100, (usedDays / effectiveEntitlement) * 100)
-        : 0
+    const myLeaves = useMemo(
+        () => annualLeaves.filter((leave) => leave.employeeId === user.id),
+        [annualLeaves, user.id]
+    )
+    const selectedYearLabel = selectedYear === 'all' ? 'All Years' : String(selectedYear)
 
-    const approvedLeavesThisYear = useMemo(
-        () => annualLeaves.filter((leave) => {
-            if (leave.employeeId !== user.id || leave.status !== 'Approved') {
-                return false
-            }
-
-            return new Date(leave.startDate).getFullYear() === currentYear
-        }),
-        [annualLeaves, currentYear, user.id]
+    const myLeavesForSelectedYear = useMemo(
+        () => selectedYear === 'all'
+            ? myLeaves
+            : myLeaves.filter((leave) => new Date(leave.startDate).getFullYear() === selectedYear),
+        [myLeaves, selectedYear]
     )
 
-    const annualUsedLeavesThisYear = useMemo(
-        () => approvedLeavesThisYear.filter((leave) => {
-            if (leave.leaveTypeId == null) {
-                return true
-            }
-
-            const leaveTypeName = leaveTypeNameById.get(leave.leaveTypeId)?.trim().toLowerCase()
-            return !leaveTypeName || leaveTypeName.includes('annual')
-        }),
-        [approvedLeavesThisYear, leaveTypeNameById]
+    const approvedLeavesForSelectedYear = useMemo(
+        () => myLeavesForSelectedYear.filter((leave) => leave.status === 'Approved'),
+        [myLeavesForSelectedYear]
     )
 
-    const otherApprovedLeavesThisYear = useMemo(
-        () => approvedLeavesThisYear.filter((leave) => {
+    const otherApprovedLeavesForSelectedYear = useMemo(
+        () => approvedLeavesForSelectedYear.filter((leave) => {
             if (leave.leaveTypeId == null) {
                 return false
             }
@@ -129,13 +112,13 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
             const leaveTypeName = leaveTypeNameById.get(leave.leaveTypeId)?.trim().toLowerCase()
             return Boolean(leaveTypeName && !leaveTypeName.includes('annual'))
         }),
-        [approvedLeavesThisYear, leaveTypeNameById]
+        [approvedLeavesForSelectedYear, leaveTypeNameById]
     )
 
     const otherLeaveSummary = useMemo(() => {
         const breakdown = new Map<string, number>()
 
-        otherApprovedLeavesThisYear.forEach((leave) => {
+        otherApprovedLeavesForSelectedYear.forEach((leave) => {
             if (leave.leaveTypeId == null) {
                 return
             }
@@ -156,18 +139,57 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
             items,
             totalDays: items.reduce((sum, item) => sum + item.days, 0),
         }
-    }, [otherApprovedLeavesThisYear, leaveTypeNameById])
+    }, [otherApprovedLeavesForSelectedYear, leaveTypeNameById])
 
-    const otherLeaveRequestCount = otherApprovedLeavesThisYear.length
+    const otherLeaveRequestCount = otherApprovedLeavesForSelectedYear.length
     const topOtherLeaveType = otherLeaveSummary.items[0] ?? null
-    const otherLeaveChartLabels = otherLeaveSummary.items.map((item) => item.name)
-    const otherLeaveChartDays = otherLeaveSummary.items.map((item) => item.days)
+    const configuredOtherLeaveTypeNames = Array.from(
+        new Set(
+            leaveTypes
+                .map((leaveType) => leaveType.name?.trim())
+                .filter((name): name is string => Boolean(name && !name.toLowerCase().includes('annual')))
+        )
+    )
+    const otherLeaveDaysByName = new Map(otherLeaveSummary.items.map((item) => [item.name, item.days]))
+    const otherLeaveChartLabels = configuredOtherLeaveTypeNames.length > 0
+        ? configuredOtherLeaveTypeNames
+        : otherLeaveSummary.items.map((item) => item.name)
+    const otherLeaveChartDays = otherLeaveChartLabels.map((name) => otherLeaveDaysByName.get(name) ?? 0)
     const hasOtherLeaveChartData = otherLeaveChartDays.some((days) => days > 0)
+
+    const balanceYear = selectedYear === 'all' ? currentYear : selectedYear
+    const balanceYearLabel = String(balanceYear)
+    const annualUsedLeavesForBalanceYear = useMemo(
+        () => myLeaves.filter((leave) => {
+            if (leave.status !== 'Approved') {
+                return false
+            }
+
+            if (new Date(leave.startDate).getFullYear() !== balanceYear) {
+                return false
+            }
+
+            if (leave.leaveTypeId == null) {
+                return true
+            }
+
+            const leaveTypeName = leaveTypeNameById.get(leave.leaveTypeId)?.trim().toLowerCase()
+            return !leaveTypeName || leaveTypeName.includes('annual')
+        }),
+        [balanceYear, leaveTypeNameById, myLeaves]
+    )
+
+    const usedDays = annualUsedLeavesForBalanceYear.reduce((sum, leave) => sum + leave.totalDays, 0)
+    const effectiveEntitlement = Math.max(0, myEntitlement)
+    const balanceForSelectedYear = Math.max(0, effectiveEntitlement - usedDays)
+    const usedPercentage = effectiveEntitlement > 0
+        ? Math.min(100, (usedDays / effectiveEntitlement) * 100)
+        : 0
 
     const monthlyUsedDays = useMemo(() => {
         const monthly = Array.from({ length: 12 }, () => 0)
 
-        annualUsedLeavesThisYear.forEach((leave) => {
+        annualUsedLeavesForBalanceYear.forEach((leave) => {
             const leaveDate = new Date(leave.startDate)
             const monthIndex = leaveDate.getMonth()
             if (monthIndex < 0 || monthIndex > 11) {
@@ -178,174 +200,428 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
         })
 
         return monthly
-    }, [annualUsedLeavesThisYear])
+    }, [annualUsedLeavesForBalanceYear])
 
     const hasMonthlyTrendData = monthlyUsedDays.some((days) => days > 0)
 
-    const historyItems = histories
-        .slice()
-        .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime())
-
-    const historyAvailableYears = Array.from(
-        new Set(historyItems.map((item) => new Date(item.changedAt).getFullYear()))
+    const historyItems = useMemo(
+        () => histories.filter((item) => item.employeeId === user.id),
+        [histories, user.id]
     )
-        .sort()
-        .reverse()
 
-    const filteredHistoryItems = selectedHistoryYear === 'all'
-        ? historyItems
-        : historyItems.filter((item) => new Date(item.changedAt).getFullYear() === selectedHistoryYear)
+    const availableHistoryStatuses = useMemo(
+        () => Array.from(new Set(historyItems.map((item) => item.newStatus))).sort((left, right) => left.localeCompare(right)),
+        [historyItems]
+    )
+
+    const availableHistoryLeaveTypes = useMemo(
+        () => Array.from(new Set(historyItems.map((item) => {
+            if (item.leaveTypeName?.trim()) {
+                return item.leaveTypeName.trim()
+            }
+
+            const leave = annualLeaveById.get(item.annualLeaveId)
+            if (leave?.leaveTypeId != null) {
+                return leaveTypeNameById.get(leave.leaveTypeId) ?? 'Annual Leave'
+            }
+
+            return 'Annual Leave'
+        }))).sort((left, right) => left.localeCompare(right)),
+        [annualLeaveById, historyItems, leaveTypeNameById]
+    )
+
+    const filteredHistoryItems = useMemo(() => {
+        const filteredItems = historyItems.filter((item) => {
+            if (selectedYear !== 'all' && new Date(item.changedAt).getFullYear() !== selectedYear) {
+                return false
+            }
+
+            if (historyStatusFilter !== 'all' && item.newStatus !== historyStatusFilter) {
+                return false
+            }
+
+            const leaveTypeLabel = item.leaveTypeName?.trim()
+                || (() => {
+                    const leave = annualLeaveById.get(item.annualLeaveId)
+                    if (leave?.leaveTypeId != null) {
+                        return leaveTypeNameById.get(leave.leaveTypeId) ?? 'Annual Leave'
+                    }
+
+                    return 'Annual Leave'
+                })()
+
+            if (historyTypeFilter !== 'all' && leaveTypeLabel !== historyTypeFilter) {
+                return false
+            }
+
+            return true
+        })
+
+        return filteredItems.sort((left, right) => historySortOrder === 'oldest'
+            ? new Date(left.changedAt).getTime() - new Date(right.changedAt).getTime()
+            : new Date(right.changedAt).getTime() - new Date(left.changedAt).getTime())
+    }, [annualLeaveById, historyItems, historySortOrder, historyStatusFilter, historyTypeFilter, leaveTypeNameById, selectedYear])
+
+    const hasActiveHistoryFilters = historyStatusFilter !== 'all' || historyTypeFilter !== 'all'
+
+    const availableYears = useMemo(
+        () => Array.from(
+            new Set([
+                currentYear,
+                ...myLeaves.map((leave) => new Date(leave.startDate).getFullYear()),
+                ...historyItems.map((item) => new Date(item.changedAt).getFullYear()),
+            ])
+        )
+            .sort()
+            .reverse(),
+        [currentYear, historyItems, myLeaves]
+    )
+
+    const filterSummaryLabel = uiStore.myLeaveSection === 'history'
+        ? `History: ${filteredHistoryItems.length} entr${filteredHistoryItems.length === 1 ? 'y' : 'ies'}`
+        : uiStore.myLeaveSection === 'other'
+            ? `Other leave: ${otherLeaveRequestCount} request${otherLeaveRequestCount === 1 ? '' : 's'}`
+            : uiStore.myLeaveSection === 'balance'
+                ? `Used in ${balanceYearLabel}: ${usedDays} day${usedDays === 1 ? '' : 's'}`
+                : `Requests shown: ${myLeavesForSelectedYear.length}`
 
     useEffect(() => {
         if (uiStore.myLeaveSection === 'apply') {
+            if (isAdminUser) {
+                uiStore.navigateToMyLeave('requests')
+                return
+            }
+
             uiStore.openCreateDrawer()
         }
 
         const nextHash = hashBySection[uiStore.myLeaveSection]
 
         if (window.location.hash !== nextHash) {
-            window.location.hash = nextHash
+            window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`)
+            window.dispatchEvent(new HashChangeEvent('hashchange'))
         }
-
-        const target = document.getElementById(sectionId(uiStore.myLeaveSection))
-
-        if (target) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }
-    }, [uiStore, uiStore.myLeaveSection])
+    }, [isAdminUser, uiStore, uiStore.myLeaveSection])
 
     const selectedTab = myLeaveTabs.findIndex((tab) => tab.key === uiStore.myLeaveSection)
     const showRequestsSection = uiStore.myLeaveSection === 'requests' || uiStore.myLeaveSection === 'apply'
     const showBalanceSection = uiStore.myLeaveSection === 'balance'
     const showOtherLeavesSection = uiStore.myLeaveSection === 'other'
     const showHistorySection = uiStore.myLeaveSection === 'history'
+    const isCompactBalanceView = showBalanceSection
+
+    const sectionPaperSx = {
+        p: { xs: 2, md: 2.25 },
+        borderRadius: 3,
+        border: '1px solid',
+        borderColor: 'rgba(15, 23, 42, 0.08)',
+        backgroundColor: 'rgba(255,255,255,0.98)',
+        boxShadow: '0 8px 22px rgba(15, 23, 42, 0.04)',
+    } as const
+
+    const insetPaperSx = {
+        p: { xs: 1.5, sm: 1.75 },
+        borderRadius: 2.5,
+        border: '1px solid',
+        borderColor: 'rgba(15, 23, 42, 0.08)',
+    } as const
+
+    const balanceStatCardSx = {
+        minWidth: { xs: 88, sm: 94 },
+        px: 1,
+        py: 0.8,
+        borderRadius: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        gap: 0.2,
+        flexShrink: 0,
+    } as const
 
     return (
-        <Stack spacing={3}>
+        <Stack spacing={isCompactBalanceView ? 1.5 : 2.5}>
             <Paper
                 elevation={0}
                 sx={{
-                    p: { xs: 3, md: 4 },
+                    px: { xs: isCompactBalanceView ? 1.55 : 1.85, md: isCompactBalanceView ? 2 : 2.35 },
+                    py: { xs: isCompactBalanceView ? 0.95 : 1.35, md: isCompactBalanceView ? 1.15 : 1.55 },
+                    borderRadius: 3,
                     border: '1px solid',
                     borderColor: 'rgba(15, 23, 42, 0.08)',
-                    background: 'linear-gradient(135deg, rgba(15,118,110,0.12), rgba(180,83,9,0.08))',
+                    background: 'linear-gradient(135deg, rgba(248,250,252,0.96), rgba(240,253,250,0.92))',
+                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.04)',
                 }}
             >
-                <Stack spacing={1}>
-                    <Typography variant="h4" fontWeight={800}>
-                        My Leave
-                    </Typography>
-                    <Typography variant="body1" color="text.secondary">
-                        Manage requests, review annual balance, check other leaves, and follow status history.
-                    </Typography>
+                <Stack spacing={isCompactBalanceView ? 0.95 : 1.15}>
+                    <Stack
+                        direction={{ xs: 'column', lg: 'row' }}
+                        justifyContent="space-between"
+                        alignItems={{ lg: 'center' }}
+                        spacing={1.1}
+                    >
+                        <Stack spacing={0.2}>
+                            <Typography variant="overline" sx={{ letterSpacing: 1.1, color: '#0f766e', fontWeight: 800, lineHeight: 1.1 }}>
+                                Leave hub
+                            </Typography>
+                            <Typography variant="h4" fontWeight={800} sx={{ lineHeight: 1.1 }}>
+                                My Leave
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                                Manage requests, balances, and leave history in one place.
+                            </Typography>
+                        </Stack>
+
+                        <Stack spacing={0.75} alignItems={{ lg: 'flex-end' }}>
+                            <Stack
+                                direction={{ xs: 'column', xl: 'row' }}
+                                spacing={0.75}
+                                alignItems={{ xs: 'stretch', xl: 'center' }}
+                                justifyContent="flex-end"
+                                flexWrap="wrap"
+                                useFlexGap
+                            >
+                                <Stack
+                                    direction="row"
+                                    spacing={0.9}
+                                    alignItems="center"
+                                    flexWrap="wrap"
+                                    useFlexGap
+                                    sx={{
+                                        px: 0.5,
+                                        py: 0.35,
+                                        borderRadius: 999,
+                                        backgroundColor: 'rgba(255,255,255,0.52)',
+                                    }}
+                                >
+                                    <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" useFlexGap>
+                                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                                            Show:
+                                        </Typography>
+                                        <Stack direction="row" spacing={0.45} alignItems="center">
+                                            <Chip
+                                                size="small"
+                                                label="This year"
+                                                color={selectedYear !== 'all' ? 'primary' : 'default'}
+                                                variant={selectedYear !== 'all' ? 'filled' : 'outlined'}
+                                                onClick={() => setSelectedYear(currentYear)}
+                                                clickable
+                                            />
+                                            <Chip
+                                                size="small"
+                                                label="All years"
+                                                color={selectedYear === 'all' ? 'primary' : 'default'}
+                                                variant={selectedYear === 'all' ? 'filled' : 'outlined'}
+                                                onClick={() => setSelectedYear('all')}
+                                                clickable
+                                            />
+                                        </Stack>
+                                    </Stack>
+
+                                    <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" useFlexGap>
+                                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                                            Year:
+                                        </Typography>
+                                        <FormControl size="small" sx={{ minWidth: 118 }}>
+                                            <Select
+                                                value={selectedYear === 'all' ? currentYear : selectedYear}
+                                                disabled={selectedYear === 'all'}
+                                                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                                                sx={{
+                                                    borderRadius: 999,
+                                                    backgroundColor: 'rgba(255,255,255,0.94)',
+                                                    '& .MuiSelect-select': {
+                                                        fontWeight: 700,
+                                                        py: 0.8,
+                                                    },
+                                                }}
+                                            >
+                                                {availableYears.map((year) => (
+                                                    <MenuItem key={year} value={year}>
+                                                        {year}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                    </Stack>
+                                </Stack>
+
+                                <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{
+                                        ml: { xl: 0.4 },
+                                        px: 0,
+                                        fontWeight: 500,
+                                        whiteSpace: 'nowrap',
+                                        alignSelf: 'center',
+                                        opacity: 0.72,
+                                        lineHeight: 1.2,
+                                    }}
+                                >
+                                    {filterSummaryLabel}
+                                </Typography>
+                            </Stack>
+                        </Stack>
+                    </Stack>
+
+                    <Box
+                        sx={{
+                            pt: isCompactBalanceView ? 0.2 : 0.35,
+                            borderTop: '1px solid',
+                            borderTopColor: 'rgba(15, 23, 42, 0.08)',
+                        }}
+                    >
+                        <Tabs
+                            value={selectedTab < 0 ? 0 : selectedTab}
+                            onChange={(_event, nextIndex: number) => {
+                                const next = myLeaveTabs[nextIndex]
+
+                                if (!next) {
+                                    return
+                                }
+
+                                const nextHash = hashBySection[next.key]
+
+                                if (window.location.hash === nextHash) {
+                                    return
+                                }
+
+                                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`)
+                                window.dispatchEvent(new HashChangeEvent('hashchange'))
+                            }}
+                            variant="scrollable"
+                            scrollButtons="auto"
+                            sx={{
+                                minHeight: 'auto',
+                                p: 0.25,
+                                borderRadius: 999,
+                                backgroundColor: 'rgba(15, 23, 42, 0.03)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                '& .MuiTabs-flexContainer': {
+                                    gap: 0.35,
+                                },
+                                '& .MuiTabs-indicator': { display: 'none' },
+                                '& .MuiTab-root': {
+                                    textTransform: 'none',
+                                    fontWeight: 700,
+                                    fontSize: '0.92rem',
+                                    minHeight: 36,
+                                    borderRadius: 999,
+                                    color: 'rgba(15, 23, 42, 0.68)',
+                                    px: 1.3,
+                                    py: 0.55,
+                                    alignItems: 'center',
+                                    transition: 'all 0.18s ease',
+                                },
+                                '& .MuiTab-root:hover': {
+                                    backgroundColor: 'rgba(15,118,110,0.06)',
+                                    color: 'text.primary',
+                                },
+                                '& .Mui-selected': {
+                                    color: '#0f766e !important',
+                                    backgroundColor: 'rgba(255,255,255,0.96)',
+                                    boxShadow: '0 1px 6px rgba(15, 23, 42, 0.06)',
+                                    border: '1px solid rgba(15,118,110,0.14)',
+                                },
+                            }}
+                        >
+                            {myLeaveTabs.map((tab) => (
+                                <Tab key={tab.key} label={tab.label} />
+                            ))}
+                        </Tabs>
+                    </Box>
                 </Stack>
             </Paper>
 
-            <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, px: 1.5 }}>
-                <Tabs
-                    value={selectedTab < 0 ? 0 : selectedTab}
-                    onChange={(_event, nextIndex: number) => {
-                        const next = myLeaveTabs[nextIndex]
-
-                        if (!next) {
-                            return
-                        }
-
-                        const nextHash = hashBySection[next.key]
-
-                        if (window.location.hash === nextHash) {
-                            return
-                        }
-
-                        window.location.hash = nextHash
-                    }}
-                    variant="scrollable"
-                    scrollButtons="auto"
-                    sx={{ '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, minHeight: 52 } }}
-                >
-                    {myLeaveTabs.map((tab) => (
-                        <Tab key={tab.key} label={tab.label} />
-                    ))}
-                </Tabs>
-            </Paper>
-
-            <Stack spacing={3}>
+            <Stack spacing={isCompactBalanceView ? 1.35 : 2.5}>
                 {showRequestsSection && (
-                    <Box id="my-leave-requests">
-                        <Typography variant="h6" fontWeight={800} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <AssignmentIcon fontSize="small" />
-                            My Requests
-                        </Typography>
+                    <Paper id="my-leave-requests" elevation={0} sx={sectionPaperSx}>
                         <AnnualLeaveList
                             user={user}
                             filterPredicate={(leave) => leave.employeeId === user.id}
-                            emptyMessage="You have not submitted any leave requests yet."
+                            emptyMessage={selectedYear === 'all'
+                                ? 'You have not submitted any leave requests yet.'
+                                : `No leave requests found for ${selectedYearLabel}.`}
+                            selectedYear={selectedYear}
+                            showYearFilter={false}
+                            showCreateButton={false}
                         />
-                    </Box>
+                    </Paper>
                 )}
 
                 {showBalanceSection && (
-                    <Paper id="my-leave-balance" elevation={0} sx={{ p: 3, border: '1px solid', borderColor: 'divider' }}>
-                        <Stack spacing={2.5}>
-                            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={2}>
+                    <Paper id="my-leave-balance" elevation={0} sx={{ ...sectionPaperSx, p: { xs: 1.8, md: 2 } }}>
+                        <Stack spacing={1.7}>
+                            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1.1}>
                                 <Stack spacing={0.5}>
                                     <Typography variant="h6" fontWeight={800} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                         <SavingsIcon fontSize="small" />
                                         Annual Leave Balance
                                     </Typography>
-                                    <Typography color="text.secondary">Current year annual entitlement and remaining balance.</Typography>
+                                    <Typography color="text.secondary">
+                                        {selectedYear === 'all'
+                                            ? `Annual leave balance is tracked per year, so this section is showing ${balanceYearLabel}.`
+                                            : `Annual entitlement and remaining balance for ${balanceYearLabel}.`}
+                                    </Typography>
                                 </Stack>
-                                <Stack direction="row" spacing={1.25} flexWrap="wrap" useFlexGap justifyContent={{ xs: 'flex-start', sm: 'flex-end' }}>
+                                <Stack
+                                    direction="row"
+                                    spacing={0.6}
+                                    flexWrap="wrap"
+                                    useFlexGap
+                                    alignItems="center"
+                                    justifyContent={{ xs: 'flex-start', sm: 'flex-end' }}
+                                    sx={{
+                                        alignSelf: { xs: 'flex-start', sm: 'center' },
+                                    }}
+                                >
                                     <Box
                                         sx={{
-                                            width: 90,
-                                            height: 90,
-                                            borderRadius: '50%',
-                                            border: '2px solid',
-                                            borderColor: '#0f766e',
+                                            ...balanceStatCardSx,
+                                            border: '1px solid',
+                                            borderColor: 'rgba(15,118,110,0.2)',
                                             backgroundColor: 'rgba(15,118,110,0.08)',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
                                         }}
                                     >
-                                        <Typography variant="h6" fontWeight={800} lineHeight={1}>{myBalance}</Typography>
-                                        <Typography variant="caption" color="text.secondary" fontWeight={700}>Balance</Typography>
+                                        <Typography variant="h6" fontWeight={800} lineHeight={1} sx={{ fontSize: { xs: '1.02rem', sm: '1.08rem' } }}>
+                                            {balanceForSelectedYear}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ lineHeight: 1.15 }}>
+                                            Balance
+                                        </Typography>
                                     </Box>
                                     <Box
                                         sx={{
-                                            width: 90,
-                                            height: 90,
-                                            borderRadius: '50%',
-                                            border: '2px solid',
-                                            borderColor: '#d97706',
+                                            ...balanceStatCardSx,
+                                            border: '1px solid',
+                                            borderColor: 'rgba(217,119,6,0.24)',
                                             backgroundColor: 'rgba(217,119,6,0.08)',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
                                         }}
                                     >
-                                        <Typography variant="h6" fontWeight={800} lineHeight={1}>{usedDays}</Typography>
-                                        <Typography variant="caption" color="text.secondary" fontWeight={700}>Annual Used</Typography>
+                                        <Typography variant="h6" fontWeight={800} lineHeight={1} sx={{ fontSize: { xs: '1.02rem', sm: '1.08rem' } }}>
+                                            {usedDays}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ lineHeight: 1.15 }}>
+                                            Annual Used
+                                        </Typography>
                                     </Box>
                                     <Box
                                         sx={{
-                                            width: 90,
-                                            height: 90,
-                                            borderRadius: '50%',
-                                            border: '2px solid',
-                                            borderColor: 'rgba(15, 23, 42, 0.25)',
+                                            ...balanceStatCardSx,
+                                            border: '1px solid',
+                                            borderColor: 'rgba(15, 23, 42, 0.12)',
                                             backgroundColor: 'rgba(15, 23, 42, 0.04)',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
                                         }}
                                     >
-                                        <Typography variant="h6" fontWeight={800} lineHeight={1}>{myEntitlement}</Typography>
-                                        <Typography variant="caption" color="text.secondary" fontWeight={700}>Total</Typography>
+                                        <Typography variant="h6" fontWeight={800} lineHeight={1} sx={{ fontSize: { xs: '1.02rem', sm: '1.08rem' } }}>
+                                            {myEntitlement}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ lineHeight: 1.15 }}>
+                                            Total
+                                        </Typography>
                                     </Box>
                                 </Stack>
                             </Stack>
@@ -353,53 +629,69 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
                             <Paper
                                 elevation={0}
                                 sx={{
-                                    p: 2,
-                                    borderRadius: 2,
-                                    border: '1px solid',
-                                    borderColor: 'rgba(15, 23, 42, 0.12)',
+                                    ...insetPaperSx,
+                                    py: { xs: 1.25, sm: 1.4 },
                                     background: 'linear-gradient(135deg, rgba(15,118,110,0.06), rgba(180,83,9,0.05))',
                                 }}
                             >
-                                <Stack spacing={2}>
-                                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                        <Typography variant="body2" fontWeight={700}>Used Days</Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                            {usedDays} / {myEntitlement} days ({usedPercentage.toFixed(0)}%)
+                                <Stack spacing={1}>
+                                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={0.35}>
+                                        <Stack spacing={0.12}>
+                                            <Typography variant="body2" fontWeight={700}>Annual leave usage</Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                You’ve used {usedDays} day{usedDays === 1 ? '' : 's'} and have {balanceForSelectedYear} remaining.
+                                            </Typography>
+                                        </Stack>
+                                        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                            {usedDays} of {myEntitlement} days ({usedPercentage.toFixed(0)}%)
                                         </Typography>
                                     </Stack>
                                     <LinearProgress
                                         variant="determinate"
                                         value={usedPercentage}
                                         color="warning"
-                                        sx={{ height: 10, borderRadius: 999 }}
+                                        sx={{ height: 8, borderRadius: 999 }}
                                     />
 
                                     <Box
                                         sx={{
                                             borderTop: '1px solid',
                                             borderTopColor: 'rgba(15, 23, 42, 0.12)',
-                                            pt: 1.5,
+                                            pt: 0.95,
                                         }}
                                     >
-                                        <Stack spacing={1.25}>
-                                            <Typography variant="body2" fontWeight={700}>
-                                                Annual Leave Used Per Month ({currentYear})
-                                            </Typography>
+                                        <Stack spacing={0.7}>
+                                            <Stack
+                                                direction={{ xs: 'column', sm: 'row' }}
+                                                justifyContent="space-between"
+                                                alignItems={{ xs: 'flex-start', sm: 'center' }}
+                                                spacing={0.35}
+                                            >
+                                                <Typography variant="body2" fontWeight={700}>
+                                                    Annual Leave Used Per Month ({balanceYearLabel})
+                                                </Typography>
+                                                <Stack direction="row" spacing={0.6} alignItems="center">
+                                                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#0f766e' }} />
+                                                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                                        Used days
+                                                    </Typography>
+                                                </Stack>
+                                            </Stack>
                                             <Typography variant="caption" color="text.secondary">
-                                                Shows approved annual leave days only (actual used balance).
+                                                Shows approved annual leave days only.
                                             </Typography>
 
                                             {hasMonthlyTrendData ? (
                                                 <BarChart
-                                                    height={230}
+                                                    height={190}
                                                     xAxis={[{ scaleType: 'band', data: monthLabels }]}
                                                     series={[
-                                                        { data: monthlyUsedDays, label: 'Annual used days', color: '#0f766e' },
+                                                        { data: monthlyUsedDays, color: '#0f766e' },
                                                     ]}
-                                                    sx={{ width: '100%' }}
+                                                    sx={{ width: '100%', mt: -0.2 }}
                                                 />
                                             ) : (
-                                                <Alert severity="info">No annual leave activity yet for {currentYear}.</Alert>
+                                                <Alert severity="info">No annual leave activity yet for {balanceYearLabel}.</Alert>
                                             )}
                                         </Stack>
                                     </Box>
@@ -410,9 +702,9 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
                 )}
 
                 {showOtherLeavesSection && (
-                    <Paper id="my-other-leaves" elevation={0} sx={{ p: 3, border: '1px solid', borderColor: 'divider' }}>
-                        <Stack spacing={2.5}>
-                            <Stack spacing={0.75}>
+                    <Paper id="my-other-leaves" elevation={0} sx={{ ...sectionPaperSx, p: { xs: 1.8, md: 2 } }}>
+                        <Stack spacing={1.8}>
+                            <Stack spacing={0.55}>
                                 <Typography variant="h6" fontWeight={800} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                     <AssignmentIcon fontSize="small" />
                                     Other Leaves
@@ -422,120 +714,118 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
                                 </Typography>
                             </Stack>
 
-                            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+                            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
                                 <Paper
                                     elevation={0}
                                     sx={{
+                                        ...insetPaperSx,
+                                        p: { xs: 1.25, sm: 1.4 },
                                         flex: 1,
-                                        p: 2,
-                                        borderRadius: 2,
-                                        border: '1px solid',
                                         borderColor: 'rgba(124, 58, 237, 0.18)',
                                         backgroundColor: 'rgba(124, 58, 237, 0.05)',
                                     }}
                                 >
-                                    <Typography variant="caption" color="text.secondary" fontWeight={700}>
+                                    <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ lineHeight: 1.15 }}>
                                         Total other leave days
                                     </Typography>
-                                    <Typography variant="h5" fontWeight={800} sx={{ mt: 0.5 }}>
+                                    <Typography variant="h5" fontWeight={800} sx={{ mt: 0.35, lineHeight: 1.05 }}>
                                         {otherLeaveSummary.totalDays}
                                     </Typography>
                                 </Paper>
                                 <Paper
                                     elevation={0}
                                     sx={{
+                                        ...insetPaperSx,
+                                        p: { xs: 1.25, sm: 1.4 },
                                         flex: 1,
-                                        p: 2,
-                                        borderRadius: 2,
-                                        border: '1px solid',
                                         borderColor: 'rgba(15, 118, 110, 0.18)',
                                         backgroundColor: 'rgba(15, 118, 110, 0.05)',
                                     }}
                                 >
-                                    <Typography variant="caption" color="text.secondary" fontWeight={700}>
+                                    <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ lineHeight: 1.15 }}>
                                         Approved requests
                                     </Typography>
-                                    <Typography variant="h5" fontWeight={800} sx={{ mt: 0.5 }}>
+                                    <Typography variant="h5" fontWeight={800} sx={{ mt: 0.35, lineHeight: 1.05 }}>
                                         {otherLeaveRequestCount}
                                     </Typography>
                                 </Paper>
                                 <Paper
                                     elevation={0}
                                     sx={{
+                                        ...insetPaperSx,
+                                        p: { xs: 1.25, sm: 1.4 },
                                         flex: 1.3,
-                                        p: 2,
-                                        borderRadius: 2,
-                                        border: '1px solid',
                                         borderColor: 'rgba(217, 119, 6, 0.18)',
                                         backgroundColor: 'rgba(217, 119, 6, 0.05)',
                                     }}
                                 >
-                                    <Typography variant="caption" color="text.secondary" fontWeight={700}>
+                                    <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ lineHeight: 1.15 }}>
                                         Most used leave type
                                     </Typography>
-                                    <Typography variant="body1" fontWeight={800} sx={{ mt: 0.5 }}>
+                                    <Typography variant="body1" fontWeight={800} sx={{ mt: 0.35, lineHeight: 1.15 }}>
                                         {topOtherLeaveType?.name ?? 'No activity yet'}
                                     </Typography>
-                                    <Typography variant="caption" color="text.secondary">
+                                    <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
                                         {topOtherLeaveType ? `${topOtherLeaveType.days} day${topOtherLeaveType.days === 1 ? '' : 's'}` : 'No approved requests yet'}
                                     </Typography>
                                 </Paper>
                             </Stack>
 
-                            {otherApprovedLeavesThisYear.length === 0 ? (
-                                <Alert severity="info">No other approved leave requests yet for {currentYear}.</Alert>
+                            {otherApprovedLeavesForSelectedYear.length === 0 ? (
+                                <Alert severity="info">No other approved leave requests yet for {selectedYearLabel}.</Alert>
                             ) : (
                                 <>
                                     <Paper
                                         elevation={0}
                                         sx={{
-                                            p: 2,
-                                            borderRadius: 2,
-                                            border: '1px solid',
-                                            borderColor: 'rgba(124, 58, 237, 0.18)',
-                                            background: 'linear-gradient(135deg, rgba(124,58,237,0.05), rgba(15,118,110,0.04))',
+                                            ...insetPaperSx,
+                                            p: { xs: 1.3, sm: 1.45 },
+                                            borderColor: 'rgba(124, 58, 237, 0.14)',
+                                            background: 'linear-gradient(135deg, rgba(124,58,237,0.035), rgba(15,118,110,0.03))',
                                         }}
                                     >
-                                        <Stack spacing={1.5}>
-                                            <Typography variant="body2" fontWeight={700}>
-                                                Other Leave Days by Type ({currentYear})
-                                            </Typography>
+                                        <Stack spacing={0.85}>
+                                            <Stack
+                                                direction={{ xs: 'column', sm: 'row' }}
+                                                justifyContent="space-between"
+                                                alignItems={{ xs: 'flex-start', sm: 'center' }}
+                                                spacing={0.35}
+                                            >
+                                                <Typography variant="body2" fontWeight={700}>
+                                                    Other Leave Days by Type ({selectedYearLabel})
+                                                </Typography>
+                                                <Stack direction="row" spacing={0.6} alignItems="center">
+                                                    <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#8b7ae6' }} />
+                                                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                                        Approved days
+                                                    </Typography>
+                                                </Stack>
+                                            </Stack>
                                             <Typography variant="caption" color="text.secondary">
-                                                Quick overview of approved non-annual leave usage.
+                                                Shows approved non-annual leave usage across all configured leave types.
                                             </Typography>
 
                                             {hasOtherLeaveChartData ? (
                                                 <BarChart
-                                                    height={220}
+                                                    height={198}
                                                     xAxis={[{ scaleType: 'band', data: otherLeaveChartLabels }]}
                                                     series={[
-                                                        { data: otherLeaveChartDays, label: 'Other leave days', color: '#7c3aed' },
+                                                        { data: otherLeaveChartDays, color: '#8b7ae6' },
                                                     ]}
-                                                    sx={{ width: '100%' }}
+                                                    sx={{ width: '100%', mt: -0.2 }}
                                                 />
                                             ) : (
-                                                <Alert severity="info">No visual data available yet for {currentYear}.</Alert>
+                                                <Alert severity="info">No visual data available yet for {selectedYearLabel}.</Alert>
                                             )}
 
-                                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                                                {otherLeaveSummary.items.map((item) => (
-                                                    <Chip
-                                                        key={item.name}
-                                                        size="small"
-                                                        variant="outlined"
-                                                        color="secondary"
-                                                        label={`${item.name}: ${item.days} day${item.days === 1 ? '' : 's'}`}
-                                                    />
-                                                ))}
-                                            </Stack>
                                         </Stack>
                                     </Paper>
 
-                                    <Stack spacing={1.2}>
+                                    <Stack spacing={1}>
                                         <Typography variant="body2" fontWeight={700}>
                                             Approved other leave requests
                                         </Typography>
-                                        {otherApprovedLeavesThisYear.map((leave) => {
+                                        {otherApprovedLeavesForSelectedYear.map((leave) => {
                                             const leaveTypeName = leave.leaveTypeId != null
                                                 ? (leaveTypeNameById.get(leave.leaveTypeId) ?? 'Other Leave')
                                                 : 'Other Leave'
@@ -545,36 +835,53 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
                                                     key={leave.id}
                                                     elevation={0}
                                                     sx={{
-                                                        p: 2,
-                                                        borderRadius: 2,
-                                                        border: '1px solid',
-                                                        borderColor: 'rgba(15, 23, 42, 0.12)',
+                                                        ...insetPaperSx,
+                                                        p: 1.4,
                                                         backgroundColor: 'rgba(124, 58, 237, 0.04)',
                                                     }}
                                                 >
                                                     <Stack
                                                         direction={{ xs: 'column', sm: 'row' }}
-                                                        spacing={1.5}
+                                                        spacing={1.2}
                                                         justifyContent="space-between"
-                                                        alignItems={{ sm: 'center' }}
+                                                        alignItems={{ xs: 'flex-start', sm: 'center' }}
                                                     >
-                                                        <Stack spacing={0.75}>
-                                                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                                        <Stack spacing={0.7} sx={{ minWidth: 0, flex: 1 }}>
+                                                            <Stack direction="row" spacing={0.9} alignItems="center" flexWrap="wrap" useFlexGap>
                                                                 <Typography fontWeight={700}>{leaveTypeName}</Typography>
                                                                 <Chip size="small" color="success" variant="outlined" label="Approved" />
                                                             </Stack>
-                                                            <Typography variant="body2" color="text.secondary">
+                                                            <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary' }}>
                                                                 {formatDate(leave.startDate)} - {formatDate(leave.endDate)}
                                                             </Typography>
                                                             {leave.reason && (
-                                                                <Typography variant="body2" color="text.secondary">
-                                                                    Reason: {leave.reason}
-                                                                </Typography>
+                                                                <Box
+                                                                    sx={{
+                                                                        mt: 0.2,
+                                                                        px: 0.9,
+                                                                        py: 0.65,
+                                                                        borderRadius: 1.5,
+                                                                        backgroundColor: 'rgba(255, 255, 255, 0.56)',
+                                                                        border: '1px solid rgba(15, 23, 42, 0.06)',
+                                                                    }}
+                                                                >
+                                                                    <Typography
+                                                                        variant="caption"
+                                                                        color="text.secondary"
+                                                                        sx={{ display: 'block', fontWeight: 700, mb: 0.15, lineHeight: 1.2 }}
+                                                                    >
+                                                                        Reason
+                                                                    </Typography>
+                                                                    <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>
+                                                                        {leave.reason}
+                                                                    </Typography>
+                                                                </Box>
                                                             )}
                                                         </Stack>
                                                         <Chip
                                                             size="small"
                                                             color="secondary"
+                                                            sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, fontWeight: 600 }}
                                                             label={`${leave.totalDays} day${leave.totalDays === 1 ? '' : 's'}`}
                                                         />
                                                     </Stack>
@@ -589,67 +896,11 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
                 )}
 
                 {showHistorySection && (
-                    <Paper id="my-leave-history" elevation={0} sx={{ p: 3, border: '1px solid', borderColor: 'divider' }}>
-                        <Typography variant="h6" fontWeight={800} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Paper id="my-leave-history" elevation={0} sx={sectionPaperSx}>
+                        <Typography variant="h6" fontWeight={800} sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
                             <HistoryIcon fontSize="small" />
                             History
                         </Typography>
-
-                        {!isHistoryLoading && !isHistoryError && (
-                            <Box
-                                sx={{
-                                    display: 'flex',
-                                    flexDirection: { xs: 'column', sm: 'row' },
-                                    alignItems: { xs: 'stretch', sm: 'center' },
-                                    justifyContent: 'space-between',
-                                    gap: 1.5,
-                                    mb: 2,
-                                    px: 1.5,
-                                    py: 1.25,
-                                    borderRadius: 2,
-                                    border: '1px solid',
-                                    borderColor: 'rgba(15, 23, 42, 0.12)',
-                                    background: 'linear-gradient(135deg, rgba(15,118,110,0.08), rgba(180,83,9,0.06))',
-                                }}
-                            >
-                                <Stack direction="row" alignItems="center" spacing={1}>
-                                    <FilterListRoundedIcon fontSize="small" color="action" />
-                                    <Typography variant="body2" fontWeight={700}>
-                                        Filter by year
-                                    </Typography>
-                                </Stack>
-
-                                <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                                    <FormControl size="small" sx={{ minWidth: 160 }}>
-                                        <Select
-                                            value={selectedHistoryYear}
-                                            onChange={(e) => {
-                                                const value = e.target.value
-                                                setSelectedHistoryYear(value === 'all' ? 'all' : Number(value))
-                                            }}
-                                            sx={{
-                                                borderRadius: 999,
-                                                backgroundColor: 'rgba(255,255,255,0.85)',
-                                                '& .MuiSelect-select': { fontWeight: 700 },
-                                            }}
-                                        >
-                                            <MenuItem value="all">ALL Years</MenuItem>
-                                            {historyAvailableYears.map((year) => (
-                                                <MenuItem key={year} value={year}>
-                                                    {year}
-                                                </MenuItem>
-                                            ))}
-                                        </Select>
-                                    </FormControl>
-                                    <Chip
-                                        size="small"
-                                        variant="outlined"
-                                        color="primary"
-                                        label={`${filteredHistoryItems.length} entr${filteredHistoryItems.length === 1 ? 'y' : 'ies'}`}
-                                    />
-                                </Stack>
-                            </Box>
-                        )}
 
                         {isHistoryLoading && (
                             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
@@ -659,12 +910,64 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
 
                         {isHistoryError && <Alert severity="error">Failed to load leave history.</Alert>}
 
+                        {!isHistoryLoading && !isHistoryError && historyItems.length > 0 && (
+                            <Stack
+                                direction={{ xs: 'column', md: 'row' }}
+                                spacing={1}
+                                useFlexGap
+                                sx={{ mb: 1.5 }}
+                            >
+                                <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
+                                    <Select
+                                        value={historyStatusFilter}
+                                        onChange={(event) => setHistoryStatusFilter(String(event.target.value))}
+                                        sx={{ borderRadius: 999, backgroundColor: 'rgba(248,250,252,0.9)' }}
+                                    >
+                                        <MenuItem value="all">All statuses</MenuItem>
+                                        {availableHistoryStatuses.map((status) => (
+                                            <MenuItem key={status} value={status}>{status}</MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+
+                                <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 160 } }}>
+                                    <Select
+                                        value={historyTypeFilter}
+                                        onChange={(event) => setHistoryTypeFilter(String(event.target.value))}
+                                        sx={{ borderRadius: 999, backgroundColor: 'rgba(248,250,252,0.9)' }}
+                                    >
+                                        <MenuItem value="all">All leave types</MenuItem>
+                                        {availableHistoryLeaveTypes.map((leaveType) => (
+                                            <MenuItem key={leaveType} value={leaveType}>{leaveType}</MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+
+                                <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 145 } }}>
+                                    <Select
+                                        value={historySortOrder}
+                                        onChange={(event) => setHistorySortOrder(event.target.value as 'newest' | 'oldest')}
+                                        sx={{ borderRadius: 999, backgroundColor: 'rgba(248,250,252,0.9)' }}
+                                    >
+                                        <MenuItem value="newest">Newest first</MenuItem>
+                                        <MenuItem value="oldest">Oldest first</MenuItem>
+                                    </Select>
+                                </FormControl>
+                            </Stack>
+                        )}
+
                         {!isHistoryLoading && !isHistoryError && filteredHistoryItems.length === 0 && (
-                            <Alert severity="info">No history entries yet.</Alert>
+                            <Alert severity="info">
+                                {hasActiveHistoryFilters
+                                    ? 'No history entries match the selected filters.'
+                                    : selectedYear === 'all'
+                                        ? 'No history entries yet.'
+                                        : `No history entries found for ${selectedYearLabel}.`}
+                            </Alert>
                         )}
 
                         {!isHistoryLoading && !isHistoryError && filteredHistoryItems.length > 0 && (
-                            <Stack spacing={1.2}>
+                            <Stack spacing={1.5}>
                                 {filteredHistoryItems.slice(0, 12).map((item) => {
                                     const isApproved = item.newStatus === 'Approved'
                                     const isRejected = item.newStatus === 'Rejected'
@@ -692,68 +995,116 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
                                         <Box
                                             key={item.id}
                                             sx={{
-                                                py: 1.4,
-                                                px: 1.8,
-                                                borderRadius: 1.5,
+                                                py: 1.15,
+                                                px: 1.35,
+                                                borderRadius: 2,
                                                 border: '1px solid',
-                                                borderColor: 'divider',
-                                                borderLeft: '4px solid',
+                                                borderColor: 'rgba(15, 23, 42, 0.08)',
+                                                borderLeft: '2px solid',
                                                 borderLeftColor: accentColor,
+                                                backgroundColor: 'rgba(248,250,252,0.72)',
                                             }}
                                         >
-                                            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
-                                                <Chip
-                                                    label={statusLabel}
-                                                    size="small"
-                                                    color={isApproved ? 'success' : isRejected ? 'error' : isCancelled ? 'default' : 'warning'}
-                                                    sx={{ fontWeight: 700 }}
-                                                />
-                                                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                                                    {new Date(item.changedAt).toLocaleString()}
-                                                </Typography>
-                                            </Stack>
-
-                                            <Stack spacing={0.3} sx={{ mt: 1 }}>
-                                                {item.leaveTypeName && (
-                                                    <Typography variant="body2">
-                                                        <Typography component="span" variant="body2" color="text.secondary">Leave type: </Typography>
-                                                        <Typography component="span" variant="body2" fontWeight={700}>
-                                                            {item.leaveTypeName}
-                                                        </Typography>
+                                            <Stack spacing={0.85}>
+                                                <Stack
+                                                    direction={{ xs: 'column', sm: 'row' }}
+                                                    justifyContent="space-between"
+                                                    alignItems={{ xs: 'flex-start', sm: 'center' }}
+                                                    spacing={0.65}
+                                                >
+                                                    <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                                                        <Chip
+                                                            label={statusLabel}
+                                                            size="small"
+                                                            color={isApproved ? 'success' : isRejected ? 'error' : isCancelled ? 'default' : 'warning'}
+                                                            sx={{ fontWeight: 700 }}
+                                                        />
+                                                        {item.leaveTypeName && (
+                                                            <Typography variant="body2" fontWeight={700}>
+                                                                {item.leaveTypeName}
+                                                            </Typography>
+                                                        )}
+                                                    </Stack>
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                        sx={{
+                                                            whiteSpace: 'nowrap',
+                                                            opacity: 0.78,
+                                                            lineHeight: 1.2,
+                                                            alignSelf: { xs: 'flex-start', sm: 'center' },
+                                                        }}
+                                                    >
+                                                        {new Date(item.changedAt).toLocaleString()}
                                                     </Typography>
-                                                )}
+                                                </Stack>
 
                                                 {leave && (
-                                                    <Typography variant="body2">
-                                                        <Typography component="span" variant="body2" color="text.secondary">Leave dates: </Typography>
-                                                        <Typography component="span" variant="body2" fontWeight={700}>
-                                                            {formatDate(leave.startDate)} - {formatDate(leave.endDate)} ({leave.totalDays} {leave.totalDays === 1 ? 'day' : 'days'})
+                                                    <Stack
+                                                        direction={{ xs: 'column', sm: 'row' }}
+                                                        spacing={0.75}
+                                                        alignItems={{ xs: 'flex-start', sm: 'center' }}
+                                                        justifyContent="space-between"
+                                                        useFlexGap
+                                                    >
+                                                        <Typography variant="body2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                            {formatDate(leave.startDate)} - {formatDate(leave.endDate)}
                                                         </Typography>
-                                                    </Typography>
+                                                        <Chip
+                                                            size="small"
+                                                            variant="outlined"
+                                                            color="default"
+                                                            label={`${leave.totalDays} ${leave.totalDays === 1 ? 'day' : 'days'}`}
+                                                            sx={{ fontWeight: 600 }}
+                                                        />
+                                                    </Stack>
                                                 )}
 
-                                                <Typography variant="body2">
-                                                    <Typography component="span" variant="body2" color="text.secondary">Requested by: </Typography>
-                                                    <Typography component="span" variant="body2" fontWeight={700}>
-                                                        {item.employeeName || item.employeeId}
+                                                <Stack
+                                                    direction={{ xs: 'column', sm: 'row' }}
+                                                    spacing={{ xs: 0.2, sm: 1.1 }}
+                                                    flexWrap="wrap"
+                                                    useFlexGap
+                                                >
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        By{' '}
+                                                        <Box component="span" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                            {item.employeeName || item.employeeId}
+                                                        </Box>
                                                     </Typography>
-                                                </Typography>
 
-                                                {!isSelfAction && (
-                                                    <Typography variant="body2">
-                                                        <Typography component="span" variant="body2" color="text.secondary">
-                                                            {isApproved ? 'Approved by: ' : isRejected ? 'Rejected by: ' : 'Changed by: '}
+                                                    {!isSelfAction && (
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            {isApproved ? 'Approved · ' : isRejected ? 'Rejected · ' : 'Updated · '}
+                                                            <Box component="span" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                                                                {item.changedByUserName || item.changedByUserId}
+                                                            </Box>
                                                         </Typography>
-                                                        <Typography component="span" variant="body2" fontWeight={700}>
-                                                            {item.changedByUserName || item.changedByUserId}
-                                                        </Typography>
-                                                    </Typography>
-                                                )}
+                                                    )}
+                                                </Stack>
 
                                                 {item.comment && (
-                                                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                                                        "{item.comment}"
-                                                    </Typography>
+                                                    <Box
+                                                        sx={{
+                                                            mt: 0.1,
+                                                            px: 0.9,
+                                                            py: 0.65,
+                                                            borderRadius: 1.5,
+                                                            backgroundColor: 'rgba(248, 250, 252, 0.92)',
+                                                            border: '1px solid rgba(15, 23, 42, 0.05)',
+                                                        }}
+                                                    >
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                            sx={{ display: 'block', fontWeight: 700, mb: 0.15, lineHeight: 1.2, opacity: 0.78 }}
+                                                        >
+                                                            System note
+                                                        </Typography>
+                                                        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.45, opacity: 0.92 }}>
+                                                            {item.comment}
+                                                        </Typography>
+                                                    </Box>
                                                 )}
                                             </Stack>
                                         </Box>

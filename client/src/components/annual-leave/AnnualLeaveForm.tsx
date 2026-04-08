@@ -13,8 +13,8 @@ import Stack from '@mui/material/Stack'
 import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import { CalendarMonth as CalendarMonthIcon } from '@mui/icons-material'
-import { createAnnualLeave, editAnnualLeave, getLeaveTypes, getAdminUsers } from '../../lib/api'
+import { AttachFile as AttachFileIcon, CalendarMonth as CalendarMonthIcon, OpenInNew as OpenInNewIcon } from '@mui/icons-material'
+import { createAnnualLeave, editAnnualLeave, getLeaveTypes, getAdminUsers, uploadLeaveEvidence } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
 import type { AnnualLeave, CreateAnnualLeaveRequest, EditAnnualLeaveRequest } from '../../lib/types'
@@ -45,6 +45,8 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveF
     const [endDate, setEndDate] = useState(leave ? toInputDate(leave.endDate) : '')
     const [leaveTypeId, setLeaveTypeId] = useState<number>(leave?.leaveTypeId ?? 0)
     const [reason, setReason] = useState(leave?.reason ?? '')
+    const [evidenceUrl, setEvidenceUrl] = useState(leave?.evidenceUrl ?? '')
+    const [evidenceFile, setEvidenceFile] = useState<File | null>(null)
     const [assignedUserId, setAssignedUserId] = useState('')
 
     const { data: leaveTypes, isLoading: isLoadingLeaveTypes } = useQuery({
@@ -65,6 +67,8 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveF
             setEndDate(leave ? toInputDate(leave.endDate) : '')
             setLeaveTypeId(leave?.leaveTypeId ?? 0)
             setReason(leave?.reason ?? '')
+            setEvidenceUrl(leave?.evidenceUrl ?? '')
+            setEvidenceFile(null)
             setAssignedUserId('')
         }
     }, [open])
@@ -85,8 +89,19 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveF
         },
     })
 
-    const isPending = createMutation.isPending || editMutation.isPending
-    const error = createMutation.error ?? editMutation.error
+    const uploadEvidenceMutation = useMutation({
+        mutationFn: (file: File) => uploadLeaveEvidence(file),
+    })
+
+    const isPending = createMutation.isPending || editMutation.isPending || uploadEvidenceMutation.isPending
+    const error = createMutation.error ?? editMutation.error ?? uploadEvidenceMutation.error
+    const dialogTitle = isEdit ? 'Edit Leave Request' : isAdmin ? 'Assign Leave to User' : 'New Leave Request'
+    const dialogDescription = isEdit
+        ? 'Update dates, leave type, and notes.'
+        : isAdmin
+            ? 'Select an employee and create a leave request on their behalf.'
+            : 'Fill in details and submit your leave request.'
+    const submitLabel = isPending ? 'Saving...' : isEdit ? 'Save Changes' : isAdmin ? 'Assign Leave' : 'Submit Request'
 
     const dateFieldSx = {
         '& .MuiInputBase-root': {
@@ -103,28 +118,48 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveF
         },
     }
 
-    function handleSubmit(e: React.FormEvent) {
+    async function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
-        if (isEdit && leave) {
-            editMutation.mutate({ id: leave.id, startDate, endDate, leaveTypeId, reason })
-        } else {
-            // Admin can assign a target user; non-admins must post their own user id.
-            createMutation.mutate({
-                startDate,
-                endDate,
-                leaveTypeId,
-                reason,
-                employeeId: isAdmin ? assignedUserId : (authStore.user?.id ?? ''),
-            })
+
+        try {
+            let nextEvidenceUrl = evidenceUrl.trim() || undefined
+
+            if (evidenceFile) {
+                const uploadResult = await uploadEvidenceMutation.mutateAsync(evidenceFile)
+                nextEvidenceUrl = uploadResult.evidenceUrl
+                setEvidenceUrl(uploadResult.evidenceUrl)
+            }
+
+            if (isEdit && leave) {
+                await editMutation.mutateAsync({
+                    id: leave.id,
+                    startDate,
+                    endDate,
+                    leaveTypeId,
+                    reason,
+                    evidenceUrl: nextEvidenceUrl,
+                })
+            } else {
+                await createMutation.mutateAsync({
+                    startDate,
+                    endDate,
+                    leaveTypeId,
+                    reason,
+                    evidenceUrl: nextEvidenceUrl,
+                    employeeId: isAdmin ? assignedUserId : (authStore.user?.id ?? ''),
+                })
+            }
+        } catch {
+            // Mutation state already exposes the API error to the form.
         }
     }
 
     return (
         <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 2.5 } }}>
             <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>
-                {isEdit ? 'Edit Leave Request' : 'New Leave Request'}
+                {dialogTitle}
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontWeight: 400 }}>
-                    {isEdit ? 'Update dates, leave type, and notes.' : 'Fill in details and submit your leave request.'}
+                    {dialogDescription}
                 </Typography>
             </DialogTitle>
 
@@ -225,6 +260,42 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveF
                         placeholder="Add a short reason for this request"
                     />
 
+                    <Stack spacing={0.75}>
+                        <Button component="label" variant="outlined" startIcon={<AttachFileIcon />} disabled={isPending} sx={{ alignSelf: 'flex-start' }}>
+                            {evidenceFile ? 'Change evidence file' : evidenceUrl ? 'Replace evidence file' : 'Upload evidence'}
+                            <input
+                                hidden
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                                onChange={(event) => {
+                                    const selectedFile = event.target.files?.[0] ?? null
+                                    setEvidenceFile(selectedFile)
+                                }}
+                            />
+                        </Button>
+
+                        {evidenceFile ? (
+                            <Typography variant="body2" color="text.secondary">
+                                Selected file: {evidenceFile.name}
+                            </Typography>
+                        ) : evidenceUrl ? (
+                            <Button
+                                size="small"
+                                href={evidenceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                endIcon={<OpenInNewIcon fontSize="inherit" />}
+                                sx={{ alignSelf: 'flex-start', px: 0, textTransform: 'none' }}
+                            >
+                                View current evidence
+                            </Button>
+                        ) : null}
+
+                        <Typography variant="caption" color="text.secondary">
+                            Optional: upload PDF, image, DOC, or DOCX evidence (max 10 MB).
+                        </Typography>
+                    </Stack>
+
                     {error ? <Alert severity="error">{getErrorMessage(error)}</Alert> : null}
                 </Stack>
             </DialogContent>
@@ -240,7 +311,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveF
                     disabled={isPending || leaveTypeId <= 0 || !reason.trim() || isLoadingLeaveTypes || (isAdmin && !isEdit && !assignedUserId)}
                     startIcon={isPending ? <CircularProgress size={16} color="inherit" /> : null}
                 >
-                    {isPending ? 'Saving...' : isEdit ? 'Save Changes' : 'Submit Request'}
+                    {submitLabel}
                 </Button>
             </DialogActions>
         </Dialog>

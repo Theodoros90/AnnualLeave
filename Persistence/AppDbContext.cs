@@ -73,6 +73,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             .HasForeignKey(a => a.LeaveTypeId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Entity<AnnualLeave>()
+            .Property(a => a.EvidenceUrl)
+            .HasMaxLength(2048);
+
         builder.Entity<Department>(entity =>
         {
             entity.Property(d => d.Name)
@@ -182,7 +186,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
                 .HasMaxLength(150);
 
             entity.Property(ep => ep.AnnualLeaveEntitlement)
-                .HasDefaultValue(20)
+                .HasDefaultValue(22)
                 .IsRequired();
 
             entity.Property(ep => ep.LeaveBalance)

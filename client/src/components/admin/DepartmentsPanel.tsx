@@ -1,3 +1,5 @@
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Alert from '@mui/material/Alert'
@@ -66,10 +68,7 @@ function DepartmentsPanel() {
     return (
         <Stack spacing={2}>
             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1.5}>
-                <Stack spacing={0.5}>
-                    <Typography variant="h6" fontWeight={800}>Departments</Typography>
-                    <Typography variant="body2" color="text.secondary">Create and maintain organizational departments.</Typography>
-                </Stack>
+                <Typography variant="body2" color="text.secondary">Create and maintain organizational departments.</Typography>
                 <Stack direction="row" spacing={1} alignItems="center">
                     <Chip label={`${departments.length} departments`} size="small" variant="outlined" />
                     <Button variant="contained" sx={{ textTransform: 'none', borderRadius: 999, px: 2.25 }} onClick={() => setCreateOpen(true)}>
@@ -121,15 +120,43 @@ function DepartmentsPanel() {
                                 Created {new Date(dept.createdAt).toLocaleDateString()}
                             </Typography>
                         </Box>
-                        <Stack direction="row" spacing={1}>
-                            <Button size="small" variant="outlined" sx={{ textTransform: 'none' }} onClick={() => setEditDept(dept)}>
+                        <Stack direction="row" spacing={0.25} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                            <Button
+                                size="small"
+                                color="inherit"
+                                variant="text"
+                                startIcon={<EditOutlinedIcon sx={{ fontSize: 16 }} />}
+                                aria-label={`Edit department ${dept.name}`}
+                                sx={{
+                                    textTransform: 'none',
+                                    minWidth: 'auto',
+                                    px: 1,
+                                    py: 0.375,
+                                    borderRadius: 1.5,
+                                    color: 'text.secondary',
+                                    fontWeight: 600,
+                                    '& .MuiButton-startIcon': { mr: 0.5 },
+                                    '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
+                                }}
+                                onClick={() => setEditDept(dept)}
+                            >
                                 Edit
                             </Button>
                             <Button
                                 size="small"
                                 color="error"
-                                variant="outlined"
-                                sx={{ textTransform: 'none' }}
+                                variant="text"
+                                startIcon={<DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />}
+                                aria-label={`Delete department ${dept.name}`}
+                                sx={{
+                                    textTransform: 'none',
+                                    minWidth: 'auto',
+                                    px: 1,
+                                    py: 0.375,
+                                    borderRadius: 1.5,
+                                    fontWeight: 600,
+                                    '& .MuiButton-startIcon': { mr: 0.5 },
+                                }}
                                 disabled={deleteMutation.isPending}
                                 onClick={() => {
                                     if (window.confirm(`Delete department "${dept.name}"? This will fail if users are assigned to it.`)) {

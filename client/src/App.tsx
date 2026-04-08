@@ -130,6 +130,14 @@ const App = observer(function App() {
       const section = getSectionFromHash(window.location.hash)
 
       if (section) {
+        const isAdminUser = authStore.user?.roles?.includes('Admin') ?? false
+
+        if (section === 'apply' && isAdminUser) {
+          uiStore.navigateToMyLeave('requests')
+          window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#my-requests`)
+          return
+        }
+
         uiStore.navigateToMyLeave(section)
         return
       }
@@ -208,6 +216,12 @@ const App = observer(function App() {
     }
   }, [authStore.user, queryClient])
 
+  const isAdminSettingsPage = Boolean(
+    authStore.user
+    && uiStore.currentPage === 'dashboard'
+    && ['settings', 'leave', 'leave-types', 'departments', 'users'].includes(uiStore.adminSection)
+  )
+
   if (!authStore.hasCheckedAuth && authStore.isLoadingUser) {
     return (
       <Box
@@ -231,7 +245,14 @@ const App = observer(function App() {
       {authStore.user && <Navbar />}
 
       {authStore.user ? (
-        <Container component="main" maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
+        <Container
+          component="main"
+          maxWidth="lg"
+          sx={{
+            pt: isAdminSettingsPage ? { xs: 2.5, md: 3.5 } : { xs: 6, md: 10 },
+            pb: isAdminSettingsPage ? { xs: 4, md: 6 } : { xs: 6, md: 10 },
+          }}
+        >
           {uiStore.currentPage === 'my-leave' && <MyLeavePage user={authStore.user} />}
           {uiStore.currentPage === 'team-leave' && <TeamLeavePage user={authStore.user} />}
           {uiStore.currentPage === 'dashboard' && <DashboardHome user={authStore.user} />}
@@ -269,12 +290,12 @@ const App = observer(function App() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              py: 6,
+              py: { xs: 3, md: 4 },
               px: 2,
               background: 'linear-gradient(135deg, rgba(15,118,110,0.06) 0%, rgba(180,83,9,0.06) 100%)',
             }}
           >
-            <Box sx={{ width: '100%', maxWidth: 440 }}>
+            <Box sx={{ width: '100%', maxWidth: 420 }}>
               <Stack spacing={2}>
                 {authNotice ? (
                   <Alert severity={authNotice.severity} onClose={() => setAuthNotice(null)}>

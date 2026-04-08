@@ -26,6 +26,7 @@ public class AnnualLeave
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
     public string Reason { get; set; } = string.Empty;
+    public string? EvidenceUrl { get; set; }
     public AnnualLeaveStatus Status { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? ApprovedAt { get; set; }

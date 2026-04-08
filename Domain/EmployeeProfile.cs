@@ -15,8 +15,8 @@ public class EmployeeProfile
     public ICollection<EmployeeProfile> DirectReports { get; set; } = new List<EmployeeProfile>();
     public ICollection<AnnualLeave> AnnualLeaves { get; set; } = new List<AnnualLeave>();
 
-    public int AnnualLeaveEntitlement { get; set; } = 22;
-    public int LeaveBalance { get; set; } = 22;
+    public int AnnualLeaveEntitlement { get; set; }
+    public int LeaveBalance { get; set; }
 
     public string? JobTitle { get; set; }
 

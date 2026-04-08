@@ -1,3 +1,6 @@
+import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded'
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Alert from '@mui/material/Alert'
@@ -32,9 +35,42 @@ import { getApiErrorMessage } from '../../lib/api/error-utils'
 import type { AdminUser, Department, EmployeeProfile, UserRole } from '../../lib/types'
 
 const allRoles: UserRole[] = ['Admin', 'Manager', 'Employee']
+const protectedSeedAdminEmail = 'admin@annualleave.com'
 
 function getErrorMessage(error: unknown) {
     return getApiErrorMessage(error, 'Something went wrong. Please try again.')
+}
+
+function isReadOnlyAdminUser(user: AdminUser) {
+    return user.email.trim().toLowerCase() === protectedSeedAdminEmail
+}
+
+function ProtectedAdminBadge() {
+    return (
+        <Box
+            sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1.25,
+                py: 0.625,
+                borderRadius: 999,
+                border: '1px solid rgba(25,118,210,0.24)',
+                bgcolor: 'rgba(25,118,210,0.08)',
+                alignSelf: { xs: 'flex-start', sm: 'center' },
+            }}
+        >
+            <AdminPanelSettingsRoundedIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+            <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, lineHeight: 1.15, color: 'primary.dark' }}>
+                    Admin protected
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.15, color: 'text.secondary' }}>
+                    System default · no row actions
+                </Typography>
+            </Box>
+        </Box>
+    )
 }
 
 function roleChipColor(role: UserRole): 'error' | 'warning' | 'success' {
@@ -135,10 +171,7 @@ function AdminUsersPanel() {
     return (
         <Stack spacing={2}>
             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1.5}>
-                <Stack spacing={0.5}>
-                    <Typography variant="h6" fontWeight={800}>User Management</Typography>
-                    <Typography variant="body2" color="text.secondary">Manage user identities, roles, and profile settings.</Typography>
-                </Stack>
+                <Typography variant="body2" color="text.secondary">Manage user identities, roles, and profile settings.</Typography>
                 <Stack direction="row" spacing={1} alignItems="center">
                     <Chip label={`${sortedUsers.length} users`} size="small" variant="outlined" />
                     <Button variant="contained" sx={{ textTransform: 'none', borderRadius: 999, px: 2.25 }} onClick={() => setCreateOpen(true)}>
@@ -162,7 +195,10 @@ function AdminUsersPanel() {
             ) : null}
 
             {!isLoading && !isError
-                ? sortedUsers.map((user) => (
+                ? sortedUsers.map((user) => {
+                    const isReadOnlyUser = isReadOnlyAdminUser(user)
+
+                    return (
                     <Paper
                         key={user.id}
                         elevation={0}
@@ -202,33 +238,61 @@ function AdminUsersPanel() {
                                     ) : null}
                                 </Box>
                             </Stack>
-                            <Stack direction="row" spacing={1}>
-                                <Button
-                                    size="small"
-                                    variant="outlined"
-                                    sx={{ textTransform: 'none' }}
-                                    onClick={() => setEditData({ user, profile: profilesByUserId.get(user.id) })}
-                                >
-                                    Edit
-                                </Button>
-                                <Button
-                                    size="small"
-                                    color="error"
-                                    variant="outlined"
-                                    sx={{ textTransform: 'none' }}
-                                    disabled={deleteMutation.isPending}
-                                    onClick={() => {
-                                        if (window.confirm(`Delete user ${user.email}?`)) {
-                                            deleteMutation.mutate(user.id)
-                                        }
-                                    }}
-                                >
-                                    Delete
-                                </Button>
-                            </Stack>
+                            {isReadOnlyUser ? (
+                                <ProtectedAdminBadge />
+                            ) : (
+                                <Stack direction="row" spacing={0.25} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                                    <Button
+                                        size="small"
+                                        color="inherit"
+                                        variant="text"
+                                        startIcon={<EditOutlinedIcon sx={{ fontSize: 16 }} />}
+                                        aria-label={`Edit user ${user.email}`}
+                                        sx={{
+                                            textTransform: 'none',
+                                            minWidth: 'auto',
+                                            px: 1,
+                                            py: 0.375,
+                                            borderRadius: 1.5,
+                                            color: 'text.secondary',
+                                            fontWeight: 600,
+                                            '& .MuiButton-startIcon': { mr: 0.5 },
+                                            '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
+                                        }}
+                                        onClick={() => setEditData({ user, profile: profilesByUserId.get(user.id) })}
+                                    >
+                                        Edit
+                                    </Button>
+                                    <Button
+                                        size="small"
+                                        color="error"
+                                        variant="text"
+                                        startIcon={<DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />}
+                                        aria-label={`Delete user ${user.email}`}
+                                        sx={{
+                                            textTransform: 'none',
+                                            minWidth: 'auto',
+                                            px: 1,
+                                            py: 0.375,
+                                            borderRadius: 1.5,
+                                            fontWeight: 600,
+                                            '& .MuiButton-startIcon': { mr: 0.5 },
+                                        }}
+                                        disabled={deleteMutation.isPending}
+                                        onClick={() => {
+                                            if (window.confirm(`Delete user ${user.email}?`)) {
+                                                deleteMutation.mutate(user.id)
+                                            }
+                                        }}
+                                    >
+                                        Delete
+                                    </Button>
+                                </Stack>
+                            )}
                         </Stack>
                     </Paper>
-                ))
+                    )
+                })
                 : null}
 
             <CreateUserDialog

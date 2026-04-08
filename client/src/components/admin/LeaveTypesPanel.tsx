@@ -1,3 +1,6 @@
+import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded'
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Alert from '@mui/material/Alert'
@@ -66,10 +69,7 @@ function LeaveTypesPanel() {
     return (
         <Stack spacing={2}>
             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1.5}>
-                <Stack spacing={0.5}>
-                    <Typography variant="h6" fontWeight={800}>Leave Types</Typography>
-                    <Typography variant="body2" color="text.secondary">Define leave categories and approval behavior.</Typography>
-                </Stack>
+                <Typography variant="body2" color="text.secondary">Define leave categories and approval behavior.</Typography>
                 <Stack direction="row" spacing={1} alignItems="center">
                     <Chip label={`${leaveTypes.length} types`} size="small" variant="outlined" />
                     <Button variant="contained" sx={{ textTransform: 'none', borderRadius: 999, px: 2.25 }} onClick={() => setCreateOpen(true)}>
@@ -92,58 +92,132 @@ function LeaveTypesPanel() {
                 </Paper>
             )}
 
-            {!isLoading && !isError && leaveTypes.map((leaveType) => (
-                <Paper
-                    key={leaveType.id}
-                    elevation={0}
-                    sx={{
-                        p: 2.5,
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderLeft: '4px solid',
-                        borderLeftColor: leaveType.requiresApproval ? 'rgba(237,108,2,0.65)' : 'rgba(15,118,110,0.55)',
-                        transition: 'border-color 0.15s, box-shadow 0.15s',
-                        '&:hover': { borderColor: 'rgba(15,118,110,0.35)', boxShadow: '0 8px 20px rgba(15,23,42,0.06)' },
-                    }}
-                >
-                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1}>
-                        <Box>
-                            <Stack direction="row" spacing={1} alignItems="center">
-                                <Typography fontWeight={700}>{leaveType.name}</Typography>
-                                <Chip
-                                    label={leaveType.requiresApproval ? 'Approval Required' : 'Auto Approved'}
-                                    size="small"
-                                    color={leaveType.requiresApproval ? 'warning' : 'default'}
-                                />
-                                <Chip
-                                    label={leaveType.isActive ? 'Active' : 'Inactive'}
-                                    size="small"
-                                    color={leaveType.isActive ? 'success' : 'default'}
-                                />
-                            </Stack>
-                        </Box>
-                        <Stack direction="row" spacing={1}>
-                            <Button size="small" variant="outlined" sx={{ textTransform: 'none' }} onClick={() => setEditType(leaveType)}>
-                                Edit
-                            </Button>
-                            <Button
-                                size="small"
-                                color="error"
-                                variant="outlined"
-                                sx={{ textTransform: 'none' }}
-                                disabled={deleteMutation.isPending}
-                                onClick={() => {
-                                    if (window.confirm(`Delete leave type "${leaveType.name}"? This will fail if leave requests use it.`)) {
-                                        deleteMutation.mutate(leaveType.id)
-                                    }
-                                }}
-                            >
-                                Delete
-                            </Button>
+            {!isLoading && !isError && leaveTypes.map((leaveType) => {
+                const isReadOnlyType = leaveType.name.trim().toLowerCase() === 'annual leave'
+
+                return (
+                    <Paper
+                        key={leaveType.id}
+                        elevation={0}
+                        sx={{
+                            px: 2,
+                            py: 1.35,
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            borderLeft: '4px solid',
+                            borderLeftColor: leaveType.requiresApproval ? 'rgba(237,108,2,0.65)' : 'rgba(15,118,110,0.55)',
+                            transition: 'border-color 0.15s, box-shadow 0.15s',
+                            '&:hover': { borderColor: 'rgba(15,118,110,0.35)', boxShadow: '0 8px 20px rgba(15,23,42,0.06)' },
+                        }}
+                    >
+                        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={0.75}>
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                                <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                                    <Typography fontWeight={700}>{leaveType.name}</Typography>
+                                    <Chip
+                                        label={leaveType.requiresApproval ? 'Approval Required' : 'Auto Approved'}
+                                        size="small"
+                                        color={leaveType.requiresApproval ? 'warning' : 'default'}
+                                    />
+                                    <Chip
+                                        label={leaveType.isActive ? 'Active' : 'Inactive'}
+                                        size="small"
+                                        color={leaveType.isActive ? 'success' : 'default'}
+                                    />
+                                </Stack>
+                            </Box>
+                            {isReadOnlyType ? (
+                                <Stack
+                                    direction="row"
+                                    spacing={0.75}
+                                    alignItems="center"
+                                    useFlexGap
+                                    sx={{
+                                        alignSelf: { xs: 'flex-start', sm: 'center' },
+                                        px: 1,
+                                        py: 0.45,
+                                        borderRadius: 1.5,
+                                        border: '1px solid',
+                                        borderColor: 'rgba(2,132,199,0.22)',
+                                        bgcolor: 'rgba(2,132,199,0.08)',
+                                    }}
+                                >
+                                    <AdminPanelSettingsRoundedIcon sx={{ fontSize: 17, color: 'info.main' }} />
+                                    <Box>
+                                        <Typography
+                                            variant="caption"
+                                            sx={{ display: 'block', fontWeight: 700, lineHeight: 1.15, color: 'text.primary' }}
+                                        >
+                                            Admin protected
+                                        </Typography>
+                                        <Typography
+                                            variant="caption"
+                                            color="text.secondary"
+                                            sx={{ display: 'block', lineHeight: 1.15 }}
+                                        >
+                                            System default · no row actions
+                                        </Typography>
+                                    </Box>
+                                </Stack>
+                            ) : (
+                                <Stack
+                                    direction="row"
+                                    spacing={0.25}
+                                    alignItems="center"
+                                    useFlexGap
+                                    sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, flexWrap: 'wrap' }}
+                                >
+                                    <Button
+                                        size="small"
+                                        color="inherit"
+                                        variant="text"
+                                        startIcon={<EditOutlinedIcon sx={{ fontSize: 16 }} />}
+                                        aria-label={`Edit leave type ${leaveType.name}`}
+                                        sx={{
+                                            textTransform: 'none',
+                                            minWidth: 'auto',
+                                            px: 1,
+                                            py: 0.375,
+                                            borderRadius: 1.5,
+                                            color: 'text.secondary',
+                                            fontWeight: 600,
+                                            '& .MuiButton-startIcon': { mr: 0.5 },
+                                            '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
+                                        }}
+                                        onClick={() => setEditType(leaveType)}
+                                    >
+                                        Edit
+                                    </Button>
+                                    <Button
+                                        size="small"
+                                        color="error"
+                                        variant="text"
+                                        startIcon={<DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />}
+                                        aria-label={`Delete leave type ${leaveType.name}`}
+                                        sx={{
+                                            textTransform: 'none',
+                                            minWidth: 'auto',
+                                            px: 1,
+                                            py: 0.375,
+                                            borderRadius: 1.5,
+                                            fontWeight: 600,
+                                            '& .MuiButton-startIcon': { mr: 0.5 },
+                                        }}
+                                        disabled={deleteMutation.isPending}
+                                        onClick={() => {
+                                            if (window.confirm(`Delete leave type "${leaveType.name}"? This will fail if leave requests use it.`)) {
+                                                deleteMutation.mutate(leaveType.id)
+                                            }
+                                        }}
+                                    >
+                                        Delete
+                                    </Button>
+                                </Stack>
+                            )}
                         </Stack>
-                    </Stack>
-                </Paper>
-            ))}
+                    </Paper>
+                )
+            })}
 
             {deleteMutation.isError && (
                 <Alert severity="error">{getErrorMessage(deleteMutation.error)}</Alert>

@@ -23,9 +23,7 @@ public class CreateAnnualLeave
             var annualLeave = mapper.Map<AnnualLeave>(request.AnnualLeave);
 
             var employeeProfile = await context.EmployeeProfiles
-                .Where(ep => ep.UserId == request.AnnualLeave.EmployeeId)
-                .Select(ep => new { ep.Id, ep.DepartmentId })
-                .FirstOrDefaultAsync(cancellationToken);
+                .FirstOrDefaultAsync(ep => ep.UserId == request.AnnualLeave.EmployeeId, cancellationToken);
 
             if (employeeProfile is null)
                 throw new InvalidOperationException("Employee profile not found for the selected user.");
@@ -33,9 +31,52 @@ public class CreateAnnualLeave
             annualLeave.EmployeeProfileId = employeeProfile.Id;
             annualLeave.DepartmentId = employeeProfile.DepartmentId;
 
+            var leaveType = await context.LeaveTypes
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    type => type.Id == annualLeave.LeaveTypeId && type.IsActive,
+                    cancellationToken);
+
+            if (leaveType is null)
+                throw new InvalidOperationException("Selected leave type is not available.");
+
+            if (leaveType.RequiresApproval)
+            {
+                annualLeave.Status = AnnualLeaveStatus.Pending;
+            }
+            else
+            {
+                annualLeave.Status = AnnualLeaveStatus.Approved;
+                annualLeave.ApprovedAt = DateTime.UtcNow;
+
+                await AnnualLeaveBalanceCalculator.EnsureSufficientBalanceAsync(
+                    context,
+                    employeeProfile,
+                    annualLeave,
+                    excludeLeaveId: annualLeave.Id,
+                    cancellationToken);
+
+                context.LeaveStatusHistories.Add(new LeaveStatusHistory
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    AnnualLeaveId = annualLeave.Id,
+                    ChangedByUserId = annualLeave.EmployeeId,
+                    OldStatus = AnnualLeaveStatus.Pending,
+                    NewStatus = AnnualLeaveStatus.Approved,
+                    Comment = "Automatically approved based on leave type settings.",
+                    ChangedAt = DateTime.UtcNow,
+                });
+            }
+
             context.AnnualLeaves.Add(annualLeave);
 
             await context.SaveChangesAsync(cancellationToken);
+
+            if (!leaveType.RequiresApproval)
+            {
+                await AnnualLeaveBalanceCalculator.SyncCurrentYearBalanceAsync(context, employeeProfile, cancellationToken);
+                await context.SaveChangesAsync(cancellationToken);
+            }
 
             return annualLeave.Id;
         }
