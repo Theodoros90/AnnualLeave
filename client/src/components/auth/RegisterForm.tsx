@@ -214,7 +214,15 @@ function RegisterForm({ onSwitch }: RegisterFormProps) {
         setRegisteredEmail('')
 
         const submittedEmail = values.email.trim()
-        await mutation.mutateAsync(values)
+        const response = await mutation.mutateAsync(values)
+
+        // If registration failed to send verification email, do not show success
+        if (response && response.verificationEmailSent === false) {
+            setRegisteredEmail('')
+            setDepartmentError('')
+            setValues(initialValues)
+            return
+        }
 
         setRegisteredEmail(submittedEmail)
         setDepartmentError('')
@@ -368,12 +376,12 @@ function RegisterForm({ onSwitch }: RegisterFormProps) {
                         helperText={departmentError || (isLoadingDepartments ? 'Loading departments...' : 'Select your department.')}
                         sx={authInputSx}
                     >
-                    {activeDepartments.map((department) => (
-                        <MenuItem key={department.id} value={department.id}>
-                            {department.name}
-                        </MenuItem>
-                    ))}
-                </TextField>
+                        {activeDepartments.map((department) => (
+                            <MenuItem key={department.id} value={department.id}>
+                                {department.name}
+                            </MenuItem>
+                        ))}
+                    </TextField>
                 </Stack>
 
                 {isDepartmentsError ? (
@@ -382,10 +390,16 @@ function RegisterForm({ onSwitch }: RegisterFormProps) {
                     </Alert>
                 ) : null}
 
-                {mutation.isSuccess ? (
+                {mutation.isSuccess && mutation.data && mutation.data.verificationEmailSent !== false ? (
                     <Alert severity="success" variant="outlined" sx={{ borderRadius: 2, bgcolor: 'rgba(236, 253, 245, 0.8)' }}>
                         Account created successfully for <strong>{registeredEmail || 'your email address'}</strong>.
                         {' '}Please check your inbox, click the verification link, and then sign in.
+                    </Alert>
+                ) : null}
+
+                {mutation.isSuccess && mutation.data && mutation.data.verificationEmailSent === false ? (
+                    <Alert severity="error" variant="outlined" sx={{ borderRadius: 2, bgcolor: 'rgba(254, 242, 242, 0.82)' }}>
+                        Registration failed: could not send verification email. Please try again later.
                     </Alert>
                 ) : null}
 

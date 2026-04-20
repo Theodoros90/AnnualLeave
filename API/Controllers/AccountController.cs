@@ -35,71 +35,90 @@ public class AccountController(
             return BadRequest(new { message = "Email is already registered." });
         }
 
-        var user = new User
-        {
-            UserName = request.Email,
-            Email = request.Email,
-            DisplayName = request.DisplayName,
-            EmailConfirmed = false
-        };
-
-        var result = await userManager.CreateAsync(user, request.Password);
-        if (!result.Succeeded)
-        {
-            return BadRequest(new
-            {
-                message = "Registration failed.",
-                errors = result.Errors.Select(e => e.Description)
-            });
-        }
-
-        var addToRoleResult = await userManager.AddToRoleAsync(user, AppRoles.Employee);
-        if (!addToRoleResult.Succeeded)
-        {
-            await userManager.DeleteAsync(user);
-            return BadRequest(new
-            {
-                message = "Failed to assign role.",
-                errors = addToRoleResult.Errors.Select(e => e.Description)
-            });
-        }
-
-        var departmentExists = await context.Departments
-            .AnyAsync(d => d.Id == request.DepartmentId && d.IsActive);
-
-        if (!departmentExists)
-        {
-            await userManager.DeleteAsync(user);
-            return BadRequest(new
-            {
-                message = "Registration failed because the selected department is invalid or inactive."
-            });
-        }
-
-        EmployeeProfile employeeProfile;
-
+        using var transaction = await context.Database.BeginTransactionAsync();
         try
         {
-            employeeProfile = await CreateEmployeeProfileAsync(user.Id, request.DepartmentId, "Employee");
+            var user = new User
+            {
+                UserName = request.Email,
+                Email = request.Email,
+                DisplayName = request.DisplayName,
+                EmailConfirmed = false
+            };
+
+            var result = await userManager.CreateAsync(user, request.Password);
+            if (!result.Succeeded)
+            {
+                return BadRequest(new
+                {
+                    message = "Registration failed.",
+                    errors = result.Errors.Select(e => e.Description)
+                });
+            }
+
+            var addToRoleResult = await userManager.AddToRoleAsync(user, AppRoles.Employee);
+            if (!addToRoleResult.Succeeded)
+            {
+                await userManager.DeleteAsync(user);
+                return BadRequest(new
+                {
+                    message = "Failed to assign role.",
+                    errors = addToRoleResult.Errors.Select(e => e.Description)
+                });
+            }
+
+            var departmentExists = await context.Departments
+                .AnyAsync(d => d.Id == request.DepartmentId && d.IsActive);
+
+            if (!departmentExists)
+            {
+                await userManager.DeleteAsync(user);
+                return BadRequest(new
+                {
+                    message = "Registration failed because the selected department is invalid or inactive."
+                });
+            }
+
+            EmployeeProfile employeeProfile;
+            try
+            {
+                employeeProfile = await CreateEmployeeProfileAsync(user.Id, request.DepartmentId, "Employee");
+            }
+            catch
+            {
+                await userManager.DeleteAsync(user);
+                throw;
+            }
+
+            var verificationEmailSent = await SendVerificationEmailAsync(user);
+            if (!verificationEmailSent)
+            {
+                // Rollback transaction so user and profile are not saved
+                await transaction.RollbackAsync();
+                return StatusCode((int)HttpStatusCode.InternalServerError, new
+                {
+                    message = "Registration failed: could not send verification email. Please try again later.",
+                    emailVerificationRequired = true,
+                    verificationEmailSent = false
+                });
+            }
+
+            await transaction.CommitAsync();
+
+            return Ok(new
+            {
+                message = "User registered successfully. Please check your email to verify your account.",
+                role = AppRoles.Employee,
+                employeeProfileId = employeeProfile.Id,
+                emailVerificationRequired = true,
+                verificationEmailSent = true
+            });
         }
         catch
         {
-            await userManager.DeleteAsync(user);
+            await transaction.RollbackAsync();
             throw;
         }
-
-        var verificationEmailSent = await SendVerificationEmailAsync(user);
-
-        return Ok(new
-        {
-            message = verificationEmailSent
-                ? "User registered successfully. Please check your email to verify your account."
-                : "User registered successfully, but the verification email could not be sent.",
-            role = AppRoles.Employee,
-            employeeProfileId = employeeProfile.Id,
-            emailVerificationRequired = true,
-            verificationEmailSent
-        });
     }
 
     [AllowAnonymous]
