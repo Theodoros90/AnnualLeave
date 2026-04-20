@@ -3,7 +3,7 @@ import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import Alert from '@mui/material/Alert'
+import { SweetAlert } from '../ui'
 import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -199,98 +199,106 @@ function AdminUsersPanel() {
                     const isReadOnlyUser = isReadOnlyAdminUser(user)
 
                     return (
-                    <Paper
-                        key={user.id}
-                        elevation={0}
-                        sx={{
-                            p: 2.5,
-                            border: '1px solid',
-                            borderColor: 'divider',
-                            borderLeft: '4px solid',
-                            borderLeftColor: 'rgba(15,118,110,0.55)',
-                            transition: 'border-color 0.15s, box-shadow 0.15s',
-                            '&:hover': { borderColor: 'rgba(15,118,110,0.35)', boxShadow: '0 8px 20px rgba(15,23,42,0.06)' },
-                        }}
-                    >
-                        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1}>
-                            <Stack direction="row" spacing={2} alignItems="center" flex={1}>
-                                <Avatar
-                                    src={user.imageUrl}
-                                    alt={user.displayName || user.email}
-                                    sx={{ width: 48, height: 48, flexShrink: 0, fontSize: '1.2rem', fontWeight: 600 }}
-                                >
-                                    {user.displayName?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
-                                </Avatar>
-                                <Box flex={1}>
-                                    <Stack direction="row" spacing={1} alignItems="center">
-                                        <Typography fontWeight={700}>{user.displayName || user.email}</Typography>
-                                        {user.roles.map((role) => (
-                                            <Chip key={`${user.id}-${role}`} label={role} size="small" color={roleChipColor(role)} variant="outlined" />
-                                        ))}
-                                    </Stack>
-                                    <Typography variant="caption" color="text.secondary">
-                                        {user.email}
-                                    </Typography>
-                                    {profilesByUserId.get(user.id) ? (
-                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
-                                            Department: {departmentsById.get(profilesByUserId.get(user.id)?.departmentId ?? 0) ?? 'Unassigned'} | Leave balance: {profilesByUserId.get(user.id)?.leaveBalance}
+                        <Paper
+                            key={user.id}
+                            elevation={0}
+                            sx={{
+                                p: 2.5,
+                                border: '1px solid',
+                                borderColor: 'divider',
+                                borderLeft: '4px solid',
+                                borderLeftColor: 'rgba(15,118,110,0.55)',
+                                transition: 'border-color 0.15s, box-shadow 0.15s',
+                                '&:hover': { borderColor: 'rgba(15,118,110,0.35)', boxShadow: '0 8px 20px rgba(15,23,42,0.06)' },
+                            }}
+                        >
+                            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1}>
+                                <Stack direction="row" spacing={2} alignItems="center" flex={1}>
+                                    <Avatar
+                                        src={user.imageUrl}
+                                        alt={user.displayName || user.email}
+                                        sx={{ width: 48, height: 48, flexShrink: 0, fontSize: '1.2rem', fontWeight: 600 }}
+                                    >
+                                        {user.displayName?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
+                                    </Avatar>
+                                    <Box flex={1}>
+                                        <Stack direction="row" spacing={1} alignItems="center">
+                                            <Typography fontWeight={700}>{user.displayName || user.email}</Typography>
+                                            {user.roles.map((role) => (
+                                                <Chip key={`${user.id}-${role}`} label={role} size="small" color={roleChipColor(role)} variant="outlined" />
+                                            ))}
+                                        </Stack>
+                                        <Typography variant="caption" color="text.secondary">
+                                            {user.email}
                                         </Typography>
-                                    ) : null}
-                                </Box>
-                            </Stack>
-                            {isReadOnlyUser ? (
-                                <ProtectedAdminBadge />
-                            ) : (
-                                <Stack direction="row" spacing={0.25} useFlexGap sx={{ flexWrap: 'wrap' }}>
-                                    <Button
-                                        size="small"
-                                        color="inherit"
-                                        variant="text"
-                                        startIcon={<EditOutlinedIcon sx={{ fontSize: 16 }} />}
-                                        aria-label={`Edit user ${user.email}`}
-                                        sx={{
-                                            textTransform: 'none',
-                                            minWidth: 'auto',
-                                            px: 1,
-                                            py: 0.375,
-                                            borderRadius: 1.5,
-                                            color: 'text.secondary',
-                                            fontWeight: 600,
-                                            '& .MuiButton-startIcon': { mr: 0.5 },
-                                            '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
-                                        }}
-                                        onClick={() => setEditData({ user, profile: profilesByUserId.get(user.id) })}
-                                    >
-                                        Edit
-                                    </Button>
-                                    <Button
-                                        size="small"
-                                        color="error"
-                                        variant="text"
-                                        startIcon={<DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />}
-                                        aria-label={`Delete user ${user.email}`}
-                                        sx={{
-                                            textTransform: 'none',
-                                            minWidth: 'auto',
-                                            px: 1,
-                                            py: 0.375,
-                                            borderRadius: 1.5,
-                                            fontWeight: 600,
-                                            '& .MuiButton-startIcon': { mr: 0.5 },
-                                        }}
-                                        disabled={deleteMutation.isPending}
-                                        onClick={() => {
-                                            if (window.confirm(`Delete user ${user.email}?`)) {
-                                                deleteMutation.mutate(user.id)
-                                            }
-                                        }}
-                                    >
-                                        Delete
-                                    </Button>
+                                        {profilesByUserId.get(user.id) ? (
+                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                                                Department: {departmentsById.get(profilesByUserId.get(user.id)?.departmentId ?? 0) ?? 'Unassigned'} | Leave balance: {profilesByUserId.get(user.id)?.leaveBalance}
+                                            </Typography>
+                                        ) : null}
+                                    </Box>
                                 </Stack>
-                            )}
-                        </Stack>
-                    </Paper>
+                                {isReadOnlyUser ? (
+                                    <ProtectedAdminBadge />
+                                ) : (
+                                    <Stack direction="row" spacing={0.25} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                                        <Button
+                                            size="small"
+                                            color="inherit"
+                                            variant="text"
+                                            startIcon={<EditOutlinedIcon sx={{ fontSize: 16 }} />}
+                                            aria-label={`Edit user ${user.email}`}
+                                            sx={{
+                                                textTransform: 'none',
+                                                minWidth: 'auto',
+                                                px: 1,
+                                                py: 0.375,
+                                                borderRadius: 1.5,
+                                                color: 'text.secondary',
+                                                fontWeight: 600,
+                                                '& .MuiButton-startIcon': { mr: 0.5 },
+                                                '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
+                                            }}
+                                            onClick={() => setEditData({ user, profile: profilesByUserId.get(user.id) })}
+                                        >
+                                            Edit
+                                        </Button>
+                                        <Button
+                                            size="small"
+                                            color="error"
+                                            variant="text"
+                                            startIcon={<DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />}
+                                            aria-label={`Delete user ${user.email}`}
+                                            sx={{
+                                                textTransform: 'none',
+                                                minWidth: 'auto',
+                                                px: 1,
+                                                py: 0.375,
+                                                borderRadius: 1.5,
+                                                fontWeight: 600,
+                                                '& .MuiButton-startIcon': { mr: 0.5 },
+                                            }}
+                                            disabled={deleteMutation.isPending}
+                                            onClick={async () => {
+                                                const result = await SweetAlert.fire({
+                                                    title: `Delete user ${user.email}?`,
+                                                    icon: 'warning',
+                                                    showCancelButton: true,
+                                                    confirmButtonText: 'Yes, delete',
+                                                    cancelButtonText: 'Cancel',
+                                                    reverseButtons: true
+                                                })
+                                                if (result.isConfirmed) {
+                                                    deleteMutation.mutate(user.id)
+                                                }
+                                            }}
+                                        >
+                                            Delete
+                                        </Button>
+                                    </Stack>
+                                )}
+                            </Stack>
+                        </Paper>
                     )
                 })
                 : null}

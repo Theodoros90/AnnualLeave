@@ -2,7 +2,7 @@ import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import Alert from '@mui/material/Alert'
+import { SweetAlert } from '../ui'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
@@ -158,8 +158,17 @@ function DepartmentsPanel() {
                                     '& .MuiButton-startIcon': { mr: 0.5 },
                                 }}
                                 disabled={deleteMutation.isPending}
-                                onClick={() => {
-                                    if (window.confirm(`Delete department "${dept.name}"? This will fail if users are assigned to it.`)) {
+                                onClick={async () => {
+                                    const result = await SweetAlert.fire({
+                                        title: `Delete department "${dept.name}"?`,
+                                        text: 'This will fail if users are assigned to it.',
+                                        icon: 'warning',
+                                        showCancelButton: true,
+                                        confirmButtonText: 'Yes, delete',
+                                        cancelButtonText: 'Cancel',
+                                        reverseButtons: true
+                                    })
+                                    if (result.isConfirmed) {
                                         deleteMutation.mutate(dept.id)
                                     }
                                 }}
