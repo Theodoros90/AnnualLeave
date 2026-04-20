@@ -17,22 +17,16 @@ public static class ManagerAccessScopeResolver
         string userId,
         CancellationToken cancellationToken)
     {
-        var managedDepartmentIds = await context.UserDepartments
-            .Where(ud => ud.UserId == userId)
-            .Select(ud => ud.DepartmentId)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-
+        // Only include the department(s) from the manager's own EmployeeProfile(s)
         var managerProfiles = await context.EmployeeProfiles
             .Where(ep => ep.UserId == userId)
             .Select(ep => new { ep.Id, ep.DepartmentId })
             .ToListAsync(cancellationToken);
 
-        foreach (var profile in managerProfiles)
-        {
-            if (!managedDepartmentIds.Contains(profile.DepartmentId))
-                managedDepartmentIds.Add(profile.DepartmentId);
-        }
+        var managedDepartmentIds = managerProfiles
+            .Select(profile => profile.DepartmentId)
+            .Distinct()
+            .ToList();
 
         var managerProfileIds = managerProfiles
             .Select(profile => profile.Id)

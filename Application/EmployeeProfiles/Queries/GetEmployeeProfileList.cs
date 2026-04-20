@@ -35,6 +35,7 @@ public class GetEmployeeProfileList
                     request.RequestingUserId,
                     cancellationToken);
 
+                // Restrict to only employees in the manager's own department(s)
                 query = query.Where(ep =>
                     (managerScope.ManagedDepartmentIds.Contains(ep.DepartmentId)
                      || (ep.ManagerId != null && managerScope.ManagerProfileIds.Contains(ep.ManagerId))
