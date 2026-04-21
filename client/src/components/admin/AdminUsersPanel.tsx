@@ -21,6 +21,7 @@ import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import Alert from '@mui/material/Alert'
 import {
     createAdminUser,
     deleteAdminUser,
@@ -309,6 +310,7 @@ function AdminUsersPanel() {
                 error={createMutation.error}
                 onClose={() => setCreateOpen(false)}
                 onSubmit={(payload) => createMutation.mutate(payload)}
+                departments={departments}
             />
 
             <EditUserDialog
@@ -352,13 +354,17 @@ function EditUserDialog(props: {
 
     useEffect(() => {
         if (props.data) {
-            setEmail(props.data.user.email)
-            setDisplayName(props.data.user.displayName ?? '')
-            setRoles(props.data.user.roles)
-            setDepartmentId(props.data.profile?.departmentId ?? 0)
-            setJobTitle(props.data.profile?.jobTitle ?? '')
-            setAnnualLeaveEntitlement(props.data.profile?.annualLeaveEntitlement ?? 0)
+            // Use a microtask to avoid React's setState-in-render warning
+            Promise.resolve().then(() => {
+                setEmail(props.data!.user.email)
+                setDisplayName(props.data!.user.displayName ?? '')
+                setRoles(props.data!.user.roles)
+                setDepartmentId(props.data!.profile?.departmentId ?? 0)
+                setJobTitle(props.data!.profile?.jobTitle ?? '')
+                setAnnualLeaveEntitlement(props.data!.profile?.annualLeaveEntitlement ?? 0)
+            })
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [props.data])
 
     const toggleRole = (role: UserRole) => {
@@ -397,7 +403,11 @@ function EditUserDialog(props: {
                                 value={departmentId}
                                 onChange={(e) => setDepartmentId(Number(e.target.value))}
                                 fullWidth
+                                required
+                                error={departmentId === 0}
+                                helperText={departmentId === 0 ? 'Department is required' : ''}
                             >
+                                <MenuItem value={0} disabled>Select department</MenuItem>
                                 {props.departments.map((dept) => (
                                     <MenuItem key={dept.id} value={dept.id}>
                                         {dept.name} ({dept.code})
@@ -455,12 +465,14 @@ function CreateUserDialog(props: {
     onClose: () => void
     isPending: boolean
     error: unknown
-    onSubmit: (payload: { email: string; displayName: string; password: string; roles: UserRole[] }) => void
+    onSubmit: (payload: { email: string; displayName: string; password: string; roles: UserRole[]; departmentId: number }) => void
+    departments: Department[]
 }) {
     const [email, setEmail] = useState('')
     const [displayName, setDisplayName] = useState('')
     const [password, setPassword] = useState('')
     const [roles, setRoles] = useState<UserRole[]>(['Employee'])
+    const [departmentId, setDepartmentId] = useState<number>(0)
 
     const toggleRole = (role: UserRole) => {
         setRoles((current) =>
@@ -473,6 +485,7 @@ function CreateUserDialog(props: {
         setDisplayName('')
         setPassword('')
         setRoles(['Employee'])
+        setDepartmentId(0)
         props.onClose()
     }
 
@@ -484,6 +497,23 @@ function CreateUserDialog(props: {
                     <TextField label="Email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth required />
                     <TextField label="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} fullWidth />
                     <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} fullWidth required />
+                    <TextField
+                        select
+                        label="Department"
+                        value={departmentId}
+                        onChange={(e) => setDepartmentId(Number(e.target.value))}
+                        fullWidth
+                        required
+                        error={departmentId === 0}
+                        helperText={departmentId === 0 ? 'Department is required' : ''}
+                    >
+                        <MenuItem value={0} disabled>Select department</MenuItem>
+                        {props.departments.map((dept) => (
+                            <MenuItem key={dept.id} value={dept.id}>
+                                {dept.name} ({dept.code})
+                            </MenuItem>
+                        ))}
+                    </TextField>
                     <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                         {allRoles.map((role) => (
                             <FormControlLabel
@@ -500,8 +530,8 @@ function CreateUserDialog(props: {
                 <Button onClick={close} disabled={props.isPending}>Cancel</Button>
                 <Button
                     variant="contained"
-                    disabled={props.isPending}
-                    onClick={() => props.onSubmit({ email, displayName, password, roles })}
+                    disabled={props.isPending || !email || !password || departmentId === 0}
+                    onClick={() => props.onSubmit({ email, displayName, password, roles, departmentId })}
                 >
                     Create
                 </Button>

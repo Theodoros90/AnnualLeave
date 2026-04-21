@@ -48,6 +48,13 @@ public class AdminUsersController(
     [HttpPost]
     public async Task<ActionResult<AdminUserDto>> CreateUser(AdminCreateUserDto request)
     {
+        // Validate DepartmentId exists
+        var departmentExists = await context.Departments.AnyAsync(d => d.Id == request.DepartmentId);
+        if (!departmentExists)
+        {
+            return BadRequest(new { message = "Selected department does not exist." });
+        }
+
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
         {
             return BadRequest(new { message = "Email and password are required." });
@@ -87,10 +94,22 @@ public class AdminUsersController(
             });
         }
 
+        // Create EmployeeProfile with DepartmentId
+        var employeeProfile = new EmployeeProfile
+        {
+            UserId = user.Id,
+            DepartmentId = request.DepartmentId,
+        };
+        context.EmployeeProfiles.Add(employeeProfile);
+        await context.SaveChangesAsync();
+
         var addRolesResult = await userManager.AddToRolesAsync(user, selectedRoles);
         if (!addRolesResult.Succeeded)
         {
             await userManager.DeleteAsync(user);
+            // Optionally remove EmployeeProfile if user creation fails
+            context.EmployeeProfiles.Remove(employeeProfile);
+            await context.SaveChangesAsync();
             return BadRequest(new
             {
                 message = "Failed to assign user roles.",

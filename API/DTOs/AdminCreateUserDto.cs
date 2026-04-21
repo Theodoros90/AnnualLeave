@@ -18,4 +18,8 @@ public class AdminCreateUserDto
 
     [MinLength(1)]
     public List<string> Roles { get; set; } = new();
+
+    [Required]
+    [Range(1, int.MaxValue, ErrorMessage = "Department is required.")]
+    public int DepartmentId { get; set; }
 }

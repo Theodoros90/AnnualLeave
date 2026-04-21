@@ -14,6 +14,7 @@ export interface AdminCreateUserRequest {
     displayName: string
     password: string
     roles: UserRole[]
+    departmentId: number
 }
 
 export interface AdminUpdateUserRequest {
