@@ -99,6 +99,8 @@ public class AdminUsersController(
         {
             UserId = user.Id,
             DepartmentId = request.DepartmentId,
+            AnnualLeaveEntitlement = 20,
+            LeaveBalance = 20,
         };
         context.EmployeeProfiles.Add(employeeProfile);
         await context.SaveChangesAsync();
@@ -296,6 +298,37 @@ public class AdminUsersController(
         foreach (var row in assignedByRows)
         {
             row.AssignedByUserId = null;
+        }
+
+        // Null out ApproverId on timesheets approved by this user
+        var approvedTimesheets = await context.Timesheets
+            .Where(t => t.ApproverId == userId)
+            .ToListAsync(cancellationToken);
+        foreach (var ts in approvedTimesheets)
+        {
+            ts.ApproverId = null;
+            ts.ApprovedAt = null;
+        }
+
+        // Delete timesheet status history rows changed by this user (on any timesheet)
+        var timesheetStatusChangesByUser = await context.TimesheetStatusHistories
+            .Where(h => h.ChangedByUserId == userId)
+            .ToListAsync(cancellationToken);
+        if (timesheetStatusChangesByUser.Count > 0)
+        {
+            context.TimesheetStatusHistories.RemoveRange(timesheetStatusChangesByUser);
+        }
+
+        // Delete the user's own timesheets (cascade deletes entries and status histories)
+        if (!string.IsNullOrWhiteSpace(userProfileId))
+        {
+            var userTimesheets = await context.Timesheets
+                .Where(t => t.EmployeeId == userProfileId)
+                .ToListAsync(cancellationToken);
+            if (userTimesheets.Count > 0)
+            {
+                context.Timesheets.RemoveRange(userTimesheets);
+            }
         }
 
         var statusChangesByUser = await context.LeaveStatusHistories

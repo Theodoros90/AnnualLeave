@@ -1,130 +1,105 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import Alert from '@mui/material/Alert'
-import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
-import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
-import Divider from '@mui/material/Divider'
-import Link from '@mui/material/Link'
-import Paper from '@mui/material/Paper'
+import InputAdornment from '@mui/material/InputAdornment'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { forgotPassword } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
-import type { ForgotPasswordRequest } from '../../lib/types'
 
-const initialValues: ForgotPasswordRequest = {
-    email: '',
-}
-
-function getErrorMessage(error: unknown) {
-    return getApiErrorMessage(error, 'We could not send a password reset link. Please try again.')
-}
+const inputSx = {
+    '& .MuiOutlinedInput-root': {
+        borderRadius: '8px',
+        bgcolor: '#fff',
+        fontSize: 13,
+        '& fieldset': { borderColor: '#D1D5DB', borderWidth: '1.5px' },
+        '&:hover fieldset': { borderColor: '#9CA3AF', borderWidth: '1.5px' },
+        '&.Mui-focused': { boxShadow: '0 0 0 3px rgba(79,142,247,0.12)' },
+        '&.Mui-focused fieldset': { borderColor: '#4F8EF7', borderWidth: '1.5px' },
+    },
+    '& .MuiInputLabel-root': { fontSize: 12, fontWeight: 500, color: '#374151' },
+    '& .MuiInputLabel-root.Mui-focused': { color: '#4F8EF7' },
+} as const
 
 interface ForgotPasswordFormProps {
     onBackToLogin: () => void
 }
 
 function ForgotPasswordForm({ onBackToLogin }: ForgotPasswordFormProps) {
-    const [values, setValues] = useState<ForgotPasswordRequest>(initialValues)
+    const [email, setEmail] = useState('')
     const [submittedEmail, setSubmittedEmail] = useState('')
 
-    const mutation = useMutation({
-        mutationFn: forgotPassword,
-    })
+    const mutation = useMutation({ mutationFn: forgotPassword })
 
-    function handleChange(event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
-        const { name, value } = event.target
-        setValues((current) => ({ ...current, [name]: value }))
-    }
-
-    async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault()
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault()
         mutation.reset()
-
-        const email = values.email.trim()
-        await mutation.mutateAsync({ email })
-        setSubmittedEmail(email)
+        const trimmed = email.trim()
+        await mutation.mutateAsync({ email: trimmed })
+        setSubmittedEmail(trimmed)
     }
 
     return (
-        <Paper
-            elevation={3}
-            sx={{
-                p: { xs: 4, md: 5 },
-                borderRadius: 3,
-                bgcolor: 'background.paper',
-            }}
-        >
-            <Stack spacing={3} component="form" onSubmit={handleSubmit} noValidate>
-                <Stack spacing={2} alignItems="center">
-                    <Avatar
-                        variant="rounded"
-                        sx={{ width: 52, height: 52, bgcolor: 'primary.main', fontWeight: 700, fontSize: 18 }}
-                    >
-                        AL
-                    </Avatar>
-                    <Stack spacing={0.5} alignItems="center">
-                        <Typography variant="h5" fontWeight={700}>
-                            Reset your password
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" align="center">
-                            Enter your verified email address and we&apos;ll send you a secure reset link.
-                        </Typography>
-                    </Stack>
-                </Stack>
+        <Box component="form" onSubmit={handleSubmit} noValidate>
+            <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#1A1A2E', mb: 0.75 }}>Reset password</Typography>
+            <Typography sx={{ fontSize: 13, color: '#6B7280', mb: 2.5 }}>
+                Enter your email and we&apos;ll send you a reset link
+            </Typography>
 
-                <Divider />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: '10px 14px', borderRadius: '8px', bgcolor: '#EFF6FF', border: '1px solid #BFDBFE', mb: 2.5 }}>
+                <Typography sx={{ fontSize: 12, color: '#1D4ED8', lineHeight: 1.5 }}>
+                    ℹ️ Check your spam folder if you don&apos;t receive the email within a few minutes.
+                </Typography>
+            </Box>
 
+            {mutation.isSuccess && (
+                <Alert severity="success" sx={{ mb: 2, borderRadius: '8px', fontSize: 12 }}>
+                    If <strong>{submittedEmail}</strong> is registered and verified, a reset link has been sent.
+                </Alert>
+            )}
+
+            {mutation.isError && (
+                <Alert severity="error" sx={{ mb: 2, borderRadius: '8px', fontSize: 12 }}>
+                    {getApiErrorMessage(mutation.error, 'We could not send a reset link. Please try again.')}
+                </Alert>
+            )}
+
+            <Stack spacing={2} mb={2}>
                 <TextField
-                    label="Email"
-                    name="email"
+                    label="Email address"
                     type="email"
-                    value={values.email}
-                    onChange={handleChange}
-                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@company.com"
                     required
                     fullWidth
+                    disabled={mutation.isPending || mutation.isSuccess}
+                    autoComplete="email"
+                    InputProps={{
+                        startAdornment: <InputAdornment position="start"><Typography sx={{ fontSize: 15, lineHeight: 1 }}>✉️</Typography></InputAdornment>,
+                    }}
+                    sx={inputSx}
                 />
-
-                {mutation.isSuccess ? (
-                    <Alert severity="success">
-                        If <strong>{submittedEmail || 'that email address'}</strong> is registered and verified, a password reset link has been sent.
-                    </Alert>
-                ) : null}
-
-                {mutation.isError ? (
-                    <Alert severity="error">{getErrorMessage(mutation.error)}</Alert>
-                ) : null}
-
-                <Button
-                    type="submit"
-                    variant="contained"
-                    size="large"
-                    fullWidth
-                    disabled={mutation.isPending}
-                    startIcon={mutation.isPending ? <CircularProgress size={18} color="inherit" /> : null}
-                    sx={{ minHeight: 48, borderRadius: 2 }}
-                >
-                    {mutation.isPending ? 'Sending reset link...' : 'Send reset link'}
-                </Button>
-
-                <Box>
-                    <Typography variant="caption" color="text.secondary">
-                        For security, we only send reset links to verified email addresses.
-                    </Typography>
-                </Box>
-
-                <Typography variant="body2" align="center" color="text.secondary">
-                    Remembered your password?{' '}
-                    <Link component="button" type="button" variant="body2" onClick={onBackToLogin} underline="hover">
-                        Back to sign in
-                    </Link>
-                </Typography>
             </Stack>
-        </Paper>
+
+            <Box
+                component="button"
+                type="submit"
+                disabled={mutation.isPending || mutation.isSuccess}
+                sx={{ width: '100%', py: '11px', borderRadius: '8px', fontSize: 14, fontWeight: 600, cursor: mutation.isPending ? 'not-allowed' : 'pointer', border: 'none', bgcolor: '#4F8EF7', color: '#fff', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 2, transition: 'all 0.15s', '&:hover:not(:disabled)': { bgcolor: '#3A7AE4', transform: 'translateY(-1px)', boxShadow: '0 4px 12px rgba(79,142,247,0.3)' }, '&:disabled': { opacity: 0.7 } }}
+            >
+                {mutation.isPending ? <><CircularProgress size={16} sx={{ color: '#fff' }} /> Sending...</> : 'Send Reset Link'}
+            </Box>
+
+            <Typography sx={{ textAlign: 'center', fontSize: 13, color: '#6B7280' }}>
+                <Box component="button" type="button" onClick={onBackToLogin} sx={{ color: '#4F8EF7', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, p: 0, '&:hover': { textDecoration: 'underline' } }}>
+                    ← Back to Sign In
+                </Box>
+            </Typography>
+        </Box>
     )
 }
 

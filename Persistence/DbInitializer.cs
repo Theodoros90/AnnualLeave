@@ -19,10 +19,92 @@ public class DbInitializer
         await SeedRoles(roleManager, userManager);
         await SeedUsers(context, userManager);
         await SeedAnnualLeaves(context);
+        await SeedTimesheets(context);
         await SeedLeaveTypes(context);
         await SeedDepartments(context);
+        await SeedProjects(context);
         await SeedUserDepartments(context);
         await SeedEmployeeProfiles(context);
+        await SeedTimesheetEntries(context);
+        await FixZeroEntitlementProfiles(context);
+    }
+
+    private static async Task SeedTimesheets(AppDbContext context)
+    {
+        if (context.Timesheets.Any()) return;
+
+        // Get admin user and profile
+        var adminUser = context.Users.FirstOrDefault(u => u.Email == "admin@annualleave.com");
+        var adminProfile = context.EmployeeProfiles.FirstOrDefault(ep => ep.UserId == adminUser.Id);
+        var engineering = context.Departments.FirstOrDefault(d => d.Code == "ENG");
+        if (adminUser is null || adminProfile is null || engineering is null) return;
+
+        var timesheet = new Timesheet
+        {
+            EmployeeId = adminProfile.Id,
+            DepartmentId = engineering.Id,
+            PeriodStart = DateTime.UtcNow.Date.AddDays(-7),
+            PeriodEnd = DateTime.UtcNow.Date,
+            TotalHours = 40,
+            Status = TimesheetStatus.Draft,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await context.Timesheets.AddAsync(timesheet);
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task SeedTimesheetEntries(AppDbContext context)
+    {
+        if (context.TimesheetEntries.Any()) return;
+
+        var timesheet = context.Timesheets.FirstOrDefault();
+        var project = context.Projects.FirstOrDefault();
+        if (timesheet is null || project is null) return;
+
+
+        var entries = new List<TimesheetEntry>
+            {
+                new TimesheetEntry
+                {
+                    TimesheetId = timesheet.Id,
+                    ProjectId = project.Id,
+                    Date = DateTime.UtcNow.Date.AddDays(-2),
+                    HoursWorked = 8,
+                    Notes = "Worked on feature X."
+                },
+                new TimesheetEntry
+                {
+                    TimesheetId = timesheet.Id,
+                    ProjectId = project.Id,
+                    Date = DateTime.UtcNow.Date.AddDays(-1),
+                    HoursWorked = 7.5m,
+                    Notes = "Bug fixes and code review."
+                }
+            };
+
+        await context.TimesheetEntries.AddRangeAsync(entries);
+        await context.SaveChangesAsync();
+    }
+    private static async Task SeedProjects(AppDbContext context)
+    {
+        if (context.Projects.Any()) return;
+
+        var engineering = context.Departments.FirstOrDefault(d => d.Code == "ENG");
+        var hr = context.Departments.FirstOrDefault(d => d.Code == "HR");
+        var finance = context.Departments.FirstOrDefault(d => d.Code == "FIN");
+        if (engineering is null || hr is null || finance is null) return;
+
+
+        var projects = new List<Project>
+        {
+            new Project { Name = "Intranet Redesign", Code = "INTRA-001", DepartmentId = engineering.Id, IsActive = true },
+            new Project { Name = "Payroll Automation", Code = "PAY-002", DepartmentId = finance.Id, IsActive = true },
+            new Project { Name = "Recruitment Portal", Code = "REC-003", DepartmentId = hr.Id, IsActive = true }
+        };
+
+        await context.Projects.AddRangeAsync(projects);
+        await context.SaveChangesAsync();
     }
 
     private static async Task SeedRoles(RoleManager<Role> roleManager, UserManager<User> userManager)
@@ -100,9 +182,21 @@ public class DbInitializer
                 await userManager.DeleteAsync(deprecatedUser));
         }
 
+
+        // --- Custom test users: 2 managers, 4 employees each, all emails confirmed ---
         var users = new[]
         {
-            new { DisplayName = "Admin User", Email = "admin@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Admin }
+            new { DisplayName = "Admin User", Email = "admin@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Admin },
+            new { DisplayName = "Manager One", Email = "manager1@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Manager },
+            new { DisplayName = "Manager Two", Email = "manager2@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Manager },
+            new { DisplayName = "Employee 1A", Email = "employee1a@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Employee },
+            new { DisplayName = "Employee 1B", Email = "employee1b@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Employee },
+            new { DisplayName = "Employee 1C", Email = "employee1c@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Employee },
+            new { DisplayName = "Employee 1D", Email = "employee1d@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Employee },
+            new { DisplayName = "Employee 2A", Email = "employee2a@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Employee },
+            new { DisplayName = "Employee 2B", Email = "employee2b@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Employee },
+            new { DisplayName = "Employee 2C", Email = "employee2c@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Employee },
+            new { DisplayName = "Employee 2D", Email = "employee2d@annualleave.com", LegacyEmail = (string?)null, Role = AppRoles.Employee },
         };
 
         foreach (var u in users)
@@ -157,27 +251,27 @@ public class DbInitializer
 
                 // Keep seeded users deterministic across environments.
                 await EnsurePassword(userManager, existingUser);
-
-                continue;
             }
-
-            var user = new User
+            else
             {
-                DisplayName = u.DisplayName,
-                UserName = u.Email,
-                Email = u.Email,
-                EmailConfirmed = true
-            };
+                var user = new User
+                {
+                    DisplayName = u.DisplayName,
+                    UserName = u.Email,
+                    Email = u.Email,
+                    EmailConfirmed = true
+                };
 
-            var createResult = await userManager.CreateAsync(user, DefaultSeedPassword);
-            if (!createResult.Succeeded)
-            {
-                throw new InvalidOperationException($"Failed to create seed user '{u.Email}': {string.Join(", ", createResult.Errors.Select(e => e.Description))}");
+                var createResult = await userManager.CreateAsync(user, DefaultSeedPassword);
+                if (!createResult.Succeeded)
+                {
+                    throw new InvalidOperationException($"Failed to create seed user '{u.Email}': {string.Join(", ", createResult.Errors.Select(e => e.Description))}");
+                }
+
+                await EnsureIdentitySucceeded(
+                    () => $"Failed to add '{u.Email}' to role '{u.Role}'.",
+                    await userManager.AddToRoleAsync(user, u.Role));
             }
-
-            await EnsureIdentitySucceeded(
-                () => $"Failed to add '{u.Email}' to role '{u.Role}'.",
-                await userManager.AddToRoleAsync(user, u.Role));
         }
     }
 
@@ -395,13 +489,21 @@ public class DbInitializer
         if (context.EmployeeProfiles.Any()) return;
 
         var adminUser = context.Users.FirstOrDefault(u => u.Email == "admin@annualleave.com");
-        var managerUser = context.Users.FirstOrDefault(u => u.Email == "manager@annualleave.com");
-        var employeeUser = context.Users.FirstOrDefault(u => u.Email == "employee@annualleave.com");
-        if (adminUser is null || managerUser is null || employeeUser is null) return;
+        var manager1 = context.Users.FirstOrDefault(u => u.Email == "manager1@annualleave.com");
+        var manager2 = context.Users.FirstOrDefault(u => u.Email == "manager2@annualleave.com");
+        var emp1a = context.Users.FirstOrDefault(u => u.Email == "employee1a@annualleave.com");
+        var emp1b = context.Users.FirstOrDefault(u => u.Email == "employee1b@annualleave.com");
+        var emp1c = context.Users.FirstOrDefault(u => u.Email == "employee1c@annualleave.com");
+        var emp1d = context.Users.FirstOrDefault(u => u.Email == "employee1d@annualleave.com");
+        var emp2a = context.Users.FirstOrDefault(u => u.Email == "employee2a@annualleave.com");
+        var emp2b = context.Users.FirstOrDefault(u => u.Email == "employee2b@annualleave.com");
+        var emp2c = context.Users.FirstOrDefault(u => u.Email == "employee2c@annualleave.com");
+        var emp2d = context.Users.FirstOrDefault(u => u.Email == "employee2d@annualleave.com");
 
         var engineering = context.Departments.FirstOrDefault(d => d.Code == "ENG");
         var hr = context.Departments.FirstOrDefault(d => d.Code == "HR");
-        if (engineering is null || hr is null) return;
+        var finance = context.Departments.FirstOrDefault(d => d.Code == "FIN");
+        if (engineering is null || hr is null || finance is null) return;
 
         // Admin profile — no manager (top of hierarchy)
         var adminProfile = new EmployeeProfile
@@ -411,35 +513,60 @@ public class DbInitializer
             DepartmentId = engineering.Id,
             ManagerId = null,
             JobTitle = "Engineering Manager",
+            AnnualLeaveEntitlement = 20,
             CreatedAt = DateTime.UtcNow
         };
 
-        // Manager reports to Admin
-        var managerProfile = new EmployeeProfile
+        // Manager 1 (Engineering)
+        var manager1Profile = new EmployeeProfile
         {
             Id = Guid.NewGuid().ToString(),
-            UserId = managerUser.Id,
+            UserId = manager1.Id,
             DepartmentId = engineering.Id,
             ManagerId = adminProfile.Id,
             JobTitle = "Engineering Team Lead",
+            AnnualLeaveEntitlement = 20,
             CreatedAt = DateTime.UtcNow
         };
 
-        // Employee in HR, reports to Admin
-        var employeeProfile = new EmployeeProfile
+        // Manager 2 (Finance)
+        var manager2Profile = new EmployeeProfile
         {
             Id = Guid.NewGuid().ToString(),
-            UserId = employeeUser.Id,
-            DepartmentId = hr.Id,
+            UserId = manager2.Id,
+            DepartmentId = finance.Id,
             ManagerId = adminProfile.Id,
-            JobTitle = "HR Coordinator",
+            JobTitle = "Finance Team Lead",
+            AnnualLeaveEntitlement = 20,
             CreatedAt = DateTime.UtcNow
         };
 
-        await context.EmployeeProfiles.AddRangeAsync(adminProfile, managerProfile, employeeProfile);
+        // Employees under Manager 1 (Engineering)
+        var emp1Profiles = new[]
+        {
+            new EmployeeProfile { Id = Guid.NewGuid().ToString(), UserId = emp1a.Id, DepartmentId = engineering.Id, ManagerId = manager1Profile.Id, JobTitle = "Engineer", AnnualLeaveEntitlement = 20, CreatedAt = DateTime.UtcNow },
+            new EmployeeProfile { Id = Guid.NewGuid().ToString(), UserId = emp1b.Id, DepartmentId = engineering.Id, ManagerId = manager1Profile.Id, JobTitle = "Engineer", AnnualLeaveEntitlement = 20, CreatedAt = DateTime.UtcNow },
+            new EmployeeProfile { Id = Guid.NewGuid().ToString(), UserId = emp1c.Id, DepartmentId = engineering.Id, ManagerId = manager1Profile.Id, JobTitle = "Engineer", AnnualLeaveEntitlement = 20, CreatedAt = DateTime.UtcNow },
+            new EmployeeProfile { Id = Guid.NewGuid().ToString(), UserId = emp1d.Id, DepartmentId = engineering.Id, ManagerId = manager1Profile.Id, JobTitle = "Engineer", AnnualLeaveEntitlement = 20, CreatedAt = DateTime.UtcNow },
+        };
+
+        // Employees under Manager 2 (Finance)
+        var emp2Profiles = new[]
+        {
+            new EmployeeProfile { Id = Guid.NewGuid().ToString(), UserId = emp2a.Id, DepartmentId = finance.Id, ManagerId = manager2Profile.Id, JobTitle = "Accountant", AnnualLeaveEntitlement = 20, CreatedAt = DateTime.UtcNow },
+            new EmployeeProfile { Id = Guid.NewGuid().ToString(), UserId = emp2b.Id, DepartmentId = finance.Id, ManagerId = manager2Profile.Id, JobTitle = "Accountant", AnnualLeaveEntitlement = 20, CreatedAt = DateTime.UtcNow },
+            new EmployeeProfile { Id = Guid.NewGuid().ToString(), UserId = emp2c.Id, DepartmentId = finance.Id, ManagerId = manager2Profile.Id, JobTitle = "Accountant", AnnualLeaveEntitlement = 20, CreatedAt = DateTime.UtcNow },
+            new EmployeeProfile { Id = Guid.NewGuid().ToString(), UserId = emp2d.Id, DepartmentId = finance.Id, ManagerId = manager2Profile.Id, JobTitle = "Accountant", AnnualLeaveEntitlement = 20, CreatedAt = DateTime.UtcNow },
+        };
+
+        await context.EmployeeProfiles.AddRangeAsync(adminProfile, manager1Profile, manager2Profile);
+        await context.EmployeeProfiles.AddRangeAsync(emp1Profiles);
+        await context.EmployeeProfiles.AddRangeAsync(emp2Profiles);
         await context.SaveChangesAsync();
 
-        var profiles = new[] { adminProfile, managerProfile, employeeProfile };
+        var profiles = new List<EmployeeProfile> { adminProfile, manager1Profile, manager2Profile };
+        profiles.AddRange(emp1Profiles);
+        profiles.AddRange(emp2Profiles);
         foreach (var profile in profiles)
         {
             await context.Entry(profile).ReloadAsync();
@@ -449,4 +576,24 @@ public class DbInitializer
         await context.SaveChangesAsync();
     }
 
+    // Runs on every startup — brings any profile with entitlement=0 up to 20 days.
+    private static async Task FixZeroEntitlementProfiles(AppDbContext context)
+    {
+        var profiles = await context.EmployeeProfiles
+            .Where(ep => ep.AnnualLeaveEntitlement == 0)
+            .ToListAsync();
+
+        if (profiles.Count == 0) return;
+
+        foreach (var profile in profiles)
+        {
+            profile.AnnualLeaveEntitlement = 20;
+            profile.LeaveBalance = 20;
+        }
+
+        await context.SaveChangesAsync();
+    }
+
 }
+
+

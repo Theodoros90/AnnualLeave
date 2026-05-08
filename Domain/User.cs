@@ -15,4 +15,6 @@ public class User : IdentityUser
     public ICollection<UserDepartment> UserDepartments { get; set; } = new List<UserDepartment>();
     public ICollection<UserDepartment> AssignedUserDepartments { get; set; } = new List<UserDepartment>();
     public EmployeeProfile? EmployeeProfile { get; set; }
+    public ICollection<Timesheet> ApprovedTimesheets { get; set; } = new List<Timesheet>();
+    public ICollection<TimesheetStatusHistory> ChangedTimesheetStatuses { get; set; } = new List<TimesheetStatusHistory>();
 }

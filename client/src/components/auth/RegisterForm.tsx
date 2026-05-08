@@ -1,454 +1,357 @@
-import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { useQuery } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import Alert from '@mui/material/Alert'
-import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
-import type { SxProps, Theme } from '@mui/material/styles'
-import VisibilityOffRoundedIcon from '@mui/icons-material/VisibilityOffRounded'
-import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
-import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
-import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
 import InputAdornment from '@mui/material/InputAdornment'
-import Link from '@mui/material/Link'
-import MenuItem from '@mui/material/MenuItem'
-import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import VisibilityOffRoundedIcon from '@mui/icons-material/VisibilityOffRounded'
+import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
 import { getDepartments } from '../../lib/api'
+import { apiBaseUrl } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
-import type { Department, RegisterRequest } from '../../lib/types'
-
-const initialValues: RegisterRequest = {
-    email: '',
-    password: '',
-    displayName: '',
-    departmentId: 0,
-}
+import type { Department } from '../../lib/types'
 
 const socialReturnUrl = encodeURIComponent(`${window.location.origin}/#dashboard`)
-const googleLoginUrl = `https://localhost:5001/api/account/external-login/google?returnUrl=${socialReturnUrl}`
-const githubLoginUrl = `https://localhost:5001/api/account/external-login/github?returnUrl=${socialReturnUrl}`
+const googleLoginUrl = `${apiBaseUrl}/account/external-login/google?returnUrl=${socialReturnUrl}`
+const githubLoginUrl = `${apiBaseUrl}/account/external-login/github?returnUrl=${socialReturnUrl}`
 
-const socialButtonSx: SxProps<Theme> = {
-    minHeight: 41,
-    borderRadius: 2,
-    justifyContent: 'flex-start',
-    textTransform: 'none',
-    fontWeight: 600,
-    color: 'text.primary',
-    borderColor: 'rgba(15, 23, 42, 0.12)',
-    bgcolor: 'rgba(255, 255, 255, 0.78)',
-    px: 1.25,
-    transition: 'border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease',
-    '& .MuiButton-startIcon': {
-        marginRight: 1,
-    },
-    '&:hover': {
-        borderColor: 'rgba(15, 23, 42, 0.18)',
-        bgcolor: 'rgba(248, 250, 252, 0.96)',
-        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06)',
-    },
-    '&:focus-visible': {
-        outline: 'none',
-        boxShadow: '0 0 0 3px rgba(15,118,110,0.12)',
-    },
-}
-
-const authInputSx: SxProps<Theme> = {
-    '& .MuiInputLabel-root': {
-        color: 'text.secondary',
-        transition: 'color 0.18s ease',
-    },
-    '& .MuiInputLabel-root.Mui-focused': {
-        color: 'primary.main',
-    },
-    '& .MuiInputLabel-root.Mui-error': {
-        color: 'error.main',
-    },
-    '& .MuiInputLabel-root.MuiInputLabel-shrink': {
-        transform: 'translate(14px, -8px) scale(0.75)',
-    },
+const inputSx = {
     '& .MuiOutlinedInput-root': {
-        borderRadius: 2,
-        bgcolor: 'rgba(248, 250, 252, 0.88)',
-        transition: 'background-color 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease',
-        '& fieldset': {
-            borderColor: 'rgba(15, 23, 42, 0.12)',
-        },
-        '&:hover': {
-            bgcolor: 'rgba(248, 250, 252, 0.96)',
-        },
-        '&:hover fieldset': {
-            borderColor: 'rgba(15, 23, 42, 0.18)',
-        },
-        '&.Mui-focused': {
-            bgcolor: '#fff',
-            boxShadow: '0 0 0 3px rgba(15,118,110,0.10)',
-        },
-        '&.Mui-focused fieldset': {
-            borderColor: 'primary.main',
-            borderWidth: 1,
-        },
-        '&.Mui-error': {
-            bgcolor: 'rgba(254, 242, 242, 0.7)',
-        },
-        '&.Mui-error fieldset': {
-            borderColor: 'rgba(220, 38, 38, 0.45)',
-        },
-        '&.Mui-error.Mui-focused': {
-            boxShadow: '0 0 0 3px rgba(220,38,38,0.08)',
-        },
+        borderRadius: '8px',
+        bgcolor: '#fff',
+        fontSize: 13,
+        '& fieldset': { borderColor: '#D1D5DB', borderWidth: '1.5px' },
+        '&:hover fieldset': { borderColor: '#9CA3AF', borderWidth: '1.5px' },
+        '&.Mui-focused': { boxShadow: '0 0 0 3px rgba(79,142,247,0.12)' },
+        '&.Mui-focused fieldset': { borderColor: '#4F8EF7', borderWidth: '1.5px' },
     },
+    '& .MuiInputLabel-root': { fontSize: 12, fontWeight: 500, color: '#374151' },
+    '& .MuiInputLabel-root.Mui-focused': { color: '#4F8EF7' },
+} as const
+
+function getPasswordScore(pw: string) {
+    let score = 0
+    if (pw.length >= 8) score++
+    if (/[A-Z]/.test(pw)) score++
+    if (/[0-9]/.test(pw)) score++
+    if (/[^A-Za-z0-9]/.test(pw)) score++
+    return score
 }
 
-const primaryButtonSx: SxProps<Theme> = {
-    minHeight: 42,
-    borderRadius: 2,
-    py: 0.85,
-    fontWeight: 700,
-    boxShadow: 'none',
-    transition: 'transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease',
-    '&:hover': {
-        boxShadow: '0 6px 16px rgba(15,118,110,0.18)',
-        transform: 'translateY(-1px)',
-    },
-    '&:focus-visible': {
-        outline: 'none',
-        boxShadow: '0 0 0 3px rgba(15,118,110,0.14)',
-    },
-    '&.Mui-disabled': {
-        color: 'rgba(255,255,255,0.82)',
-        bgcolor: 'rgba(15,118,110,0.6)',
-    },
+function PasswordStrength({ password }: { password: string }) {
+    const score = getPasswordScore(password)
+    if (!password) return null
+
+    const barColor = score <= 1 ? '#FF4D4F' : score <= 2 ? '#F59E0B' : '#22C47A'
+    const labels = ['', 'Weak', 'Fair', 'Good', 'Strong']
+    const labelColor = score <= 1 ? '#FF4D4F' : score <= 2 ? '#F59E0B' : '#22C47A'
+
+    return (
+        <Box sx={{ mt: 0.75 }}>
+            <Box sx={{ display: 'flex', gap: '4px', mb: 0.5 }}>
+                {[1, 2, 3, 4].map((i) => (
+                    <Box
+                        key={i}
+                        sx={{
+                            flex: 1,
+                            height: '3px',
+                            borderRadius: '2px',
+                            bgcolor: i <= score ? barColor : '#E4E6EA',
+                            transition: 'background 0.2s',
+                        }}
+                    />
+                ))}
+            </Box>
+            <Typography sx={{ fontSize: 11, color: labelColor }}>
+                Password strength: {labels[score]}
+            </Typography>
+        </Box>
+    )
 }
 
 function GoogleIcon() {
     return (
-        <Box
-            component="svg"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            sx={{ width: 20, height: 20 }}
-        >
-            <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.3-.8 2.3-1.7 3l2.8 2.2c1.7-1.5 2.6-3.8 2.6-6.5 0-.6-.1-1.1-.2-1.6H12Z" />
-            <path fill="#34A853" d="M12 21c2.4 0 4.4-.8 5.9-2.1l-2.8-2.2c-.8.5-1.8.9-3.1.9-2.4 0-4.4-1.6-5.2-3.8l-2.9 2.2C5.4 19 8.4 21 12 21Z" />
-            <path fill="#FBBC05" d="M6.8 13.8c-.2-.5-.3-1.1-.3-1.8s.1-1.2.3-1.8L3.9 8C3.3 9.2 3 10.6 3 12s.3 2.8.9 4l2.9-2.2Z" />
-            <path fill="#4285F4" d="M12 6.4c1.3 0 2.5.5 3.5 1.4l2.6-2.6C16.4 3.7 14.4 3 12 3 8.4 3 5.4 5 3.9 8l2.9 2.2c.8-2.2 2.8-3.8 5.2-3.8Z" />
+        <Box component="svg" viewBox="0 0 24 24" sx={{ width: 18, height: 18, flexShrink: 0 }}>
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
         </Box>
     )
 }
 
 function GitHubIcon() {
     return (
-        <Box
-            component="svg"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            sx={{ width: 20, height: 20 }}
-        >
-            <path
-                fill="currentColor"
-                d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.66-.22.66-.49 0-.24-.01-1.03-.01-1.87-2.78.62-3.37-1.21-3.37-1.21-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.05 1.53 1.05.9 1.57 2.35 1.12 2.92.86.09-.67.35-1.12.63-1.38-2.22-.26-4.55-1.14-4.55-5.08 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.73 0 0 .84-.27 2.75 1.05A9.32 9.32 0 0 1 12 6.84c.85 0 1.71.12 2.51.35 1.9-1.32 2.74-1.05 2.74-1.05.55 1.42.2 2.47.1 2.73.64.72 1.03 1.63 1.03 2.75 0 3.95-2.33 4.81-4.56 5.07.36.32.68.95.68 1.92 0 1.39-.01 2.5-.01 2.84 0 .27.17.6.67.49A10.25 10.25 0 0 0 22 12.23C22 6.58 17.52 2 12 2Z"
-            />
+        <Box component="svg" viewBox="0 0 24 24" sx={{ width: 18, height: 18, flexShrink: 0, fill: 'currentColor' }}>
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
         </Box>
     )
 }
 
-function getErrorMessage(error: unknown) {
-    return getApiErrorMessage(error, 'Unable to create your account. Please review the form and try again.')
-}
-
 interface RegisterFormProps {
-    onSwitch: () => void
+    onSwitchToLogin: () => void
 }
 
-function RegisterForm({ onSwitch }: RegisterFormProps) {
+function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
     const { authStore } = useStore()
-    const [values, setValues] = useState<RegisterRequest>(initialValues)
-    const [departmentError, setDepartmentError] = useState('')
-    const [registeredEmail, setRegisteredEmail] = useState('')
+    const [firstName, setFirstName] = useState('')
+    const [lastName, setLastName] = useState('')
+    const [email, setEmail] = useState('')
+    const [departmentId, setDepartmentId] = useState(0)
+    const [password, setPassword] = useState('')
+    const [confirmPassword, setConfirmPassword] = useState('')
     const [showPassword, setShowPassword] = useState(false)
+    const [showConfirm, setShowConfirm] = useState(false)
+    const [termsAccepted, setTermsAccepted] = useState(false)
+    const [registeredEmail, setRegisteredEmail] = useState('')
 
-    const { data: departments = [], isLoading: isLoadingDepartments, isError: isDepartmentsError } = useQuery({
+    const { data: departments = [], isLoading: deptsLoading, isError: deptsError } = useQuery({
         queryKey: ['departments'],
         queryFn: getDepartments,
     })
+    const activeDepts = useMemo(() => departments.filter((d: Department) => d.isActive), [departments])
 
-    const activeDepartments = departments.filter((department: Department) => department.isActive)
+    const mutation = useMutation({ mutationFn: authStore.signUp })
 
-    const mutation = useMutation({
-        mutationFn: authStore.signUp,
-    })
-
-    function handleChange(
-        event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-    ) {
-        const { name, value } = event.target
-        setValues((current) => ({
-            ...current,
-            [name]: name === 'departmentId' ? Number(value) : value,
-        }))
-
-        if (name === 'departmentId') {
-            setDepartmentError('')
-        }
-    }
-
-    function handleTogglePasswordVisibility() {
-        setShowPassword((current) => !current)
-    }
-
-    async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault()
-        if (!values.departmentId) {
-            setDepartmentError('Department is required.')
-            return
-        }
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault()
+        if (!termsAccepted) return
+        if (password !== confirmPassword) return
+        if (!departmentId) return
 
         mutation.reset()
         setRegisteredEmail('')
 
-        const submittedEmail = values.email.trim()
-        const response = await mutation.mutateAsync(values)
+        const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ')
+        const submittedEmail = email.trim()
+        const response = await mutation.mutateAsync({ email: submittedEmail, password, displayName, departmentId })
 
-        // If registration failed to send verification email, do not show success
-        if (response && response.verificationEmailSent === false) {
-            setRegisteredEmail('')
-            setDepartmentError('')
-            setValues(initialValues)
-            return
-        }
+        if (response && response.verificationEmailSent === false) return
 
         setRegisteredEmail(submittedEmail)
-        setDepartmentError('')
-        setValues(initialValues)
+        setFirstName(''); setLastName(''); setEmail(''); setDepartmentId(0); setPassword(''); setConfirmPassword(''); setTermsAccepted(false)
+    }
+
+    const pwMismatch = confirmPassword.length > 0 && password !== confirmPassword
+
+    if (mutation.isSuccess && mutation.data?.verificationEmailSent !== false && registeredEmail) {
+        return (
+            <Box sx={{ textAlign: 'center', py: 2.5 }}>
+                <Typography sx={{ fontSize: 48, mb: 1.5 }}>✅</Typography>
+                <Typography sx={{ fontSize: 18, fontWeight: 700, color: '#1A1A2E', mb: 1 }}>Account created!</Typography>
+                <Typography sx={{ fontSize: 13, color: '#6B7280', lineHeight: 1.6, mb: 2.5 }}>
+                    Your account is pending email verification.<br />
+                    Please check <strong>{registeredEmail}</strong> and click the link to activate.
+                </Typography>
+                <Box
+                    component="button"
+                    onClick={onSwitchToLogin}
+                    sx={{ width: '100%', py: '11px', borderRadius: '8px', fontSize: 14, fontWeight: 600, cursor: 'pointer', border: 'none', bgcolor: '#4F8EF7', color: '#fff', fontFamily: 'inherit', transition: 'all 0.15s', '&:hover': { bgcolor: '#3A7AE4' } }}
+                >
+                    Back to Sign In
+                </Box>
+            </Box>
+        )
     }
 
     return (
-        <Paper
-            elevation={3}
-            sx={{
-                p: { xs: 3, md: 3.5 },
-                borderRadius: 3,
-                bgcolor: 'background.paper',
-            }}
-        >
-            <Stack spacing={2.1} component="form" onSubmit={handleSubmit} noValidate aria-busy={mutation.isPending}>
-                <Stack spacing={1.25} alignItems="center">
-                    <Avatar
-                        variant="rounded"
-                        sx={{ width: 48, height: 48, bgcolor: 'primary.main', fontWeight: 700, fontSize: 17 }}
-                    >
-                        AL
-                    </Avatar>
-                    <Stack spacing={0.35} alignItems="center">
-                        <Typography variant="h5" fontWeight={700} lineHeight={1.15}>
-                            Create an account
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.35 }}>
-                            Join Annual Leave and manage your time off
-                        </Typography>
-                    </Stack>
-                </Stack>
+        <Box component="form" onSubmit={handleSubmit} noValidate>
+            <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#1A1A2E', mb: 0.75 }}>Create your account</Typography>
+            <Typography sx={{ fontSize: 13, color: '#6B7280', mb: 3 }}>Join WorkFlow to manage your leave and timesheets</Typography>
 
-                <Divider />
+            {/* Social */}
+            <Stack spacing={1.25} mb={2.5}>
+                <Box
+                    component="a"
+                    href={githubLoginUrl}
+                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.25, py: '10px', px: 2, borderRadius: '8px', fontSize: 13, fontWeight: 500, textDecoration: 'none', bgcolor: '#24292F', color: '#fff', border: '1px solid #24292F', transition: 'all 0.15s', '&:hover': { bgcolor: '#1a1f24' } }}
+                >
+                    <GitHubIcon />
+                    Sign up with GitHub
+                </Box>
+                <Box
+                    component="a"
+                    href={googleLoginUrl}
+                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.25, py: '10px', px: 2, borderRadius: '8px', fontSize: 13, fontWeight: 500, textDecoration: 'none', bgcolor: '#fff', color: '#374151', border: '1px solid #D1D5DB', transition: 'all 0.15s', '&:hover': { bgcolor: '#F9FAFB', borderColor: '#9CA3AF' } }}
+                >
+                    <GoogleIcon />
+                    Sign up with Google
+                </Box>
+            </Stack>
 
-                <Stack spacing={1}>
-                    <Button
-                        component="a"
-                        href={googleLoginUrl}
-                        variant="outlined"
-                        fullWidth
-                        startIcon={<GoogleIcon />}
-                        sx={socialButtonSx}
-                    >
-                        Continue with Google
-                    </Button>
-                    <Button
-                        component="a"
-                        href={githubLoginUrl}
-                        variant="outlined"
-                        fullWidth
-                        startIcon={<GitHubIcon />}
-                        sx={socialButtonSx}
-                    >
-                        Continue with GitHub
-                    </Button>
-                </Stack>
+            {/* Divider */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
+                <Box sx={{ flex: 1, height: '1px', bgcolor: '#E4E6EA' }} />
+                <Typography sx={{ fontSize: 12, color: '#9CA3AF', whiteSpace: 'nowrap' }}>or register with email</Typography>
+                <Box sx={{ flex: 1, height: '1px', bgcolor: '#E4E6EA' }} />
+            </Box>
 
-                <Divider
+            {/* First / Last Name */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mb: 1.75 }}>
+                <TextField
+                    label="First Name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="John"
+                    required
+                    fullWidth
+                    disabled={mutation.isPending}
+                    autoComplete="given-name"
+                    sx={inputSx}
+                />
+                <TextField
+                    label="Last Name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Doe"
+                    required
+                    fullWidth
+                    disabled={mutation.isPending}
+                    autoComplete="family-name"
+                    sx={inputSx}
+                />
+            </Box>
+
+            <Stack spacing={1.75} mb={1.75}>
+                <TextField
+                    label="Work Email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@company.com"
+                    required
+                    fullWidth
+                    disabled={mutation.isPending}
+                    autoComplete="email"
+                    InputProps={{
+                        startAdornment: <InputAdornment position="start"><Typography sx={{ fontSize: 15, lineHeight: 1 }}>✉️</Typography></InputAdornment>,
+                    }}
+                    sx={inputSx}
+                />
+
+                <TextField
+                    select
+                    label="Department"
+                    value={departmentId || ''}
+                    onChange={(e) => setDepartmentId(Number(e.target.value))}
+                    required
+                    fullWidth
+                    disabled={mutation.isPending || deptsLoading}
+                    SelectProps={{ native: true }}
                     sx={{
-                        color: 'text.secondary',
-                        fontSize: 13,
-                        '&::before, &::after': {
-                            borderColor: 'rgba(15, 23, 42, 0.08)',
-                        },
+                        ...inputSx,
+                        '& select': { fontSize: 13, color: departmentId ? '#1A1A2E' : '#9CA3AF' },
                     }}
                 >
-                    Or sign up with email
-                </Divider>
+                    <option value="">Select your department…</option>
+                    {activeDepts.map((d: Department) => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                </TextField>
 
-                <Stack spacing={1}>
-                    <TextField
-                        label="Display name"
-                        name="displayName"
-                        value={values.displayName}
-                        onChange={handleChange}
-                        autoComplete="name"
-                        required
-                        fullWidth
-                        margin="dense"
-                        disabled={mutation.isPending}
-                        sx={authInputSx}
-                    />
-
-                    <TextField
-                        label="Email"
-                        name="email"
-                        type="email"
-                        value={values.email}
-                        onChange={handleChange}
-                        autoComplete="email"
-                        required
-                        fullWidth
-                        margin="dense"
-                        disabled={mutation.isPending}
-                        sx={authInputSx}
-                    />
-
+                <Box>
                     <TextField
                         label="Password"
-                        name="password"
                         type={showPassword ? 'text' : 'password'}
-                        value={values.password}
-                        onChange={handleChange}
-                        autoComplete="new-password"
-                        helperText="Use at least 6 characters."
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Create a strong password"
                         required
                         fullWidth
-                        margin="dense"
                         disabled={mutation.isPending}
-                        sx={authInputSx}
+                        autoComplete="new-password"
                         InputProps={{
+                            startAdornment: <InputAdornment position="start"><Typography sx={{ fontSize: 15, lineHeight: 1 }}>🔒</Typography></InputAdornment>,
                             endAdornment: (
                                 <InputAdornment position="end">
-                                    <IconButton
-                                        onClick={handleTogglePasswordVisibility}
-                                        onMouseDown={(event) => event.preventDefault()}
-                                        edge="end"
-                                        aria-label={showPassword ? 'Hide password' : 'Show password'}
-                                        aria-pressed={showPassword}
-                                        size="small"
-                                        sx={{
-                                            color: 'text.secondary',
-                                            '&:hover': {
-                                                bgcolor: 'rgba(15, 23, 42, 0.04)',
-                                            },
-                                        }}
-                                    >
-                                        {showPassword ? (
-                                            <VisibilityOffRoundedIcon fontSize="small" />
-                                        ) : (
-                                            <VisibilityRoundedIcon fontSize="small" />
-                                        )}
+                                    <IconButton size="small" onClick={() => setShowPassword((v) => !v)} onMouseDown={(e) => e.preventDefault()} edge="end" sx={{ color: '#9CA3AF' }}>
+                                        {showPassword ? <VisibilityOffRoundedIcon fontSize="small" /> : <VisibilityRoundedIcon fontSize="small" />}
                                     </IconButton>
                                 </InputAdornment>
                             ),
                         }}
+                        sx={inputSx}
                     />
-
-                    <TextField
-                        select
-                        label="Department"
-                        name="departmentId"
-                        value={values.departmentId ? String(values.departmentId) : ''}
-                        onChange={handleChange}
-                        required
-                        fullWidth
-                        margin="dense"
-                        disabled={mutation.isPending || isLoadingDepartments || activeDepartments.length === 0}
-                        error={Boolean(departmentError)}
-                        helperText={departmentError || (isLoadingDepartments ? 'Loading departments...' : 'Select your department.')}
-                        sx={authInputSx}
-                    >
-                        {activeDepartments.map((department) => (
-                            <MenuItem key={department.id} value={department.id}>
-                                {department.name}
-                            </MenuItem>
-                        ))}
-                    </TextField>
-                </Stack>
-
-                {isDepartmentsError ? (
-                    <Alert severity="error" variant="outlined" sx={{ borderRadius: 2, bgcolor: 'rgba(254, 242, 242, 0.82)' }}>
-                        Unable to load departments. Please try again.
-                    </Alert>
-                ) : null}
-
-                {mutation.isSuccess && mutation.data && mutation.data.verificationEmailSent !== false ? (
-                    <Alert severity="success" variant="outlined" sx={{ borderRadius: 2, bgcolor: 'rgba(236, 253, 245, 0.8)' }}>
-                        Account created successfully for <strong>{registeredEmail || 'your email address'}</strong>.
-                        {' '}Please check your inbox, click the verification link, and then sign in.
-                    </Alert>
-                ) : null}
-
-                {mutation.isSuccess && mutation.data && mutation.data.verificationEmailSent === false ? (
-                    <Alert severity="error" variant="outlined" sx={{ borderRadius: 2, bgcolor: 'rgba(254, 242, 242, 0.82)' }}>
-                        Registration failed: could not send verification email. Please try again later.
-                    </Alert>
-                ) : null}
-
-                {mutation.isError ? (
-                    <Alert severity="error" variant="outlined" sx={{ borderRadius: 2, bgcolor: 'rgba(254, 242, 242, 0.82)' }}>
-                        {getErrorMessage(mutation.error)}
-                    </Alert>
-                ) : null}
-
-                <Button
-                    type="submit"
-                    variant="contained"
-                    size="large"
-                    fullWidth
-                    disabled={mutation.isPending || isLoadingDepartments || activeDepartments.length === 0}
-                    startIcon={mutation.isPending ? <CircularProgress size={18} color="inherit" /> : null}
-                    sx={primaryButtonSx}
-                >
-                    {mutation.isPending ? 'Creating account...' : 'Create account'}
-                </Button>
-
-                <Box>
-                    <Typography variant="caption" color="text.secondary">
-                        New accounts are registered with the Employee role by default.
-                    </Typography>
+                    <PasswordStrength password={password} />
                 </Box>
 
-                <Typography variant="body2" align="center" color="text.secondary">
-                    Already have an account?{' '}
-                    <Link
-                        component="button"
-                        type="button"
-                        variant="body2"
-                        onClick={onSwitch}
-                        underline="hover"
-                        sx={{
-                            fontWeight: 500,
-                            textUnderlineOffset: '2px',
-                            transition: 'color 0.18s ease',
-                            '&:hover': {
-                                color: 'primary.main',
-                            },
-                        }}
-                    >
-                        Sign in
-                    </Link>
-                </Typography>
+                <TextField
+                    label="Confirm Password"
+                    type={showConfirm ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repeat your password"
+                    required
+                    fullWidth
+                    disabled={mutation.isPending}
+                    autoComplete="new-password"
+                    error={pwMismatch}
+                    helperText={pwMismatch ? 'Passwords do not match' : undefined}
+                    InputProps={{
+                        startAdornment: <InputAdornment position="start"><Typography sx={{ fontSize: 15, lineHeight: 1 }}>🔒</Typography></InputAdornment>,
+                        endAdornment: (
+                            <InputAdornment position="end">
+                                <IconButton size="small" onClick={() => setShowConfirm((v) => !v)} onMouseDown={(e) => e.preventDefault()} edge="end" sx={{ color: '#9CA3AF' }}>
+                                    {showConfirm ? <VisibilityOffRoundedIcon fontSize="small" /> : <VisibilityRoundedIcon fontSize="small" />}
+                                </IconButton>
+                            </InputAdornment>
+                        ),
+                    }}
+                    sx={inputSx}
+                />
             </Stack>
-        </Paper>
+
+            {/* Terms */}
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 2 }}>
+                <Box
+                    component="input"
+                    type="checkbox"
+                    id="terms"
+                    checked={termsAccepted}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTermsAccepted(e.target.checked)}
+                    sx={{ width: 15, height: 15, mt: '2px', flexShrink: 0, cursor: 'pointer', accentColor: '#4F8EF7' }}
+                />
+                <Typography component="label" htmlFor="terms" sx={{ fontSize: 12, color: '#6B7280', lineHeight: 1.5, cursor: 'pointer' }}>
+                    I agree to the{' '}
+                    <Box component="span" sx={{ color: '#4F8EF7' }}>Terms of Service</Box>
+                    {' '}and{' '}
+                    <Box component="span" sx={{ color: '#4F8EF7' }}>Privacy Policy</Box>
+                </Typography>
+            </Box>
+
+            {deptsError && <Alert severity="error" sx={{ mb: 1.5, borderRadius: '8px', fontSize: 12 }}>Unable to load departments. Please refresh.</Alert>}
+            {mutation.isError && (
+                <Alert severity="error" sx={{ mb: 1.5, borderRadius: '8px', fontSize: 12 }}>
+                    {getApiErrorMessage(mutation.error, 'Unable to create your account. Please try again.')}
+                </Alert>
+            )}
+            {mutation.isSuccess && mutation.data?.verificationEmailSent === false && (
+                <Alert severity="error" sx={{ mb: 1.5, borderRadius: '8px', fontSize: 12 }}>
+                    Registration failed: could not send verification email. Please try again later.
+                </Alert>
+            )}
+
+            <Box
+                component="button"
+                type="submit"
+                disabled={mutation.isPending || !termsAccepted || pwMismatch || !departmentId}
+                sx={{ width: '100%', py: '11px', borderRadius: '8px', fontSize: 14, fontWeight: 600, cursor: mutation.isPending ? 'not-allowed' : 'pointer', border: 'none', bgcolor: '#4F8EF7', color: '#fff', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 2, transition: 'all 0.15s', '&:hover:not(:disabled)': { bgcolor: '#3A7AE4', transform: 'translateY(-1px)', boxShadow: '0 4px 12px rgba(79,142,247,0.3)' }, '&:disabled': { opacity: 0.7 } }}
+            >
+                {mutation.isPending ? <><CircularProgress size={16} sx={{ color: '#fff' }} /> Creating account...</> : 'Create Account'}
+            </Box>
+
+            <Typography sx={{ textAlign: 'center', fontSize: 13, color: '#6B7280' }}>
+                Already have an account?{' '}
+                <Box component="button" type="button" onClick={onSwitchToLogin} sx={{ color: '#4F8EF7', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, p: 0, '&:hover': { textDecoration: 'underline' } }}>
+                    Sign in
+                </Box>
+            </Typography>
+        </Box>
     )
 }
 

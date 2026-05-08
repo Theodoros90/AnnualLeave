@@ -1,5 +1,6 @@
 export { default as DashboardHome } from './DashboardHome'
 export { default as MyLeavePage } from './MyLeavePage'
+export { default as ApplyLeavePage } from './ApplyLeavePage'
 export { default as TeamLeavePage } from './TeamLeavePage'
 export { default as AnnualLeaveCard } from './AnnualLeaveCard'
 export { default as AnnualLeaveForm } from './AnnualLeaveForm'

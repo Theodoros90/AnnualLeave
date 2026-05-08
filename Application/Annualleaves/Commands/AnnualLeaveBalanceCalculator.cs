@@ -18,6 +18,12 @@ internal static class AnnualLeaveBalanceCalculator
             return;
         }
 
+        // Entitlement of 0 means it has not been configured yet — skip the check.
+        if (employeeProfile.AnnualLeaveEntitlement <= 0)
+        {
+            return;
+        }
+
         foreach (var year in GetCoveredYears(annualLeave))
         {
             var requestedDays = GetBusinessDaysInYear(annualLeave, year);

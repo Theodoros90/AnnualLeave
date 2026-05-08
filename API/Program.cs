@@ -121,6 +121,16 @@ if (!string.IsNullOrWhiteSpace(googleClientId) && !string.IsNullOrWhiteSpace(goo
         options.SignInScheme = IdentityConstants.ExternalScheme;
         options.ClientId = googleClientId;
         options.ClientSecret = googleClientSecret;
+        options.CorrelationCookie.SameSite = SameSiteMode.Unspecified;
+        options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.Events.OnRemoteFailure = ctx =>
+        {
+            var baseUrl = builder.Configuration["AppUrls:ClientBaseUrl"]?.TrimEnd('/') ?? "http://localhost:5173";
+            var msg = Uri.EscapeDataString("Google sign-in failed. Please try again.");
+            ctx.Response.Redirect($"{baseUrl}/?authStatus=error&authMessage={msg}#login");
+            ctx.HandleResponse();
+            return Task.CompletedTask;
+        };
     });
 }
 
@@ -132,6 +142,16 @@ if (!string.IsNullOrWhiteSpace(githubClientId) && !string.IsNullOrWhiteSpace(git
         options.ClientId = githubClientId;
         options.ClientSecret = githubClientSecret;
         options.Scope.Add("user:email");
+        options.CorrelationCookie.SameSite = SameSiteMode.Unspecified;
+        options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.Events.OnRemoteFailure = ctx =>
+        {
+            var baseUrl = builder.Configuration["AppUrls:ClientBaseUrl"]?.TrimEnd('/') ?? "http://localhost:5173";
+            var msg = Uri.EscapeDataString("GitHub sign-in failed. Please try again.");
+            ctx.Response.Redirect($"{baseUrl}/?authStatus=error&authMessage={msg}#login");
+            ctx.HandleResponse();
+            return Task.CompletedTask;
+        };
     });
 }
 
@@ -164,6 +184,11 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<ValidationExceptionMiddleware>();
 app.UseMiddleware<RequestValidationMiddleware>();
 app.UseCors("ClientPolicy");
+app.UseCookiePolicy(new CookiePolicyOptions
+{
+    MinimumSameSitePolicy = SameSiteMode.Lax,
+    Secure = CookieSecurePolicy.SameAsRequest,
+});
 app.UseAuthentication();
 app.UseAuthorization();
 

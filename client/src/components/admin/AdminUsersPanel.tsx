@@ -1,27 +1,23 @@
-import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded'
-import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { SweetAlert } from '../ui'
-import Avatar from '@mui/material/Avatar'
+import { SweetAlert, AppDialog, AppDialogTitle, AppDialogContent, AppDialogActions, cancelBtnSx, saveBtnSx } from '../ui'
+import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Chip from '@mui/material/Chip'
+import Checkbox from '@mui/material/Checkbox'
 import CircularProgress from '@mui/material/CircularProgress'
-import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
-import DialogContent from '@mui/material/DialogContent'
-import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import FormControlLabel from '@mui/material/FormControlLabel'
-import Checkbox from '@mui/material/Checkbox'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import Alert from '@mui/material/Alert'
 import {
     createAdminUser,
     deleteAdminUser,
@@ -35,6 +31,80 @@ import {
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import type { AdminUser, Department, EmployeeProfile, UserRole } from '../../lib/types'
 
+const C_BORDER = '#E4E6EA'
+const C_HEADING = '#1A1A2E'
+const C_MUTED = '#6B7280'
+
+const TH = {
+    py: '10px',
+    px: '14px',
+    fontSize: 11,
+    fontWeight: 600,
+    color: C_MUTED,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    bgcolor: '#F9FAFB',
+    borderBottom: `1px solid ${C_BORDER}`,
+}
+
+const TD = {
+    py: '11px',
+    px: '14px',
+    fontSize: 13,
+    color: '#374151',
+    borderBottom: `1px solid #F3F4F6`,
+}
+
+const ROLE_COLORS: Record<UserRole, { bg: string; color: string }> = {
+    Admin:    { bg: '#FEE2E2', color: '#991B1B' },
+    Manager:  { bg: '#FEF3C7', color: '#92400E' },
+    Employee: { bg: '#EFF6FF', color: '#1D4ED8' },
+}
+
+function RoleBadge({ role }: { role: UserRole }) {
+    const s = ROLE_COLORS[role] ?? { bg: '#F3F4F6', color: '#6B7280' }
+    return (
+        <Box
+            component="span"
+            sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                px: 1.25,
+                py: 0.35,
+                borderRadius: '20px',
+                fontSize: 11,
+                fontWeight: 500,
+                bgcolor: s.bg,
+                color: s.color,
+                whiteSpace: 'nowrap',
+                mr: 0.5,
+            }}
+        >
+            {role}
+        </Box>
+    )
+}
+
+function DeptBadge({ dept }: { dept: string }) {
+    return (
+        <Box
+            component="span"
+            sx={{
+                display: 'inline-block',
+                bgcolor: '#EFF6FF',
+                color: '#1D4ED8',
+                borderRadius: '4px',
+                px: 1,
+                py: 0.25,
+                fontSize: 11,
+                fontWeight: 500,
+            }}
+        >
+            {dept}
+        </Box>
+    )
+}
+
 const allRoles: UserRole[] = ['Admin', 'Manager', 'Employee']
 const protectedSeedAdminEmail = 'admin@annualleave.com'
 
@@ -44,40 +114,6 @@ function getErrorMessage(error: unknown) {
 
 function isReadOnlyAdminUser(user: AdminUser) {
     return user.email.trim().toLowerCase() === protectedSeedAdminEmail
-}
-
-function ProtectedAdminBadge() {
-    return (
-        <Box
-            sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 1,
-                px: 1.25,
-                py: 0.625,
-                borderRadius: 999,
-                border: '1px solid rgba(25,118,210,0.24)',
-                bgcolor: 'rgba(25,118,210,0.08)',
-                alignSelf: { xs: 'flex-start', sm: 'center' },
-            }}
-        >
-            <AdminPanelSettingsRoundedIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-            <Box sx={{ minWidth: 0 }}>
-                <Typography variant="caption" sx={{ display: 'block', fontWeight: 700, lineHeight: 1.15, color: 'primary.dark' }}>
-                    Admin protected
-                </Typography>
-                <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.15, color: 'text.secondary' }}>
-                    System default · no row actions
-                </Typography>
-            </Box>
-        </Box>
-    )
-}
-
-function roleChipColor(role: UserRole): 'error' | 'warning' | 'success' {
-    if (role === 'Admin') return 'error'
-    if (role === 'Manager') return 'warning'
-    return 'success'
 }
 
 type EditData = { user: AdminUser; profile: EmployeeProfile | undefined }
@@ -121,13 +157,8 @@ function AdminUsersPanel() {
             jobTitle: string
             annualLeaveEntitlement: number
         }) => {
-            await updateAdminUser(payload.userId, {
-                email: payload.email,
-                displayName: payload.displayName,
-            })
-
+            await updateAdminUser(payload.userId, { email: payload.email, displayName: payload.displayName })
             await setAdminUserRoles(payload.userId, { roles: payload.roles })
-
             if (payload.profile) {
                 await updateEmployeeProfile({
                     id: payload.profile.id,
@@ -160,149 +191,176 @@ function AdminUsersPanel() {
     )
 
     const profilesByUserId = useMemo(
-        () => new Map(employeeProfiles.map((profile) => [profile.userId, profile])),
+        () => new Map(employeeProfiles.map((p) => [p.userId, p])),
         [employeeProfiles]
     )
 
     const departmentsById = useMemo(
-        () => new Map(departments.map((department) => [department.id, department.name])),
+        () => new Map(departments.map((d) => [d.id, d.name])),
         [departments]
     )
 
     return (
         <Stack spacing={2}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1.5}>
-                <Typography variant="body2" color="text.secondary">Manage user identities, roles, and profile settings.</Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                    <Chip label={`${sortedUsers.length} users`} size="small" variant="outlined" />
-                    <Button variant="contained" sx={{ textTransform: 'none', borderRadius: 999, px: 2.25 }} onClick={() => setCreateOpen(true)}>
-                        Create User
+            <Paper
+                elevation={0}
+                sx={{ bgcolor: '#fff', border: `1px solid ${C_BORDER}`, borderRadius: '10px', overflow: 'hidden' }}
+            >
+                {/* Card header */}
+                <Box
+                    sx={{
+                        px: '18px',
+                        py: '14px',
+                        borderBottom: `1px solid ${C_BORDER}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 2,
+                    }}
+                >
+                    <Typography sx={{ fontSize: 14, fontWeight: 600, color: C_HEADING }}>Users</Typography>
+                    <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => setCreateOpen(true)}
+                        sx={{
+                            fontSize: 12,
+                            py: '5px',
+                            px: 1.5,
+                            bgcolor: '#4F8EF7',
+                            '&:hover': { bgcolor: '#3A7AE4' },
+                            textTransform: 'none',
+                            boxShadow: 'none',
+                        }}
+                    >
+                        + New User
                     </Button>
-                </Stack>
-            </Stack>
-
-            {isLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-                    <CircularProgress />
                 </Box>
-            ) : null}
 
-            {isError ? <Alert severity="error">{getErrorMessage(error)}</Alert> : null}
+                {/* States */}
+                {isLoading && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                        <CircularProgress size={24} />
+                    </Box>
+                )}
+                {isError && (
+                    <Box sx={{ p: 2 }}>
+                        <Alert severity="error">{getErrorMessage(error)}</Alert>
+                    </Box>
+                )}
+                {!isLoading && !isError && sortedUsers.length === 0 && (
+                    <Box sx={{ textAlign: 'center', py: 6 }}>
+                        <Typography sx={{ fontSize: 13, color: '#9CA3AF' }}>No users found.</Typography>
+                    </Box>
+                )}
 
-            {!isLoading && !isError && sortedUsers.length === 0 ? (
-                <Paper elevation={0} sx={{ p: 3, border: '1px dashed', borderColor: 'divider' }}>
-                    <Typography color="text.secondary">No users found.</Typography>
-                </Paper>
-            ) : null}
+                {/* Table */}
+                {!isLoading && !isError && sortedUsers.length > 0 && (
+                    <Box sx={{ overflowX: 'auto' }}>
+                        <Table sx={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell sx={TH}>Name</TableCell>
+                                    <TableCell sx={TH}>Email</TableCell>
+                                    <TableCell sx={TH}>Role</TableCell>
+                                    <TableCell sx={TH}>Department</TableCell>
+                                    <TableCell sx={TH}>Leave Balance</TableCell>
+                                    <TableCell sx={TH}>Actions</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {sortedUsers.map((user) => {
+                                    const profile = profilesByUserId.get(user.id)
+                                    const deptName = profile?.departmentId
+                                        ? (departmentsById.get(profile.departmentId) ?? null)
+                                        : null
+                                    const isProtected = isReadOnlyAdminUser(user)
 
-            {!isLoading && !isError
-                ? sortedUsers.map((user) => {
-                    const isReadOnlyUser = isReadOnlyAdminUser(user)
-
-                    return (
-                        <Paper
-                            key={user.id}
-                            elevation={0}
-                            sx={{
-                                p: 2.5,
-                                border: '1px solid',
-                                borderColor: 'divider',
-                                borderLeft: '4px solid',
-                                borderLeftColor: 'rgba(15,118,110,0.55)',
-                                transition: 'border-color 0.15s, box-shadow 0.15s',
-                                '&:hover': { borderColor: 'rgba(15,118,110,0.35)', boxShadow: '0 8px 20px rgba(15,23,42,0.06)' },
-                            }}
-                        >
-                            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1}>
-                                <Stack direction="row" spacing={2} alignItems="center" flex={1}>
-                                    <Avatar
-                                        src={user.imageUrl}
-                                        alt={user.displayName || user.email}
-                                        sx={{ width: 48, height: 48, flexShrink: 0, fontSize: '1.2rem', fontWeight: 600 }}
-                                    >
-                                        {user.displayName?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
-                                    </Avatar>
-                                    <Box flex={1}>
-                                        <Stack direction="row" spacing={1} alignItems="center">
-                                            <Typography fontWeight={700}>{user.displayName || user.email}</Typography>
-                                            {user.roles.map((role) => (
-                                                <Chip key={`${user.id}-${role}`} label={role} size="small" color={roleChipColor(role)} variant="outlined" />
-                                            ))}
-                                        </Stack>
-                                        <Typography variant="caption" color="text.secondary">
-                                            {user.email}
-                                        </Typography>
-                                        {profilesByUserId.get(user.id) ? (
-                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
-                                                Department: {departmentsById.get(profilesByUserId.get(user.id)?.departmentId ?? 0) ?? 'Unassigned'} | Leave balance: {profilesByUserId.get(user.id)?.leaveBalance}
-                                            </Typography>
-                                        ) : null}
-                                    </Box>
-                                </Stack>
-                                {isReadOnlyUser ? (
-                                    <ProtectedAdminBadge />
-                                ) : (
-                                    <Stack direction="row" spacing={0.25} useFlexGap sx={{ flexWrap: 'wrap' }}>
-                                        <Button
-                                            size="small"
-                                            color="inherit"
-                                            variant="text"
-                                            startIcon={<EditOutlinedIcon sx={{ fontSize: 16 }} />}
-                                            aria-label={`Edit user ${user.email}`}
-                                            sx={{
-                                                textTransform: 'none',
-                                                minWidth: 'auto',
-                                                px: 1,
-                                                py: 0.375,
-                                                borderRadius: 1.5,
-                                                color: 'text.secondary',
-                                                fontWeight: 600,
-                                                '& .MuiButton-startIcon': { mr: 0.5 },
-                                                '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
-                                            }}
-                                            onClick={() => setEditData({ user, profile: profilesByUserId.get(user.id) })}
+                                    return (
+                                        <TableRow
+                                            key={user.id}
+                                            sx={{ '&:last-child td': { borderBottom: 'none' }, '&:hover td': { bgcolor: '#F9FAFB' } }}
                                         >
-                                            Edit
-                                        </Button>
-                                        <Button
-                                            size="small"
-                                            color="error"
-                                            variant="text"
-                                            startIcon={<DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />}
-                                            aria-label={`Delete user ${user.email}`}
-                                            sx={{
-                                                textTransform: 'none',
-                                                minWidth: 'auto',
-                                                px: 1,
-                                                py: 0.375,
-                                                borderRadius: 1.5,
-                                                fontWeight: 600,
-                                                '& .MuiButton-startIcon': { mr: 0.5 },
-                                            }}
-                                            disabled={deleteMutation.isPending}
-                                            onClick={async () => {
-                                                const result = await SweetAlert.fire({
-                                                    title: `Delete user ${user.email}?`,
-                                                    icon: 'warning',
-                                                    showCancelButton: true,
-                                                    confirmButtonText: 'Yes, delete',
-                                                    cancelButtonText: 'Cancel',
-                                                    reverseButtons: true
-                                                })
-                                                if (result.isConfirmed) {
-                                                    deleteMutation.mutate(user.id)
-                                                }
-                                            }}
-                                        >
-                                            Delete
-                                        </Button>
-                                    </Stack>
-                                )}
-                            </Stack>
-                        </Paper>
-                    )
-                })
-                : null}
+                                            <TableCell sx={TD}>
+                                                <strong>{user.displayName || user.email}</strong>
+                                            </TableCell>
+                                            <TableCell sx={{ ...TD, color: C_MUTED }}>{user.email}</TableCell>
+                                            <TableCell sx={TD}>
+                                                {user.roles.map((role) => (
+                                                    <RoleBadge key={role} role={role} />
+                                                ))}
+                                            </TableCell>
+                                            <TableCell sx={TD}>
+                                                {deptName ? <DeptBadge dept={deptName} /> : <span style={{ color: C_MUTED }}>—</span>}
+                                            </TableCell>
+                                            <TableCell sx={TD}>
+                                                {profile != null
+                                                    ? `${profile.leaveBalance} days`
+                                                    : <span style={{ color: C_MUTED }}>—</span>}
+                                            </TableCell>
+                                            <TableCell sx={TD}>
+                                                {isProtected ? (
+                                                    <Typography sx={{ fontSize: 11, color: C_MUTED, fontStyle: 'italic' }}>
+                                                        Protected
+                                                    </Typography>
+                                                ) : (
+                                                    <Stack direction="row" spacing={0.75}>
+                                                        <Button
+                                                            size="small"
+                                                            variant="outlined"
+                                                            onClick={() => setEditData({ user, profile })}
+                                                            sx={{
+                                                                fontSize: 12,
+                                                                py: '5px',
+                                                                px: 1.5,
+                                                                minWidth: 'unset',
+                                                                color: C_MUTED,
+                                                                borderColor: C_BORDER,
+                                                                textTransform: 'none',
+                                                                '&:hover': { bgcolor: '#F4F5F7', borderColor: C_BORDER },
+                                                            }}
+                                                        >
+                                                            Edit
+                                                        </Button>
+                                                        <Button
+                                                            size="small"
+                                                            variant="outlined"
+                                                            disabled={deleteMutation.isPending}
+                                                            onClick={async () => {
+                                                                const result = await SweetAlert.fire({
+                                                                    title: `Delete ${user.email}?`,
+                                                                    icon: 'warning',
+                                                                    showCancelButton: true,
+                                                                    confirmButtonText: 'Yes, delete',
+                                                                    cancelButtonText: 'Cancel',
+                                                                    reverseButtons: true,
+                                                                })
+                                                                if (result.isConfirmed) deleteMutation.mutate(user.id)
+                                                            }}
+                                                            sx={{
+                                                                fontSize: 12,
+                                                                py: '5px',
+                                                                px: 1.5,
+                                                                minWidth: 'unset',
+                                                                color: '#FF4D4F',
+                                                                borderColor: '#FECACA',
+                                                                textTransform: 'none',
+                                                                '&:hover': { bgcolor: '#FFF5F5', borderColor: '#FECACA' },
+                                                            }}
+                                                        >
+                                                            Delete
+                                                        </Button>
+                                                    </Stack>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    )
+                                })}
+                            </TableBody>
+                        </Table>
+                    </Box>
+                )}
+            </Paper>
 
             <CreateUserDialog
                 open={createOpen}
@@ -354,7 +412,6 @@ function EditUserDialog(props: {
 
     useEffect(() => {
         if (props.data) {
-            // Use a microtask to avoid React's setState-in-render warning
             Promise.resolve().then(() => {
                 setEmail(props.data!.user.email)
                 setDisplayName(props.data!.user.displayName ?? '')
@@ -374,10 +431,10 @@ function EditUserDialog(props: {
     }
 
     return (
-        <Dialog open={open} onClose={props.onClose} maxWidth="sm" fullWidth>
-            <DialogTitle>Edit User</DialogTitle>
-            <DialogContent>
-                <Stack spacing={2} sx={{ pt: 1 }}>
+        <AppDialog open={open} onClose={props.onClose} maxWidth="sm">
+            <AppDialogTitle>Edit User</AppDialogTitle>
+            <AppDialogContent>
+                <Stack spacing={2}>
                     <TextField label="Email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth required />
                     <TextField label="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} fullWidth />
 
@@ -409,9 +466,7 @@ function EditUserDialog(props: {
                             >
                                 <MenuItem value={0} disabled>Select department</MenuItem>
                                 {props.departments.map((dept) => (
-                                    <MenuItem key={dept.id} value={dept.id}>
-                                        {dept.name} ({dept.code})
-                                    </MenuItem>
+                                    <MenuItem key={dept.id} value={dept.id}>{dept.name} ({dept.code})</MenuItem>
                                 ))}
                             </TextField>
                             <TextField
@@ -433,30 +488,21 @@ function EditUserDialog(props: {
 
                     {props.error ? <Alert severity="error">{getErrorMessage(props.error)}</Alert> : null}
                 </Stack>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={props.onClose} disabled={props.isPending}>Cancel</Button>
+            </AppDialogContent>
+            <AppDialogActions>
+                <Button variant="outlined" onClick={props.onClose} disabled={props.isPending} sx={cancelBtnSx}>Cancel</Button>
                 <Button
                     variant="contained"
                     disabled={props.isPending || !user || roles.length === 0}
                     onClick={() =>
-                        user &&
-                        props.onSubmit({
-                            userId: user.id,
-                            email,
-                            displayName,
-                            roles,
-                            profile,
-                            departmentId,
-                            jobTitle,
-                            annualLeaveEntitlement,
-                        })
+                        user && props.onSubmit({ userId: user.id, email, displayName, roles, profile, departmentId, jobTitle, annualLeaveEntitlement })
                     }
+                    sx={saveBtnSx}
                 >
                     Save
                 </Button>
-            </DialogActions>
-        </Dialog>
+            </AppDialogActions>
+        </AppDialog>
     )
 }
 
@@ -490,10 +536,10 @@ function CreateUserDialog(props: {
     }
 
     return (
-        <Dialog open={props.open} onClose={close} maxWidth="sm" fullWidth>
-            <DialogTitle>Create User</DialogTitle>
-            <DialogContent>
-                <Stack spacing={2} sx={{ pt: 1 }}>
+        <AppDialog open={props.open} onClose={close} maxWidth="sm">
+            <AppDialogTitle>Create User</AppDialogTitle>
+            <AppDialogContent>
+                <Stack spacing={2}>
                     <TextField label="Email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth required />
                     <TextField label="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} fullWidth />
                     <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} fullWidth required />
@@ -509,9 +555,7 @@ function CreateUserDialog(props: {
                     >
                         <MenuItem value={0} disabled>Select department</MenuItem>
                         {props.departments.map((dept) => (
-                            <MenuItem key={dept.id} value={dept.id}>
-                                {dept.name} ({dept.code})
-                            </MenuItem>
+                            <MenuItem key={dept.id} value={dept.id}>{dept.name} ({dept.code})</MenuItem>
                         ))}
                     </TextField>
                     <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
@@ -525,18 +569,19 @@ function CreateUserDialog(props: {
                     </Stack>
                     {props.error ? <Alert severity="error">{getErrorMessage(props.error)}</Alert> : null}
                 </Stack>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={close} disabled={props.isPending}>Cancel</Button>
+            </AppDialogContent>
+            <AppDialogActions>
+                <Button variant="outlined" onClick={close} disabled={props.isPending} sx={cancelBtnSx}>Cancel</Button>
                 <Button
                     variant="contained"
                     disabled={props.isPending || !email || !password || departmentId === 0}
                     onClick={() => props.onSubmit({ email, displayName, password, roles, departmentId })}
+                    sx={saveBtnSx}
                 >
                     Create
                 </Button>
-            </DialogActions>
-        </Dialog>
+            </AppDialogActions>
+        </AppDialog>
     )
 }
 

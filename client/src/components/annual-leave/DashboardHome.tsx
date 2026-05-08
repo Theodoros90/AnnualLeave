@@ -1,515 +1,516 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { observer } from 'mobx-react-lite'
-import Button from '@mui/material/Button'
-import Chip from '@mui/material/Chip'
-import Tab from '@mui/material/Tab'
-import Tabs from '@mui/material/Tabs'
-import Grid from '@mui/material/Grid'
-import Paper from '@mui/material/Paper'
-import Stack from '@mui/material/Stack'
-import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
-import Card from '@mui/material/Card'
-import CardContent from '@mui/material/CardContent'
+import Button from '@mui/material/Button'
+import Grid from '@mui/material/Grid'
+import Stack from '@mui/material/Stack'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
+import Typography from '@mui/material/Typography'
 import {
-    BarChart as BarChartIcon,
-    CorporateFare as CorporateFareIcon,
-    PendingActions as PendingActionsIcon,
-    Group as GroupIcon,
-    ArrowForwardIos as ArrowForwardIosIcon,
-    EventAvailable as EventAvailableIcon,
-} from '@mui/icons-material'
-import { getAdminUsers, getAnnualLeaves, getDepartments, getEmployeeProfiles, getLeaveTypes, getTeamAwayThisWeekCount } from '../../lib/api'
+    getAdminUsers, getAnnualLeaves, getDepartments,
+    getEmployeeProfiles, getLeaveTypes, getTimesheets, updateLeaveStatus,
+} from '../../lib/api'
 import { useStore } from '../../lib/mobx'
-import { AdminUsersPanel, DepartmentsPanel, LeaveTypesPanel } from '..'
+import { AdminUsersPanel, DepartmentsPanel, LeaveTypesPanel, ProjectsPanel } from '..'
 import type { UserInfo } from '../../lib/types'
 
-type DashboardHomeProps = {
-    user: UserInfo
+// ── Design tokens ────────────────────────────────────────────────────────────
+const C_BORDER = '#E4E6EA'
+const C_HEADING = '#1A1A2E'
+const C_MUTED = '#6B7280'
+const C_BODY = '#374151'
+const C_TH_BG = '#F9FAFB'
+
+const BADGE: Record<string, { bg: string; color: string }> = {
+    Pending:     { bg: '#FEF3C7', color: '#92400E' },
+    Approved:    { bg: '#D1FAE5', color: '#065F46' },
+    Rejected:    { bg: '#FEE2E2', color: '#991B1B' },
+    Cancelled:   { bg: '#F3F4F6', color: '#6B7280' },
+    Draft:       { bg: '#EFF6FF', color: '#1D4ED8' },
+    Submitted:   { bg: '#FEF3C7', color: '#92400E' },
+    Resubmitted: { bg: '#F3E8FF', color: '#6D28D9' },
 }
 
-type StatCard = {
-    icon: React.ReactNode
-    title: string
-    value: string
-    subtitle: string
-    color: 'primary' | 'secondary' | 'success' | 'warning' | 'error'
-    onClick?: () => void
+const TH_SX = {
+    fontSize: 11, fontWeight: 600, color: C_MUTED,
+    textTransform: 'uppercase' as const, letterSpacing: '0.05em',
+    bgcolor: C_TH_BG, borderBottom: `1px solid ${C_BORDER}`, py: 1.25, px: 1.75,
+} as const
+
+const TD_SX = {
+    fontSize: 13, color: C_BODY,
+    borderBottom: '1px solid #F3F4F6', py: 1.4, px: 1.75, verticalAlign: 'middle' as const,
+} as const
+
+// ── Small reusable components ────────────────────────────────────────────────
+function StatusBadge({ status }: { status: string }) {
+    const cfg = BADGE[status] ?? { bg: '#F3F4F6', color: '#6B7280' }
+    return (
+        <Box component="span" sx={{
+            display: 'inline-flex', alignItems: 'center',
+            px: 1.1, py: 0.4, borderRadius: '20px',
+            fontSize: 11, fontWeight: 500,
+            bgcolor: cfg.bg, color: cfg.color, whiteSpace: 'nowrap',
+        }}>
+            {status}
+        </Box>
+    )
 }
 
-const colorConfig: Record<string, { bg: string; iconColor: string; hoverBorder: string; hoverShadow: string }> = {
-    primary: { bg: 'rgba(15,118,110,0.1)', iconColor: '#0f766e', hoverBorder: '#0f766e', hoverShadow: 'rgba(15,118,110,0.18)' },
-    secondary: { bg: 'rgba(124,58,237,0.1)', iconColor: '#7c3aed', hoverBorder: '#7c3aed', hoverShadow: 'rgba(124,58,237,0.18)' },
-    success: { bg: 'rgba(22,163,74,0.1)', iconColor: '#16a34a', hoverBorder: '#16a34a', hoverShadow: 'rgba(22,163,74,0.18)' },
-    warning: { bg: 'rgba(217,119,6,0.1)', iconColor: '#d97706', hoverBorder: '#d97706', hoverShadow: 'rgba(217,119,6,0.18)' },
-    error: { bg: 'rgba(220,38,38,0.1)', iconColor: '#dc2626', hoverBorder: '#dc2626', hoverShadow: 'rgba(220,38,38,0.18)' },
+function StatCard({ label, value, sub, topColor }: { label: string; value: string | number; sub: string; topColor: string }) {
+    return (
+        <Box sx={{
+            bgcolor: '#fff', borderRadius: '10px', p: '18px 20px',
+            border: `1px solid ${C_BORDER}`, borderTop: `3px solid ${topColor}`,
+            flex: 1, minWidth: 0,
+        }}>
+            <Typography sx={{ fontSize: 12, color: C_MUTED, mb: 1 }}>{label}</Typography>
+            <Typography sx={{ fontSize: 26, fontWeight: 700, color: C_HEADING, lineHeight: 1 }}>{value}</Typography>
+            <Typography sx={{ fontSize: 11, color: C_MUTED, mt: 0.5 }}>{sub}</Typography>
+        </Box>
+    )
 }
 
-const DashboardHome = observer(function DashboardHome({ user }: DashboardHomeProps) {
+function CardWrap({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+    return (
+        <Box sx={{ bgcolor: '#fff', borderRadius: '10px', border: `1px solid ${C_BORDER}`, overflow: 'hidden' }}>
+            <Box sx={{
+                px: 2.25, py: 1.75, borderBottom: `1px solid ${C_BORDER}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+                <Typography sx={{ fontSize: 14, fontWeight: 600, color: C_HEADING }}>{title}</Typography>
+                {action}
+            </Box>
+            {children}
+        </Box>
+    )
+}
+
+function EmptyRow({ cols, text }: { cols: number; text: string }) {
+    return (
+        <TableRow>
+            <TableCell colSpan={cols} sx={{ py: 4.5, textAlign: 'center', color: C_MUTED, fontSize: 13, borderBottom: 0 }}>
+                {text}
+            </TableCell>
+        </TableRow>
+    )
+}
+
+function ViewAllBtn({ onClick }: { onClick: () => void }) {
+    return (
+        <Button size="small" variant="outlined" onClick={onClick} sx={{
+            fontSize: 12, textTransform: 'none',
+            borderColor: C_BORDER, color: '#4F8EF7',
+            '&:hover': { borderColor: '#4F8EF7' },
+        }}>
+            View All
+        </Button>
+    )
+}
+
+function formatDate(d: string) {
+    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatPeriod(s: string, e: string) {
+    const a = new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    const b = new Date(e).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    return s === e ? a : `${a} – ${b}`
+}
+
+// ── Main component ───────────────────────────────────────────────────────────
+const DashboardHome = observer(function DashboardHome({ user }: { user: UserInfo }) {
     const { uiStore } = useStore()
+    const queryClient = useQueryClient()
+
     const isAdmin = user.roles.includes('Admin')
     const isManager = user.roles.includes('Manager')
-    const isEmployee = user.roles.includes('Employee')
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const monthLabel = now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
-    const { data: profiles = [] } = useQuery({
-        queryKey: ['employeeProfiles'],
-        queryFn: getEmployeeProfiles,
+    // Queries
+    const { data: profiles = [] } = useQuery({ queryKey: ['employeeProfiles'], queryFn: getEmployeeProfiles })
+    const { data: annualLeaves = [] } = useQuery({ queryKey: ['annualLeaves'], queryFn: getAnnualLeaves })
+    const { data: leaveTypes = [] } = useQuery({ queryKey: ['leaveTypes'], queryFn: getLeaveTypes })
+    const { data: timesheets = [] } = useQuery({ queryKey: ['timesheets'], queryFn: getTimesheets })
+    const { data: departments = [] } = useQuery({ queryKey: ['departments'], queryFn: getDepartments, enabled: isAdmin })
+    const { data: adminUsers = [] } = useQuery({ queryKey: ['adminUsers'], queryFn: getAdminUsers, enabled: isAdmin })
+
+    // Leave status mutations
+    const approveMutation = useMutation({
+        mutationFn: (id: string) => updateLeaveStatus(id, 'Approved'),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['annualLeaves'] }),
     })
-
-    const { data: annualLeaves = [] } = useQuery({
-        queryKey: ['annualLeaves'],
-        queryFn: getAnnualLeaves,
-        enabled: isEmployee || isManager || isAdmin,
+    const rejectMutation = useMutation({
+        mutationFn: (id: string) => updateLeaveStatus(id, 'Rejected'),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['annualLeaves'] }),
     })
+    const isMutating = approveMutation.isPending || rejectMutation.isPending
 
-    const { data: leaveTypes = [] } = useQuery({
-        queryKey: ['leaveTypes'],
-        queryFn: getLeaveTypes,
-        enabled: isEmployee || isManager || isAdmin,
-    })
+    // Derived data
+    const myProfile = useMemo(() => profiles.find(p => p.userId === user.id), [profiles, user.id])
+    const leaveTypeById = useMemo(() => new Map(leaveTypes.map(lt => [lt.id, lt.name])), [leaveTypes])
+    const rawEntitlement = myProfile?.annualLeaveEntitlement ?? 0
+    const myEntitlement = rawEntitlement > 0 ? rawEntitlement : 20
 
-    const { data: awayThisWeekCount = 0 } = useQuery({
-        queryKey: ['teamAwayThisWeekCount'],
-        queryFn: getTeamAwayThisWeekCount,
-        enabled: isEmployee || isManager || isAdmin,
-    })
+    // Employee-specific
+    const myLeaves = useMemo(() =>
+        annualLeaves
+            .filter(l => l.employeeId === user.id)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 5),
+        [annualLeaves, user.id])
 
-    const { data: departments = [] } = useQuery({
-        queryKey: ['departments'],
-        queryFn: getDepartments,
-        enabled: isAdmin,
-    })
+    const myPendingCount = useMemo(() =>
+        annualLeaves.filter(l => l.employeeId === user.id && l.status === 'Pending').length,
+        [annualLeaves, user.id])
 
-    const { data: adminUsers = [] } = useQuery({
-        queryKey: ['adminUsers'],
-        queryFn: getAdminUsers,
-        enabled: isAdmin,
-    })
+    // Calculate balance from actual approved leaves so it's always accurate
+    const myApprovedDaysThisYear = useMemo(() =>
+        annualLeaves
+            .filter(l => l.employeeId === user.id && l.status === 'Approved' && new Date(l.startDate).getFullYear() === currentYear)
+            .reduce((s, l) => s + l.totalDays, 0),
+        [annualLeaves, user.id, currentYear])
 
-    const myProfile = profiles.find((p) => p.userId === user.id)
-    const myEntitlement = myProfile?.annualLeaveEntitlement ?? 22
-    const currentYear = new Date().getFullYear()
-    const leaveTypeNameById = new Map(leaveTypes.map((leaveType) => [leaveType.id, leaveType.name]))
+    const myBalance = Math.max(0, myEntitlement - myApprovedDaysThisYear)
+    const usedPct = myEntitlement > 0 ? Math.min(100, Math.round((myApprovedDaysThisYear / myEntitlement) * 100)) : 0
+    const balanceBarColor = usedPct < 50 ? '#4F8EF7' : usedPct < 75 ? '#F59E0B' : '#FF4D4F'
 
-    const myApprovedAnnualLeavesThisYear = annualLeaves.filter((leave) => {
-        if (leave.employeeId !== user.id || leave.status !== 'Approved') {
-            return false
-        }
+    const myTimesheets = useMemo(() =>
+        timesheets
+            .filter(t => t.employeeId === user.id)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 4),
+        [timesheets, user.id])
 
-        if (new Date(leave.startDate).getFullYear() !== currentYear) {
-            return false
-        }
+    const mySubmittedThisMonth = useMemo(() =>
+        timesheets.filter(t =>
+            t.employeeId === user.id && t.submittedAt &&
+            new Date(t.submittedAt).getMonth() === now.getMonth() &&
+            new Date(t.submittedAt).getFullYear() === currentYear
+        ).length,
+        [timesheets, user.id, now.getMonth(), currentYear])
 
-        if (leave.leaveTypeId == null) {
-            return true
-        }
+    // Manager/Admin-specific
+    const pendingLeaves = useMemo(() =>
+        annualLeaves
+            .filter(l => l.status === 'Pending' && l.employeeId !== user.id)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+        [annualLeaves, user.id])
 
-        const leaveTypeName = leaveTypeNameById.get(leave.leaveTypeId)?.trim().toLowerCase()
-        return !leaveTypeName || leaveTypeName.includes('annual')
-    })
+    const pendingTimesheets = useMemo(() =>
+        timesheets
+            .filter(t => (t.status === 'Submitted' || t.status === 'Resubmitted') && t.employeeId !== user.id)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+        [timesheets, user.id])
 
-    const myAnnualUsedDaysThisYear = myApprovedAnnualLeavesThisYear.reduce((total, leave) => total + leave.totalDays, 0)
-    const myBalance = Math.max(0, myEntitlement - myAnnualUsedDaysThisYear)
+    const teamSize = useMemo(() => profiles.filter(p => p.userId !== user.id).length, [profiles, user.id])
 
-    const myOtherApprovedLeaves = annualLeaves.filter((leave) => {
-        if (leave.employeeId !== user.id || leave.status !== 'Approved' || leave.leaveTypeId == null) {
-            return false
-        }
+    const teamLeaveOverview = useMemo(() => {
+        const approvedByUser = new Map<string, number>()
+        annualLeaves
+            .filter(l => l.status === 'Approved' && new Date(l.startDate).getFullYear() === currentYear)
+            .forEach(l => {
+                approvedByUser.set(l.employeeId, (approvedByUser.get(l.employeeId) ?? 0) + l.totalDays)
+            })
+        return profiles
+            .filter(p => p.userId !== user.id)
+            .map(p => {
+                const usedDays = approvedByUser.get(p.userId) ?? 0
+                const entitlement = p.annualLeaveEntitlement > 0 ? p.annualLeaveEntitlement : 20
+                const pct = entitlement > 0 ? Math.min(100, Math.round((usedDays / entitlement) * 100)) : 0
+                return { userId: p.userId, displayName: p.displayName, usedDays, entitlement, pct }
+            })
+            .sort((a, b) => a.displayName.localeCompare(b.displayName))
+    }, [profiles, annualLeaves, user.id, currentYear])
+    const totalUsers = useMemo(() =>
+        adminUsers.filter(u => u.roles.includes('Employee') || u.roles.includes('Manager')).length,
+        [adminUsers])
 
-        if (new Date(leave.startDate).getFullYear() !== currentYear) {
-            return false
-        }
-
-        const leaveTypeName = leaveTypeNameById.get(leave.leaveTypeId)?.trim().toLowerCase()
-        return Boolean(leaveTypeName && !leaveTypeName.includes('annual'))
-    })
-    const myOtherLeaveDays = myOtherApprovedLeaves.reduce((total, leave) => total + leave.totalDays, 0)
-    const myOtherLeaveRequests = myOtherApprovedLeaves.length
-    const pendingApprovalsCount = annualLeaves.filter((leave) => leave.status === 'Pending').length
-    const totalEmployeesCount = adminUsers.filter(
-        (adminUser) => adminUser.roles.includes('Employee') || adminUser.roles.includes('Manager')
-    ).length
-    const totalDepartmentsCount = departments.length
-
-    const statCards: StatCard[] = []
-
-    if (!isAdmin) {
-        statCards.push({
-            icon: <BarChartIcon sx={{ fontSize: 28 }} />,
-            title: 'Your Balance',
-            value: `${myBalance} days`,
-            subtitle: `Annual leave available in ${currentYear}`,
-            color: 'primary',
-            onClick: () => {
-                uiStore.navigateToMyLeave('balance')
-                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#leave-balance`)
-            },
+    // Admin: pending leaves grouped by department name
+    const leaveByDept = useMemo(() => {
+        const counts = new Map<string, number>()
+        annualLeaves.filter(l => l.status === 'Pending').forEach(l => {
+            const dept = l.departmentName || 'Unknown'
+            counts.set(dept, (counts.get(dept) ?? 0) + 1)
         })
-    }
+        if (counts.size === 0) return []
+        const max = Math.max(...Array.from(counts.values()))
+        return Array.from(counts.entries())
+            .map(([name, count]) => ({ name, count, pct: Math.round((count / max) * 100) }))
+            .sort((a, b) => b.count - a.count)
+    }, [annualLeaves])
 
-    if (isEmployee || isManager || isAdmin) {
-        statCards.push({
-            icon: <EventAvailableIcon sx={{ fontSize: 28 }} />,
-            title: 'Other Leaves',
-            value: `${myOtherLeaveDays} day${myOtherLeaveDays === 1 ? '' : 's'}`,
-            subtitle: myOtherLeaveRequests > 0
-                ? `${myOtherLeaveRequests} approved request${myOtherLeaveRequests === 1 ? '' : 's'} this year`
-                : 'No approved non-annual leave yet',
-            color: 'secondary',
-            onClick: () => {
-                uiStore.navigateToMyLeave('other')
-                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#other-leaves`)
-            },
-        })
-    }
+    // ── Admin section routing ────────────────────────────────────────────────
+    const adminSection = uiStore.adminSection
+    if (isAdmin && adminSection === 'users') return <AdminUsersPanel />
+    if (isAdmin && adminSection === 'departments') return <DepartmentsPanel />
+    if (isAdmin && (adminSection === 'leave-types' || adminSection === 'leave' || adminSection === 'settings')) return <LeaveTypesPanel />
+    if (isAdmin && adminSection === 'projects') return <ProjectsPanel />
 
-    if (isManager || isAdmin) {
-        statCards.push({
-            icon: <PendingActionsIcon sx={{ fontSize: 28 }} />,
-            title: 'Pending Approvals',
-            value: `${pendingApprovalsCount} request${pendingApprovalsCount === 1 ? '' : 's'}`,
-            subtitle: 'Awaiting your review',
-            color: 'warning',
-            onClick: () => {
-                uiStore.navigateToTeamLeave()
-                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#team-leave`)
-            },
-        })
-    }
-
-    if (isAdmin) {
-        statCards.push({
-            icon: <GroupIcon sx={{ fontSize: 28 }} />,
-            title: 'Total Employees',
-            value: `${totalEmployeesCount}`,
-            subtitle: 'Employees and managers',
-            color: 'success',
-            onClick: () => {
-                uiStore.navigateToAdminSection('users')
-                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-users`)
-            },
-        })
-
-        statCards.push({
-            icon: <CorporateFareIcon sx={{ fontSize: 28 }} />,
-            title: 'Departments',
-            value: `${totalDepartmentsCount}`,
-            subtitle: 'Configured departments',
-            color: 'secondary',
-            onClick: () => {
-                uiStore.navigateToAdminSection('departments')
-                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-departments`)
-            },
-        })
-    }
-
-    if (isEmployee || isManager || isAdmin) {
-        statCards.push({
-            icon: <GroupIcon sx={{ fontSize: 28 }} />,
-            title: 'Team Away',
-            value: `${awayThisWeekCount} ${awayThisWeekCount === 1 ? 'person' : 'people'}`,
-            subtitle: 'This week',
-            color: 'secondary',
-        })
-    }
-
-    const handleOpenMyLeave = () => {
-        uiStore.navigateToMyLeave('requests')
-    }
-
-    const handleOpenOtherLeaves = () => {
-        uiStore.navigateToMyLeave('other')
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#other-leaves`)
-    }
-
-    const handleSettingsLeaveTypes = () => {
-        uiStore.navigateToAdminSection('leave-types')
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-leave-types`)
-    }
-
-    const handleSettingsDepartments = () => {
-        uiStore.navigateToAdminSection('departments')
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-departments`)
-    }
-
-    const handleSettingsUsers = () => {
-        uiStore.navigateToAdminSection('users')
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#admin-users`)
-    }
-
-    const settingsTabValue =
-        uiStore.adminSection === 'leave-types' ? 0
-            : uiStore.adminSection === 'departments' ? 1
-                : uiStore.adminSection === 'users' ? 2
-                    : false
-
-    const settingsLinks = (
-        <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, px: 1.5 }}>
-            <Tabs
-                value={settingsTabValue}
-                variant="scrollable"
-                scrollButtons="auto"
-                sx={{ '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, minHeight: 52 } }}
-            >
-                <Tab label="Leave Types" onClick={handleSettingsLeaveTypes} />
-                <Tab label="Departments" onClick={handleSettingsDepartments} />
-                <Tab label="Users" onClick={handleSettingsUsers} />
-            </Tabs>
-        </Paper>
-    )
-
-    const settingsHeader = (
-        <Stack spacing={0.35}>
-            <Typography variant="h5" fontWeight={800}>Settings</Typography>
-            <Typography variant="body2" color="text.secondary">
-                Manage leave types, departments, and users from one place.
-            </Typography>
-        </Stack>
-    )
-
-    const dashboardOverview = (
-        <Stack spacing={4} id="dashboard-section">
-            <Paper
-                elevation={0}
-                sx={{
-                    p: { xs: 1.85, md: 2.2 },
-                    border: '1px solid',
-                    borderColor: 'rgba(15, 23, 42, 0.08)',
-                    borderRadius: 2.5,
-                    background: 'linear-gradient(135deg, rgba(15,118,110,0.12), rgba(180,83,9,0.08))',
-                }}
-            >
-                <Stack spacing={0.7}>
-                    <Stack
-                        direction={{ xs: 'column', sm: 'row' }}
-                        alignItems={{ xs: 'flex-start', sm: 'center' }}
-                        justifyContent="space-between"
-                        columnGap={1.3}
-                        rowGap={0.45}
-                        flexWrap="wrap"
-                    >
-                        <Stack spacing={0.18} sx={{ minWidth: 0, flex: '1 1 0' }}>
-                            <Typography
-                                variant="h3"
-                                component="h1"
-                                sx={{ fontSize: { xs: '1.5rem', md: '1.76rem' }, lineHeight: 1.03, letterSpacing: '-0.015em' }}
-                            >
-                                Welcome back, {user.displayName}
-                            </Typography>
-                            <Typography
-                                variant="body2"
-                                color="text.secondary"
-                                fontWeight={500}
-                                sx={{ lineHeight: 1.08, letterSpacing: '0.01em' }}
-                            >
-                                {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                            </Typography>
-                            <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.22, maxWidth: '62ch' }}>
-                                {isAdmin && 'You have administrator access to the system.'}
-                                {isManager && !isAdmin && 'Manage your team\'s leave requests and approvals.'}
-                                {isEmployee && !isManager && 'Submit and track your annual leave requests.'}
-                            </Typography>
-                        </Stack>
-                        <Chip
-                            label={user.roles.join(', ')}
-                            color="secondary"
-                            variant="outlined"
-                            sx={{
-                                height: 28,
-                                alignSelf: { xs: 'flex-start', sm: 'center' },
-                                bgcolor: 'rgba(255,255,255,0.58)',
-                                borderColor: 'rgba(124,58,237,0.22)',
-                                '& .MuiChip-label': {
-                                    px: 1.2,
-                                    fontWeight: 600,
-                                },
-                            }}
-                        />
-                    </Stack>
+    // ── Employee dashboard ───────────────────────────────────────────────────
+    if (!isAdmin && !isManager) {
+        return (
+            <Stack spacing={3}>
+                <Stack direction="row" spacing={2}>
+                    <StatCard label="📅 Leave Balance"      value={myBalance}              sub={`of ${myEntitlement} days remaining`} topColor="#4F8EF7" />
+                    <StatCard label="⏳ Pending Requests"   value={myPendingCount}          sub="awaiting approval"                    topColor="#F59E0B" />
+                    <StatCard label="✅ Approved This Year" value={myApprovedDaysThisYear}  sub="days taken"                           topColor="#22C47A" />
+                    <StatCard label="🕐 Timesheets"         value={mySubmittedThisMonth}    sub="submitted this month"                 topColor="#4F8EF7" />
                 </Stack>
-            </Paper>
+
+                <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 8 }}>
+                        <CardWrap title="Recent Leave Requests" action={<ViewAllBtn onClick={() => uiStore.navigateToMyLeave('requests')} />}>
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell sx={TH_SX}>Type</TableCell>
+                                        <TableCell sx={TH_SX}>Dates</TableCell>
+                                        <TableCell sx={TH_SX}>Days</TableCell>
+                                        <TableCell sx={TH_SX}>Status</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {myLeaves.length === 0
+                                        ? <EmptyRow cols={4} text="No leave requests yet" />
+                                        : myLeaves.map(l => (
+                                            <TableRow key={l.id} sx={{ '&:last-child td': { borderBottom: 0 } }}>
+                                                <TableCell sx={TD_SX}>{l.leaveTypeId ? (leaveTypeById.get(l.leaveTypeId) ?? 'Annual') : 'Annual'}</TableCell>
+                                                <TableCell sx={TD_SX}>{formatPeriod(l.startDate, l.endDate)}</TableCell>
+                                                <TableCell sx={TD_SX}>{l.totalDays}</TableCell>
+                                                <TableCell sx={TD_SX}><StatusBadge status={l.status} /></TableCell>
+                                            </TableRow>
+                                        ))
+                                    }
+                                </TableBody>
+                            </Table>
+                        </CardWrap>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 4 }}>
+                        <CardWrap title="Leave Balance">
+                            <Box sx={{ p: 2.25 }}>
+                                <Stack direction="row" justifyContent="space-between" sx={{ fontSize: 12, color: C_MUTED, mb: 0.75 }}>
+                                    <span>Annual Leave</span>
+                                    <span>{myApprovedDaysThisYear} / {myEntitlement} days used</span>
+                                </Stack>
+                                <Box sx={{ height: 8, bgcolor: '#E4E6EA', borderRadius: 1, overflow: 'hidden', mb: 2.5 }}>
+                                    <Box sx={{ height: '100%', width: `${usedPct}%`, bgcolor: balanceBarColor, borderRadius: 1 }} />
+                                </Box>
+                                <Button
+                                    fullWidth variant="contained"
+                                    onClick={() => uiStore.navigateToMyLeave('apply')}
+                                    sx={{ textTransform: 'none', fontWeight: 600, bgcolor: '#4F8EF7', '&:hover': { bgcolor: '#3A7AE4' } }}
+                                >
+                                    + Apply for Leave
+                                </Button>
+                            </Box>
+                        </CardWrap>
+                    </Grid>
+                </Grid>
+
+                <CardWrap title="Recent Timesheets" action={<ViewAllBtn onClick={() => uiStore.navigateToTimesheets()} />}>
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell sx={TH_SX}>Period</TableCell>
+                                <TableCell sx={TH_SX}>Total Hours</TableCell>
+                                <TableCell sx={TH_SX}>Status</TableCell>
+                                <TableCell sx={TH_SX}>Submitted</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {myTimesheets.length === 0
+                                ? <EmptyRow cols={4} text="No timesheets yet" />
+                                : myTimesheets.map(t => (
+                                    <TableRow key={t.id} sx={{ '&:last-child td': { borderBottom: 0 } }}>
+                                        <TableCell sx={TD_SX}>{formatPeriod(t.periodStart, t.periodEnd)}</TableCell>
+                                        <TableCell sx={TD_SX}>{t.totalHours} hrs</TableCell>
+                                        <TableCell sx={TD_SX}><StatusBadge status={t.status} /></TableCell>
+                                        <TableCell sx={TD_SX}>{t.submittedAt ? formatDate(t.submittedAt) : '—'}</TableCell>
+                                    </TableRow>
+                                ))
+                            }
+                        </TableBody>
+                    </Table>
+                </CardWrap>
+            </Stack>
+        )
+    }
+
+    // ── Manager dashboard ────────────────────────────────────────────────────
+    if (isManager && !isAdmin) {
+        return (
+            <Stack spacing={3}>
+                <Stack direction="row" spacing={2}>
+                    <StatCard label="⏳ Pending Leave"        value={pendingLeaves.length}     sub="awaiting your approval" topColor="#F59E0B" />
+                    <StatCard label="📋 Pending Timesheets"   value={pendingTimesheets.length}  sub="awaiting your review"   topColor="#F59E0B" />
+                    <StatCard label="👥 Team Size"            value={teamSize}                  sub="in your scope"          topColor="#4F8EF7" />
+                    <StatCard label="📅 My Leave Balance"     value={myBalance}                 sub={`of ${myEntitlement} days remaining`} topColor="#22C47A" />
+                </Stack>
+
+                <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                        <CardWrap title="Pending Leave Approvals" action={<ViewAllBtn onClick={() => uiStore.navigateToTeamLeave()} />}>
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell sx={TH_SX}>Employee</TableCell>
+                                        <TableCell sx={TH_SX}>Type</TableCell>
+                                        <TableCell sx={TH_SX}>Dates</TableCell>
+                                        <TableCell sx={TH_SX}>Days</TableCell>
+                                        <TableCell sx={TH_SX}>Actions</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {pendingLeaves.length === 0
+                                        ? <EmptyRow cols={5} text="No pending requests" />
+                                        : pendingLeaves.slice(0, 4).map(l => (
+                                            <TableRow key={l.id} sx={{ '&:last-child td': { borderBottom: 0 } }}>
+                                                <TableCell sx={TD_SX}><strong>{l.employeeName}</strong></TableCell>
+                                                <TableCell sx={TD_SX}>{l.leaveTypeId ? (leaveTypeById.get(l.leaveTypeId) ?? 'Annual') : 'Annual'}</TableCell>
+                                                <TableCell sx={TD_SX}>{formatPeriod(l.startDate, l.endDate)}</TableCell>
+                                                <TableCell sx={TD_SX}>{l.totalDays}</TableCell>
+                                                <TableCell sx={TD_SX}>
+                                                    <Stack direction="row" spacing={0.75}>
+                                                        <Button size="small" disabled={isMutating} onClick={() => approveMutation.mutate(l.id)}
+                                                            sx={{ fontSize: 12, textTransform: 'none', bgcolor: '#22C47A', color: '#fff', fontWeight: 500, px: 1.25, py: 0.4, minWidth: 0, '&:hover': { bgcolor: '#18A867' }, '&:disabled': { bgcolor: '#E4E6EA', color: C_MUTED } }}>
+                                                            Approve
+                                                        </Button>
+                                                        <Button size="small" disabled={isMutating} onClick={() => rejectMutation.mutate(l.id)}
+                                                            sx={{ fontSize: 12, textTransform: 'none', bgcolor: '#FF4D4F', color: '#fff', fontWeight: 500, px: 1.25, py: 0.4, minWidth: 0, '&:hover': { bgcolor: '#E03C3E' }, '&:disabled': { bgcolor: '#E4E6EA', color: C_MUTED } }}>
+                                                            Reject
+                                                        </Button>
+                                                    </Stack>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    }
+                                </TableBody>
+                            </Table>
+                        </CardWrap>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 6 }}>
+                        <CardWrap title="Pending Timesheet Approvals" action={<ViewAllBtn onClick={() => uiStore.navigateToTimesheets()} />}>
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell sx={TH_SX}>Employee</TableCell>
+                                        <TableCell sx={TH_SX}>Period</TableCell>
+                                        <TableCell sx={TH_SX}>Hours</TableCell>
+                                        <TableCell sx={TH_SX}>Status</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {pendingTimesheets.length === 0
+                                        ? <EmptyRow cols={4} text="No pending timesheets" />
+                                        : pendingTimesheets.slice(0, 4).map(t => (
+                                            <TableRow key={t.id} sx={{ '&:last-child td': { borderBottom: 0 } }}>
+                                                <TableCell sx={TD_SX}><strong>{t.employeeName}</strong></TableCell>
+                                                <TableCell sx={TD_SX}>{formatPeriod(t.periodStart, t.periodEnd)}</TableCell>
+                                                <TableCell sx={TD_SX}>{t.totalHours} hrs</TableCell>
+                                                <TableCell sx={TD_SX}><StatusBadge status={t.status} /></TableCell>
+                                            </TableRow>
+                                        ))
+                                    }
+                                </TableBody>
+                            </Table>
+                        </CardWrap>
+                    </Grid>
+                </Grid>
+
+                <CardWrap title={`Team Leave Overview — ${monthLabel}`}>
+                    <Box sx={{ p: 2.25 }}>
+                        {teamLeaveOverview.length === 0
+                            ? <Typography sx={{ textAlign: 'center', py: 3, color: C_MUTED, fontSize: 13 }}>No team members found</Typography>
+                            : teamLeaveOverview.map(m => (
+                                <Box key={m.userId} sx={{ mb: 2, '&:last-child': { mb: 0 } }}>
+                                    <Stack direction="row" justifyContent="space-between" sx={{ fontSize: 12, mb: 0.75 }}>
+                                        <span style={{ color: C_HEADING, fontWeight: 500 }}>{m.displayName}</span>
+                                        <span style={{ color: C_MUTED }}>{m.usedDays} / {m.entitlement} days used</span>
+                                    </Stack>
+                                    <Box sx={{ height: 6, bgcolor: '#E4E6EA', borderRadius: 0.75, overflow: 'hidden' }}>
+                                        <Box sx={{ height: '100%', width: `${m.pct}%`, bgcolor: '#4F8EF7', borderRadius: 0.75 }} />
+                                    </Box>
+                                </Box>
+                            ))
+                        }
+                    </Box>
+                </CardWrap>
+            </Stack>
+        )
+    }
+
+    // ── Admin dashboard ──────────────────────────────────────────────────────
+    const activeDepts = departments.filter(d => d.isActive)
+    return (
+        <Stack spacing={3}>
+            <Stack direction="row" spacing={2}>
+                <StatCard label="⏳ Pending Leave"      value={pendingLeaves.length}     sub="across all departments"             topColor="#F59E0B" />
+                <StatCard label="📋 Pending Timesheets" value={pendingTimesheets.length}  sub="across all departments"             topColor="#F59E0B" />
+                <StatCard label="👤 Total Users"        value={totalUsers}                sub={`across ${activeDepts.length} departments`} topColor="#4F8EF7" />
+                <StatCard label="🏢 Departments"        value={activeDepts.length}         sub="active"                             topColor="#22C47A" />
+            </Stack>
 
             <Grid container spacing={2}>
-                {statCards.map((card) => {
-                    const cfg = colorConfig[card.color]
-                    return (
-                        <Grid key={card.title} size={{ xs: 12, sm: 6, md: 3 }}>
-                            <Card
-                                elevation={0}
-                                onClick={card.onClick}
-                                sx={{
-                                    border: '1px solid rgba(15, 23, 42, 0.08)',
-                                    borderLeft: `3px solid ${cfg.iconColor}`,
-                                    height: '100%',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    transition: 'box-shadow 0.18s, border-color 0.18s',
-                                    ...(card.onClick && {
-                                        cursor: 'pointer',
-                                        '&:hover': {
-                                            boxShadow: `0 4px 20px 0 ${cfg.hoverShadow}`,
-                                            borderColor: cfg.hoverBorder,
-                                        },
-                                    }),
-                                }}
-                            >
-                                <CardContent>
-                                    <Stack spacing={1.5}>
-                                        <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
-                                            <Box
-                                                sx={{
-                                                    width: 44,
-                                                    height: 44,
-                                                    borderRadius: 1.5,
-                                                    bgcolor: cfg.bg,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    color: cfg.iconColor,
-                                                }}
-                                            >
-                                                {card.icon}
-                                            </Box>
-                                            {card.onClick && (
-                                                <ArrowForwardIosIcon sx={{ fontSize: 13, color: 'text.disabled', mt: 0.5 }} />
-                                            )}
+                <Grid size={{ xs: 12, md: 7 }}>
+                    <CardWrap title="Pending Leave by Department">
+                        <Box sx={{ p: 2.25 }}>
+                            {leaveByDept.length === 0
+                                ? <Typography sx={{ textAlign: 'center', py: 3, color: C_MUTED, fontSize: 13 }}>No pending leave requests</Typography>
+                                : leaveByDept.map(d => (
+                                    <Box key={d.name} sx={{ mb: 2 }}>
+                                        <Stack direction="row" justifyContent="space-between" sx={{ fontSize: 12, color: C_MUTED, mb: 0.75 }}>
+                                            <span>{d.name}</span>
+                                            <span>{d.count} pending</span>
                                         </Stack>
-                                        <Stack spacing={0.45}>
-                                            <Typography
-                                                variant="body2"
-                                                color="text.secondary"
-                                                sx={{ fontSize: 13, fontWeight: 600, lineHeight: 1.25 }}
-                                            >
-                                                {card.title}
-                                            </Typography>
-                                            <Typography
-                                                variant="h5"
-                                                fontWeight={800}
-                                                sx={{ lineHeight: 1.08, letterSpacing: '-0.01em', color: 'text.primary' }}
-                                            >
-                                                {card.value}
-                                            </Typography>
-                                            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.35 }}>
-                                                {card.subtitle}
-                                            </Typography>
-                                        </Stack>
-                                    </Stack>
-                                </CardContent>
-                            </Card>
-                        </Grid>
-                    )
-                })}
-            </Grid>
+                                        <Box sx={{ height: 6, bgcolor: '#E4E6EA', borderRadius: 0.75, overflow: 'hidden' }}>
+                                            <Box sx={{ height: '100%', width: `${d.pct}%`, bgcolor: '#4F8EF7', borderRadius: 0.75 }} />
+                                        </Box>
+                                    </Box>
+                                ))
+                            }
+                        </Box>
+                    </CardWrap>
+                </Grid>
 
-            {!isAdmin && (
-                <Paper
-                    elevation={0}
-                    sx={{
-                        p: { xs: 2, md: 2.15 },
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 2,
-                    }}
-                >
-                    <Stack
-                        direction={{ xs: 'column', md: 'row' }}
-                        spacing={{ xs: 1.1, md: 1.5 }}
-                        alignItems={{ xs: 'stretch', md: 'center' }}
-                        justifyContent="space-between"
-                    >
-                        <Stack direction="row" spacing={1.1} alignItems="center" sx={{ minWidth: 0, flex: '1 1 auto' }}>
-                            <Box
-                                sx={{
-                                    width: 38,
-                                    height: 38,
-                                    borderRadius: 1.5,
-                                    bgcolor: 'rgba(15,118,110,0.1)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: '#0f766e',
-                                    flexShrink: 0,
-                                }}
-                            >
-                                <EventAvailableIcon sx={{ fontSize: 20 }} />
-                            </Box>
-                            <Stack spacing={0.1} sx={{ minWidth: 0 }}>
-                                <Typography variant="h6" fontWeight={700} lineHeight={1.15}>
-                                    My Leave Hub
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
-                                    Requests, annual balance, other leaves &amp; history
-                                </Typography>
-                            </Stack>
-                        </Stack>
-                        <Stack
-                            direction={{ xs: 'column', sm: 'row' }}
-                            spacing={0.8}
-                            flexWrap="wrap"
-                            useFlexGap
-                            sx={{ justifyContent: { md: 'flex-end' }, alignItems: { sm: 'center' } }}
-                        >
-                            <Button
-                                variant="contained"
-                                onClick={handleOpenMyLeave}
-                                sx={{ textTransform: 'none', fontWeight: 700, px: 1.6, py: 0.72 }}
-                            >
-                                Open My Leave
+                <Grid size={{ xs: 12, md: 5 }}>
+                    <CardWrap title="Quick Actions">
+                        <Box sx={{ p: 2.25, display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+                            <Button fullWidth variant="contained" onClick={() => uiStore.navigateToAdminSection('users')}
+                                sx={{ textTransform: 'none', justifyContent: 'flex-start', bgcolor: '#4F8EF7', '&:hover': { bgcolor: '#3A7AE4' } }}>
+                                👤  Manage Users
                             </Button>
-                            <Button
-                                variant="outlined"
-                                onClick={handleOpenOtherLeaves}
-                                sx={{ textTransform: 'none', fontWeight: 600, borderColor: 'rgba(15, 23, 42, 0.14)', py: 0.72 }}
-                            >
-                                View Other Leaves
+                            <Button fullWidth variant="outlined" onClick={() => uiStore.navigateToAdminSection('departments')}
+                                sx={{ textTransform: 'none', justifyContent: 'flex-start', borderColor: C_BORDER, color: C_HEADING, '&:hover': { borderColor: '#4F8EF7' } }}>
+                                🏢  Manage Departments
                             </Button>
-                        </Stack>
-                    </Stack>
-                </Paper>
-            )}
+                            <Button fullWidth variant="outlined" onClick={() => uiStore.navigateToAdminSection('leave-types')}
+                                sx={{ textTransform: 'none', justifyContent: 'flex-start', borderColor: C_BORDER, color: C_HEADING, '&:hover': { borderColor: '#4F8EF7' } }}>
+                                🏷️  Manage Leave Types
+                            </Button>
+                            <Button fullWidth variant="outlined" onClick={() => uiStore.navigateToAdminSection('projects')}
+                                sx={{ textTransform: 'none', justifyContent: 'flex-start', borderColor: C_BORDER, color: C_HEADING, '&:hover': { borderColor: '#4F8EF7' } }}>
+                                📁  Manage Projects
+                            </Button>
+                            <Button fullWidth variant="outlined" onClick={() => uiStore.navigateToTeamLeave()}
+                                sx={{ textTransform: 'none', justifyContent: 'flex-start', borderColor: C_BORDER, color: C_HEADING, '&:hover': { borderColor: '#4F8EF7' } }}>
+                                📅  View All Leave
+                            </Button>
+                        </Box>
+                    </CardWrap>
+                </Grid>
+            </Grid>
         </Stack>
     )
-
-    if (!isAdmin) {
-        return dashboardOverview
-    }
-
-    if (uiStore.adminSection === 'settings' || uiStore.adminSection === 'leave') {
-        uiStore.navigateToAdminSection('leave-types')
-        return null
-    }
-
-    if (uiStore.adminSection === 'users') {
-        return (
-            <Stack spacing={1.75}>
-                {settingsHeader}
-                {settingsLinks}
-                <AdminUsersPanel />
-            </Stack>
-        )
-    }
-
-    if (uiStore.adminSection === 'leave-types') {
-        return (
-            <Stack spacing={1.75}>
-                {settingsHeader}
-                {settingsLinks}
-                <LeaveTypesPanel />
-            </Stack>
-        )
-    }
-
-    if (uiStore.adminSection === 'departments') {
-        return (
-            <Stack spacing={1.75}>
-                {settingsHeader}
-                {settingsLinks}
-                <DepartmentsPanel />
-            </Stack>
-        )
-    }
-
-    return dashboardOverview
 })
 
 export default DashboardHome

@@ -3,20 +3,19 @@ import { useQueryClient } from '@tanstack/react-query'
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
 import { observer } from 'mobx-react-lite'
 import Alert from '@mui/material/Alert'
-import AppBar from '@mui/material/AppBar'
-import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import Container from '@mui/material/Container'
 import Snackbar from '@mui/material/Snackbar'
 import Stack from '@mui/material/Stack'
-import Toolbar from '@mui/material/Toolbar'
 import Typography from '@mui/material/Typography'
-import { DashboardHome, ForgotPasswordForm, LoginForm, MyLeavePage, Navbar, RegisterForm, ResetPasswordForm, TeamLeavePage } from './components'
+import { AuthPage, DashboardHome, MyLeavePage, ApplyLeavePage, TeamLeavePage, TeamTimesheetPage, MyTimesheetPage } from './components'
 import { API_ERROR_EVENT } from './lib/api/error-events'
 import { apiBaseUrl } from './lib/api/client'
 import { useStore } from './lib/mobx'
 import type { MyLeaveSection } from './lib/mobx/uiStore'
+import Sidebar from './components/layout/Sidebar'
+import Topbar from './components/layout/Topbar'
 
 function getSectionFromHash(hash: string): MyLeaveSection | null {
   if (hash === '#apply-for-leave') return 'apply'
@@ -37,6 +36,7 @@ function getAdminSectionFromHash(hash: string) {
   if (hash === '#admin-leave-types') return 'leave-types' as const
   if (hash === '#admin-departments') return 'departments' as const
   if (hash === '#admin-users') return 'users' as const
+  if (hash === '#admin-projects') return 'projects' as const
   return null
 }
 
@@ -219,7 +219,7 @@ const App = observer(function App() {
   const isAdminSettingsPage = Boolean(
     authStore.user
     && uiStore.currentPage === 'dashboard'
-    && ['settings', 'leave', 'leave-types', 'departments', 'users'].includes(uiStore.adminSection)
+    && ['settings', 'leave', 'leave-types', 'departments', 'users', 'projects'].includes(uiStore.adminSection)
   )
 
   if (!authStore.hasCheckedAuth && authStore.isLoadingUser) {
@@ -241,117 +241,51 @@ const App = observer(function App() {
   }
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      {authStore.user && <Navbar />}
-
-      {authStore.user ? (
-        <Container
-          component="main"
-          maxWidth="lg"
-          sx={{
-            pt: isAdminSettingsPage ? { xs: 2.5, md: 3.5 } : { xs: 6, md: 10 },
-            pb: isAdminSettingsPage ? { xs: 4, md: 6 } : { xs: 6, md: 10 },
-          }}
-        >
-          {uiStore.currentPage === 'my-leave' && <MyLeavePage user={authStore.user} />}
-          {uiStore.currentPage === 'team-leave' && <TeamLeavePage user={authStore.user} />}
-          {uiStore.currentPage === 'dashboard' && <DashboardHome user={authStore.user} />}
-        </Container>
-      ) : (
-        <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'grey.50' }}>
-          {/* Auth header */}
-          <AppBar position="static" color="transparent" elevation={0} sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
-            <Container maxWidth="lg">
-              <Toolbar disableGutters sx={{ minHeight: 64 }}>
-                <Stack direction="row" spacing={1.5} alignItems="center">
-                  <Avatar
-                    variant="rounded"
-                    sx={{ width: 38, height: 38, bgcolor: 'primary.main', color: 'primary.contrastText', fontWeight: 700, fontSize: 15 }}
-                  >
-                    AL
-                  </Avatar>
-                  <Box>
-                    <Typography variant="h6" fontWeight={700} lineHeight={1.2}>
-                      Annual Leave
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Leave planning &amp; approvals
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Toolbar>
-            </Container>
-          </AppBar>
-
-          {/* Centered form */}
-          <Box
-            sx={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              py: { xs: 3, md: 4 },
-              px: 2,
-              background: 'linear-gradient(135deg, rgba(15,118,110,0.06) 0%, rgba(180,83,9,0.06) 100%)',
-            }}
+    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', display: 'flex' }}>
+      {authStore.user && <Sidebar />}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {authStore.user && <Topbar />}
+        {authStore.user ? (
+          <Container
+            component="main"
+            maxWidth="lg"
+            sx={{ pt: 3, pb: 4 }}
           >
-            <Box sx={{ width: '100%', maxWidth: 420 }}>
-              <Stack spacing={2}>
-                {authNotice ? (
-                  <Alert severity={authNotice.severity} onClose={() => setAuthNotice(null)}>
-                    {authNotice.message}
-                  </Alert>
-                ) : null}
+            {uiStore.currentPage === 'my-leave' && <MyLeavePage user={authStore.user} />}
+            {uiStore.currentPage === 'apply-leave' && <ApplyLeavePage user={authStore.user} />}
+            {uiStore.currentPage === 'team-leave' && <TeamLeavePage user={authStore.user} />}
+            {uiStore.currentPage === 'dashboard' && <DashboardHome user={authStore.user} />}
+            {uiStore.currentPage === 'timesheets' && (
+                authStore.user.roles.includes('Admin')
+                    ? <TeamTimesheetPage user={authStore.user} />
+                    : <MyTimesheetPage user={authStore.user} />
+            )}
+            {uiStore.currentPage === 'team-timesheets' && <TeamTimesheetPage user={authStore.user} />}
+          </Container>
+        ) : (
+          <AuthPage
+            authView={authView}
+            authNotice={authNotice}
+            onClearNotice={() => setAuthNotice(null)}
+            onSwitchToLogin={() => { setAuthView('login'); window.location.hash = '#login' }}
+            onSwitchToRegister={() => { setAuthView('register'); window.location.hash = '#register' }}
+            onForgotPassword={() => { setAuthView('forgot-password'); window.location.hash = '#forgot-password' }}
+            onBackToLogin={() => { setAuthView('login'); window.location.hash = '#login' }}
+            onRequestNewLink={() => { setAuthView('forgot-password'); window.location.hash = '#forgot-password' }}
+          />
+        )}
 
-                {authView === 'login' ? (
-                  <LoginForm
-                    onSwitch={() => {
-                      setAuthView('register')
-                      window.location.hash = '#register'
-                    }}
-                    onForgotPassword={() => {
-                      setAuthView('forgot-password')
-                      window.location.hash = '#forgot-password'
-                    }}
-                  />
-                ) : authView === 'register' ? (
-                  <RegisterForm onSwitch={() => {
-                    setAuthView('login')
-                    window.location.hash = '#login'
-                  }} />
-                ) : authView === 'forgot-password' ? (
-                  <ForgotPasswordForm onBackToLogin={() => {
-                    setAuthView('login')
-                    window.location.hash = '#login'
-                  }} />
-                ) : (
-                  <ResetPasswordForm
-                    onBackToLogin={() => {
-                      setAuthView('login')
-                      window.location.hash = '#login'
-                    }}
-                    onRequestNewLink={() => {
-                      setAuthView('forgot-password')
-                      window.location.hash = '#forgot-password'
-                    }}
-                  />
-                )}
-              </Stack>
-            </Box>
-          </Box>
-        </Box>
-      )}
-
-      <Snackbar
-        open={apiErrorOpen}
-        autoHideDuration={4500}
-        onClose={() => setApiErrorOpen(false)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert onClose={() => setApiErrorOpen(false)} severity="error" variant="filled" sx={{ width: '100%' }}>
-          {apiErrorMessage}
-        </Alert>
-      </Snackbar>
+        <Snackbar
+          open={apiErrorOpen}
+          autoHideDuration={4500}
+          onClose={() => setApiErrorOpen(false)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        >
+          <Alert onClose={() => setApiErrorOpen(false)} severity="error" variant="filled" sx={{ width: '100%' }}>
+            {apiErrorMessage}
+          </Alert>
+        </Snackbar>
+      </Box>
     </Box>
   )
 })

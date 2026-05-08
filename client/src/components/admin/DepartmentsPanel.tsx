@@ -1,31 +1,98 @@
-import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { SweetAlert } from '../ui'
+import { SweetAlert, AppDialog, AppDialogTitle, AppDialogContent, AppDialogActions, cancelBtnSx, saveBtnSx } from '../ui'
+import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
-import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
-import DialogContent from '@mui/material/DialogContent'
-import DialogTitle from '@mui/material/DialogTitle'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Switch from '@mui/material/Switch'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import {
     createDepartment,
     deleteDepartment,
     getDepartments,
+    getAdminUsers,
+    getEmployeeProfiles,
     updateDepartment,
     type UpsertDepartmentRequest,
 } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import type { Department } from '../../lib/types'
+
+const C_BORDER = '#E4E6EA'
+const C_HEADING = '#1A1A2E'
+const C_MUTED = '#6B7280'
+
+const TH = {
+    py: '10px',
+    px: '14px',
+    fontSize: 11,
+    fontWeight: 600,
+    color: C_MUTED,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    bgcolor: '#F9FAFB',
+    borderBottom: `1px solid ${C_BORDER}`,
+}
+
+const TD = {
+    py: '11px',
+    px: '14px',
+    fontSize: 13,
+    color: '#374151',
+    borderBottom: `1px solid #F3F4F6`,
+}
+
+function CodeBadge({ code }: { code: string }) {
+    return (
+        <Box
+            component="span"
+            sx={{
+                display: 'inline-block',
+                bgcolor: '#EFF6FF',
+                color: '#1D4ED8',
+                borderRadius: '4px',
+                px: 1,
+                py: 0.25,
+                fontSize: 11,
+                fontWeight: 500,
+            }}
+        >
+            {code}
+        </Box>
+    )
+}
+
+function StatusBadge({ active }: { active: boolean }) {
+    return (
+        <Box
+            component="span"
+            sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                px: 1.25,
+                py: 0.35,
+                borderRadius: '20px',
+                fontSize: 11,
+                fontWeight: 500,
+                bgcolor: active ? '#D1FAE5' : '#F3F4F6',
+                color: active ? '#065F46' : '#6B7280',
+                whiteSpace: 'nowrap',
+            }}
+        >
+            {active ? 'Active' : 'Inactive'}
+        </Box>
+    )
+}
 
 function getErrorMessage(error: unknown) {
     return getApiErrorMessage(error, 'Something went wrong. Please try again.')
@@ -39,6 +106,16 @@ function DepartmentsPanel() {
     const { data: departments = [], isLoading, isError, error } = useQuery({
         queryKey: ['departments'],
         queryFn: getDepartments,
+    })
+
+    const { data: profiles = [] } = useQuery({
+        queryKey: ['employeeProfiles'],
+        queryFn: getEmployeeProfiles,
+    })
+
+    const { data: adminUsers = [] } = useQuery({
+        queryKey: ['adminUsers'],
+        queryFn: getAdminUsers,
     })
 
     const createMutation = useMutation({
@@ -65,128 +142,180 @@ function DepartmentsPanel() {
         },
     })
 
+    const managerUserIds = useMemo(
+        () => new Set(adminUsers.filter((u) => u.roles.includes('Manager')).map((u) => u.id)),
+        [adminUsers]
+    )
+
+    const userDisplayNames = useMemo(
+        () => new Map(adminUsers.map((u) => [u.id, u.displayName || u.email])),
+        [adminUsers]
+    )
+
+    function deptStats(deptId: number) {
+        const deptProfiles = profiles.filter((p) => p.departmentId === deptId)
+        const employeeCount = deptProfiles.length
+        const managers = deptProfiles
+            .filter((p) => managerUserIds.has(p.userId))
+            .map((p) => userDisplayNames.get(p.userId) ?? p.displayName)
+        return { employeeCount, managers }
+    }
+
+    const sortedDepts = useMemo(
+        () => [...departments].sort((a, b) => a.name.localeCompare(b.name)),
+        [departments]
+    )
+
     return (
         <Stack spacing={2}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1.5}>
-                <Typography variant="body2" color="text.secondary">Create and maintain organizational departments.</Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                    <Chip label={`${departments.length} departments`} size="small" variant="outlined" />
-                    <Button variant="contained" sx={{ textTransform: 'none', borderRadius: 999, px: 2.25 }} onClick={() => setCreateOpen(true)}>
-                        Add Department
-                    </Button>
-                </Stack>
-            </Stack>
-
-            {isLoading && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-                    <CircularProgress />
-                </Box>
-            )}
-
-            {isError && <Alert severity="error">{getErrorMessage(error)}</Alert>}
-
-            {!isLoading && !isError && departments.length === 0 && (
-                <Paper elevation={0} sx={{ p: 3, border: '1px dashed', borderColor: 'divider' }}>
-                    <Typography color="text.secondary">No departments found.</Typography>
-                </Paper>
-            )}
-
-            {!isLoading && !isError && departments.map((dept) => (
-                <Paper
-                    key={dept.id}
-                    elevation={0}
+            <Paper
+                elevation={0}
+                sx={{ bgcolor: '#fff', border: `1px solid ${C_BORDER}`, borderRadius: '10px', overflow: 'hidden' }}
+            >
+                {/* Card header */}
+                <Box
                     sx={{
-                        p: 2.5,
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderLeft: '4px solid',
-                        borderLeftColor: dept.isActive ? 'rgba(56,142,60,0.6)' : 'rgba(100,116,139,0.6)',
-                        transition: 'border-color 0.15s, box-shadow 0.15s',
-                        '&:hover': { borderColor: 'rgba(15,118,110,0.35)', boxShadow: '0 8px 20px rgba(15,23,42,0.06)' },
+                        px: '18px',
+                        py: '14px',
+                        borderBottom: `1px solid ${C_BORDER}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 2,
                     }}
                 >
-                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1}>
-                        <Box>
-                            <Stack direction="row" spacing={1} alignItems="center">
-                                <Typography fontWeight={700}>{dept.name}</Typography>
-                                <Chip label={dept.code} size="small" variant="outlined" />
-                                <Chip
-                                    label={dept.isActive ? 'Active' : 'Inactive'}
-                                    size="small"
-                                    color={dept.isActive ? 'success' : 'default'}
-                                />
-                            </Stack>
-                            <Typography variant="caption" color="text.secondary">
-                                Created {new Date(dept.createdAt).toLocaleDateString()}
-                            </Typography>
-                        </Box>
-                        <Stack direction="row" spacing={0.25} useFlexGap sx={{ flexWrap: 'wrap' }}>
-                            <Button
-                                size="small"
-                                color="inherit"
-                                variant="text"
-                                startIcon={<EditOutlinedIcon sx={{ fontSize: 16 }} />}
-                                aria-label={`Edit department ${dept.name}`}
-                                sx={{
-                                    textTransform: 'none',
-                                    minWidth: 'auto',
-                                    px: 1,
-                                    py: 0.375,
-                                    borderRadius: 1.5,
-                                    color: 'text.secondary',
-                                    fontWeight: 600,
-                                    '& .MuiButton-startIcon': { mr: 0.5 },
-                                    '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
-                                }}
-                                onClick={() => setEditDept(dept)}
-                            >
-                                Edit
-                            </Button>
-                            <Button
-                                size="small"
-                                color="error"
-                                variant="text"
-                                startIcon={<DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />}
-                                aria-label={`Delete department ${dept.name}`}
-                                sx={{
-                                    textTransform: 'none',
-                                    minWidth: 'auto',
-                                    px: 1,
-                                    py: 0.375,
-                                    borderRadius: 1.5,
-                                    fontWeight: 600,
-                                    '& .MuiButton-startIcon': { mr: 0.5 },
-                                }}
-                                disabled={deleteMutation.isPending}
-                                onClick={async () => {
-                                    const result = await SweetAlert.fire({
-                                        title: `Delete department "${dept.name}"?`,
-                                        text: 'This will fail if users are assigned to it.',
-                                        icon: 'warning',
-                                        showCancelButton: true,
-                                        confirmButtonText: 'Yes, delete',
-                                        cancelButtonText: 'Cancel',
-                                        reverseButtons: true
-                                    })
-                                    if (result.isConfirmed) {
-                                        deleteMutation.mutate(dept.id)
-                                    }
-                                }}
-                            >
-                                Delete
-                            </Button>
-                        </Stack>
-                    </Stack>
-                </Paper>
-            ))}
+                    <Typography sx={{ fontSize: 14, fontWeight: 600, color: C_HEADING }}>Departments</Typography>
+                    <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => setCreateOpen(true)}
+                        sx={{
+                            fontSize: 12,
+                            py: '5px',
+                            px: 1.5,
+                            bgcolor: '#4F8EF7',
+                            '&:hover': { bgcolor: '#3A7AE4' },
+                            textTransform: 'none',
+                            boxShadow: 'none',
+                        }}
+                    >
+                        + New Department
+                    </Button>
+                </Box>
 
-            {deleteMutation.isError && (
-                <Alert severity="error">{getErrorMessage(deleteMutation.error)}</Alert>
-            )}
+                {/* States */}
+                {isLoading && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                        <CircularProgress size={24} />
+                    </Box>
+                )}
+                {isError && (
+                    <Box sx={{ p: 2 }}>
+                        <Alert severity="error">{getErrorMessage(error)}</Alert>
+                    </Box>
+                )}
+                {deleteMutation.isError && (
+                    <Box sx={{ px: 2, pb: 1 }}>
+                        <Alert severity="error">{getErrorMessage(deleteMutation.error)}</Alert>
+                    </Box>
+                )}
+                {!isLoading && !isError && sortedDepts.length === 0 && (
+                    <Box sx={{ textAlign: 'center', py: 6 }}>
+                        <Typography sx={{ fontSize: 13, color: '#9CA3AF' }}>No departments found.</Typography>
+                    </Box>
+                )}
+
+                {/* Table */}
+                {!isLoading && !isError && sortedDepts.length > 0 && (
+                    <Box sx={{ overflowX: 'auto' }}>
+                        <Table sx={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell sx={TH}>Name</TableCell>
+                                    <TableCell sx={TH}>Code</TableCell>
+                                    <TableCell sx={TH}>Employees</TableCell>
+                                    <TableCell sx={TH}>Managers</TableCell>
+                                    <TableCell sx={TH}>Status</TableCell>
+                                    <TableCell sx={TH}>Actions</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {sortedDepts.map((dept) => {
+                                    const { employeeCount, managers } = deptStats(dept.id)
+                                    return (
+                                        <TableRow
+                                            key={dept.id}
+                                            sx={{ '&:last-child td': { borderBottom: 'none' }, '&:hover td': { bgcolor: '#F9FAFB' } }}
+                                        >
+                                            <TableCell sx={TD}><strong>{dept.name}</strong></TableCell>
+                                            <TableCell sx={TD}><CodeBadge code={dept.code} /></TableCell>
+                                            <TableCell sx={TD}>{employeeCount}</TableCell>
+                                            <TableCell sx={{ ...TD, color: managers.length ? '#374151' : C_MUTED }}>
+                                                {managers.length ? managers.join(', ') : '—'}
+                                            </TableCell>
+                                            <TableCell sx={TD}><StatusBadge active={dept.isActive} /></TableCell>
+                                            <TableCell sx={TD}>
+                                                <Stack direction="row" spacing={0.75}>
+                                                    <Button
+                                                        size="small"
+                                                        variant="outlined"
+                                                        onClick={() => setEditDept(dept)}
+                                                        sx={{
+                                                            fontSize: 12,
+                                                            py: '5px',
+                                                            px: 1.5,
+                                                            minWidth: 'unset',
+                                                            color: C_MUTED,
+                                                            borderColor: C_BORDER,
+                                                            textTransform: 'none',
+                                                            '&:hover': { bgcolor: '#F4F5F7', borderColor: C_BORDER },
+                                                        }}
+                                                    >
+                                                        Edit
+                                                    </Button>
+                                                    <Button
+                                                        size="small"
+                                                        variant="outlined"
+                                                        disabled={deleteMutation.isPending}
+                                                        onClick={async () => {
+                                                            const result = await SweetAlert.fire({
+                                                                title: `Delete "${dept.name}"?`,
+                                                                text: 'This will fail if users are assigned to it.',
+                                                                icon: 'warning',
+                                                                showCancelButton: true,
+                                                                confirmButtonText: 'Yes, delete',
+                                                                cancelButtonText: 'Cancel',
+                                                                reverseButtons: true,
+                                                            })
+                                                            if (result.isConfirmed) deleteMutation.mutate(dept.id)
+                                                        }}
+                                                        sx={{
+                                                            fontSize: 12,
+                                                            py: '5px',
+                                                            px: 1.5,
+                                                            minWidth: 'unset',
+                                                            color: '#FF4D4F',
+                                                            borderColor: '#FECACA',
+                                                            textTransform: 'none',
+                                                            '&:hover': { bgcolor: '#FFF5F5', borderColor: '#FECACA' },
+                                                        }}
+                                                    >
+                                                        Delete
+                                                    </Button>
+                                                </Stack>
+                                            </TableCell>
+                                        </TableRow>
+                                    )
+                                })}
+                            </TableBody>
+                        </Table>
+                    </Box>
+                )}
+            </Paper>
 
             <DepartmentFormDialog
                 open={createOpen}
-                title="Add Department"
+                title="New Department"
                 isPending={createMutation.isPending}
                 error={createMutation.error}
                 onClose={() => setCreateOpen(false)}
@@ -227,15 +356,11 @@ function DepartmentFormDialog(props: {
         }
     }, [props.open, props.initial])
 
-    const handleSubmit = () => {
-        props.onSubmit({ name: name.trim(), code: code.trim(), isActive })
-    }
-
     return (
-        <Dialog open={props.open} onClose={props.onClose} maxWidth="xs" fullWidth>
-            <DialogTitle>{props.title}</DialogTitle>
-            <DialogContent>
-                <Stack spacing={2} sx={{ pt: 1 }}>
+        <AppDialog open={props.open} onClose={props.onClose} maxWidth="xs">
+            <AppDialogTitle>{props.title}</AppDialogTitle>
+            <AppDialogContent>
+                <Stack spacing={2}>
                     <TextField
                         label="Name"
                         value={name}
@@ -253,28 +378,26 @@ function DepartmentFormDialog(props: {
                         helperText="Short uppercase code e.g. ENG, HR"
                     />
                     <FormControlLabel
-                        control={
-                            <Switch
-                                checked={isActive}
-                                onChange={(e) => setIsActive(e.target.checked)}
-                            />
-                        }
+                        control={<Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />}
                         label="Active"
                     />
-                    {props.error != null && <Alert severity="error">{getErrorMessage(props.error)}</Alert>}
+                    {props.error != null && (
+                        <Alert severity="error">{getErrorMessage(props.error)}</Alert>
+                    )}
                 </Stack>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={props.onClose} disabled={props.isPending}>Cancel</Button>
+            </AppDialogContent>
+            <AppDialogActions>
+                <Button variant="outlined" sx={cancelBtnSx} onClick={props.onClose} disabled={props.isPending}>Cancel</Button>
                 <Button
                     variant="contained"
+                    sx={saveBtnSx}
                     disabled={props.isPending || !name.trim() || !code.trim()}
-                    onClick={handleSubmit}
+                    onClick={() => props.onSubmit({ name: name.trim(), code: code.trim(), isActive })}
                 >
                     Save
                 </Button>
-            </DialogActions>
-        </Dialog>
+            </AppDialogActions>
+        </AppDialog>
     )
 }
 

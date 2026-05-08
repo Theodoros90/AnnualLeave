@@ -1,21 +1,19 @@
-import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded'
-import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded'
-import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { SweetAlert } from '../ui'
+import { SweetAlert, AppDialog, AppDialogTitle, AppDialogContent, AppDialogActions, cancelBtnSx, saveBtnSx } from '../ui'
+import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
-import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
-import DialogContent from '@mui/material/DialogContent'
-import DialogTitle from '@mui/material/DialogTitle'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Switch from '@mui/material/Switch'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import {
@@ -28,9 +26,57 @@ import {
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import type { LeaveType } from '../../lib/types'
 
+const C_BORDER = '#E4E6EA'
+const C_HEADING = '#1A1A2E'
+const C_MUTED = '#6B7280'
+
+const TH = {
+    py: '10px',
+    px: '14px',
+    fontSize: 11,
+    fontWeight: 600,
+    color: C_MUTED,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    bgcolor: '#F9FAFB',
+    borderBottom: `1px solid ${C_BORDER}`,
+}
+
+const TD = {
+    py: '11px',
+    px: '14px',
+    fontSize: 13,
+    color: '#374151',
+    borderBottom: `1px solid #F3F4F6`,
+}
+
+function StatusBadge({ active }: { active: boolean }) {
+    return (
+        <Box
+            component="span"
+            sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                px: 1.25,
+                py: 0.35,
+                borderRadius: '20px',
+                fontSize: 11,
+                fontWeight: 500,
+                bgcolor: active ? '#D1FAE5' : '#F3F4F6',
+                color: active ? '#065F46' : '#6B7280',
+                whiteSpace: 'nowrap',
+            }}
+        >
+            {active ? 'Active' : 'Inactive'}
+        </Box>
+    )
+}
+
 function getErrorMessage(error: unknown) {
     return getApiErrorMessage(error, 'Something went wrong. Please try again.')
 }
+
+const PROTECTED_NAME = 'annual leave'
 
 function LeaveTypesPanel() {
     const queryClient = useQueryClient()
@@ -66,176 +112,161 @@ function LeaveTypesPanel() {
         },
     })
 
+    const sorted = [...leaveTypes].sort((a, b) => a.name.localeCompare(b.name))
+
     return (
         <Stack spacing={2}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1.5}>
-                <Typography variant="body2" color="text.secondary">Define leave categories and approval behavior.</Typography>
-                <Stack direction="row" spacing={1} alignItems="center">
-                    <Chip label={`${leaveTypes.length} types`} size="small" variant="outlined" />
-                    <Button variant="contained" sx={{ textTransform: 'none', borderRadius: 999, px: 2.25 }} onClick={() => setCreateOpen(true)}>
-                        Add Leave Type
-                    </Button>
-                </Stack>
-            </Stack>
-
-            {isLoading && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-                    <CircularProgress />
-                </Box>
-            )}
-
-            {isError && <Alert severity="error">{getErrorMessage(error)}</Alert>}
-
-            {!isLoading && !isError && leaveTypes.length === 0 && (
-                <Paper elevation={0} sx={{ p: 3, border: '1px dashed', borderColor: 'divider' }}>
-                    <Typography color="text.secondary">No leave types found.</Typography>
-                </Paper>
-            )}
-
-            {!isLoading && !isError && leaveTypes.map((leaveType) => {
-                const isReadOnlyType = leaveType.name.trim().toLowerCase() === 'annual leave'
-
-                return (
-                    <Paper
-                        key={leaveType.id}
-                        elevation={0}
+            <Paper
+                elevation={0}
+                sx={{ bgcolor: '#fff', border: `1px solid ${C_BORDER}`, borderRadius: '10px', overflow: 'hidden' }}
+            >
+                {/* Card header */}
+                <Box
+                    sx={{
+                        px: '18px',
+                        py: '14px',
+                        borderBottom: `1px solid ${C_BORDER}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 2,
+                    }}
+                >
+                    <Typography sx={{ fontSize: 14, fontWeight: 600, color: C_HEADING }}>Leave Types</Typography>
+                    <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => setCreateOpen(true)}
                         sx={{
-                            px: 2,
-                            py: 1.35,
-                            border: '1px solid',
-                            borderColor: 'divider',
-                            borderLeft: '4px solid',
-                            borderLeftColor: leaveType.requiresApproval ? 'rgba(237,108,2,0.65)' : 'rgba(15,118,110,0.55)',
-                            transition: 'border-color 0.15s, box-shadow 0.15s',
-                            '&:hover': { borderColor: 'rgba(15,118,110,0.35)', boxShadow: '0 8px 20px rgba(15,23,42,0.06)' },
+                            fontSize: 12,
+                            py: '5px',
+                            px: 1.5,
+                            bgcolor: '#4F8EF7',
+                            '&:hover': { bgcolor: '#3A7AE4' },
+                            textTransform: 'none',
+                            boxShadow: 'none',
                         }}
                     >
-                        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={0.75}>
-                            <Box sx={{ minWidth: 0, flex: 1 }}>
-                                <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
-                                    <Typography fontWeight={700}>{leaveType.name}</Typography>
-                                    <Chip
-                                        label={leaveType.requiresApproval ? 'Approval Required' : 'Auto Approved'}
-                                        size="small"
-                                        color={leaveType.requiresApproval ? 'warning' : 'default'}
-                                    />
-                                    <Chip
-                                        label={leaveType.isActive ? 'Active' : 'Inactive'}
-                                        size="small"
-                                        color={leaveType.isActive ? 'success' : 'default'}
-                                    />
-                                </Stack>
-                            </Box>
-                            {isReadOnlyType ? (
-                                <Stack
-                                    direction="row"
-                                    spacing={0.75}
-                                    alignItems="center"
-                                    useFlexGap
-                                    sx={{
-                                        alignSelf: { xs: 'flex-start', sm: 'center' },
-                                        px: 1,
-                                        py: 0.45,
-                                        borderRadius: 1.5,
-                                        border: '1px solid',
-                                        borderColor: 'rgba(2,132,199,0.22)',
-                                        bgcolor: 'rgba(2,132,199,0.08)',
-                                    }}
-                                >
-                                    <AdminPanelSettingsRoundedIcon sx={{ fontSize: 17, color: 'info.main' }} />
-                                    <Box>
-                                        <Typography
-                                            variant="caption"
-                                            sx={{ display: 'block', fontWeight: 700, lineHeight: 1.15, color: 'text.primary' }}
-                                        >
-                                            Admin protected
-                                        </Typography>
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                            sx={{ display: 'block', lineHeight: 1.15 }}
-                                        >
-                                            System default · no row actions
-                                        </Typography>
-                                    </Box>
-                                </Stack>
-                            ) : (
-                                <Stack
-                                    direction="row"
-                                    spacing={0.25}
-                                    alignItems="center"
-                                    useFlexGap
-                                    sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, flexWrap: 'wrap' }}
-                                >
-                                    <Button
-                                        size="small"
-                                        color="inherit"
-                                        variant="text"
-                                        startIcon={<EditOutlinedIcon sx={{ fontSize: 16 }} />}
-                                        aria-label={`Edit leave type ${leaveType.name}`}
-                                        sx={{
-                                            textTransform: 'none',
-                                            minWidth: 'auto',
-                                            px: 1,
-                                            py: 0.375,
-                                            borderRadius: 1.5,
-                                            color: 'text.secondary',
-                                            fontWeight: 600,
-                                            '& .MuiButton-startIcon': { mr: 0.5 },
-                                            '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
-                                        }}
-                                        onClick={() => setEditType(leaveType)}
-                                    >
-                                        Edit
-                                    </Button>
-                                    <Button
-                                        size="small"
-                                        color="error"
-                                        variant="text"
-                                        startIcon={<DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />}
-                                        aria-label={`Delete leave type ${leaveType.name}`}
-                                        sx={{
-                                            textTransform: 'none',
-                                            minWidth: 'auto',
-                                            px: 1,
-                                            py: 0.375,
-                                            borderRadius: 1.5,
-                                            fontWeight: 600,
-                                            '& .MuiButton-startIcon': { mr: 0.5 },
-                                        }}
-                                        disabled={deleteMutation.isPending}
-                                        onClick={async () => {
-                                            const result = await SweetAlert.fire({
-                                                title: `Delete leave type "${leaveType.name}"?`,
-                                                text: 'This will fail if leave requests use it.',
-                                                icon: 'warning',
-                                                showCancelButton: true,
-                                                confirmButtonText: 'Yes, delete',
-                                                cancelButtonText: 'Cancel',
-                                                reverseButtons: true
-                                            })
-                                            if (result.isConfirmed) {
-                                                deleteMutation.mutate(leaveType.id)
-                                            }
-                                        }}
-                                    >
-                                        Delete
-                                    </Button>
-                                </Stack>
-                            )}
-                        </Stack>
-                    </Paper>
-                )
-            })}
+                        + New Type
+                    </Button>
+                </Box>
 
-            {deleteMutation.isError && (
-                <Alert severity="error">{getErrorMessage(deleteMutation.error)}</Alert>
-            )}
+                {/* States */}
+                {isLoading && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                        <CircularProgress size={24} />
+                    </Box>
+                )}
+                {isError && (
+                    <Box sx={{ p: 2 }}>
+                        <Alert severity="error">{getErrorMessage(error)}</Alert>
+                    </Box>
+                )}
+                {deleteMutation.isError && (
+                    <Box sx={{ px: 2, pb: 1 }}>
+                        <Alert severity="error">{getErrorMessage(deleteMutation.error)}</Alert>
+                    </Box>
+                )}
+                {!isLoading && !isError && sorted.length === 0 && (
+                    <Box sx={{ textAlign: 'center', py: 6 }}>
+                        <Typography sx={{ fontSize: 13, color: '#9CA3AF' }}>No leave types found.</Typography>
+                    </Box>
+                )}
+
+                {/* Table */}
+                {!isLoading && !isError && sorted.length > 0 && (
+                    <Box sx={{ overflowX: 'auto' }}>
+                        <Table sx={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <TableHead>
+                                <TableRow>
+                                    <TableCell sx={TH}>Name</TableCell>
+                                    <TableCell sx={TH}>Requires Approval</TableCell>
+                                    <TableCell sx={TH}>Status</TableCell>
+                                    <TableCell sx={TH}>Actions</TableCell>
+                                </TableRow>
+                            </TableHead>
+                            <TableBody>
+                                {sorted.map((lt) => {
+                                    const isProtected = lt.name.trim().toLowerCase() === PROTECTED_NAME
+                                    return (
+                                        <TableRow
+                                            key={lt.id}
+                                            sx={{ '&:last-child td': { borderBottom: 'none' }, '&:hover td': { bgcolor: '#F9FAFB' } }}
+                                        >
+                                            <TableCell sx={TD}><strong>{lt.name}</strong></TableCell>
+                                            <TableCell sx={TD}>
+                                                {lt.requiresApproval ? '✅ Yes' : '—'}
+                                            </TableCell>
+                                            <TableCell sx={TD}><StatusBadge active={lt.isActive} /></TableCell>
+                                            <TableCell sx={TD}>
+                                                {isProtected ? (
+                                                    <Typography sx={{ fontSize: 11, color: C_MUTED, fontStyle: 'italic' }}>
+                                                        Protected
+                                                    </Typography>
+                                                ) : (
+                                                    <Stack direction="row" spacing={0.75}>
+                                                        <Button
+                                                            size="small"
+                                                            variant="outlined"
+                                                            onClick={() => setEditType(lt)}
+                                                            sx={{
+                                                                fontSize: 12,
+                                                                py: '5px',
+                                                                px: 1.5,
+                                                                minWidth: 'unset',
+                                                                color: C_MUTED,
+                                                                borderColor: C_BORDER,
+                                                                textTransform: 'none',
+                                                                '&:hover': { bgcolor: '#F4F5F7', borderColor: C_BORDER },
+                                                            }}
+                                                        >
+                                                            Edit
+                                                        </Button>
+                                                        <Button
+                                                            size="small"
+                                                            variant="outlined"
+                                                            disabled={deleteMutation.isPending}
+                                                            onClick={async () => {
+                                                                const result = await SweetAlert.fire({
+                                                                    title: `Delete "${lt.name}"?`,
+                                                                    text: 'This will fail if leave requests use it.',
+                                                                    icon: 'warning',
+                                                                    showCancelButton: true,
+                                                                    confirmButtonText: 'Yes, delete',
+                                                                    cancelButtonText: 'Cancel',
+                                                                    reverseButtons: true,
+                                                                })
+                                                                if (result.isConfirmed) deleteMutation.mutate(lt.id)
+                                                            }}
+                                                            sx={{
+                                                                fontSize: 12,
+                                                                py: '5px',
+                                                                px: 1.5,
+                                                                minWidth: 'unset',
+                                                                color: '#FF4D4F',
+                                                                borderColor: '#FECACA',
+                                                                textTransform: 'none',
+                                                                '&:hover': { bgcolor: '#FFF5F5', borderColor: '#FECACA' },
+                                                            }}
+                                                        >
+                                                            Delete
+                                                        </Button>
+                                                    </Stack>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    )
+                                })}
+                            </TableBody>
+                        </Table>
+                    </Box>
+                )}
+            </Paper>
 
             <LeaveTypeFormDialog
-                key={createOpen ? 'leave-type-create-open' : 'leave-type-create-closed'}
+                key={createOpen ? 'lt-create-open' : 'lt-create-closed'}
                 open={createOpen}
-                title="Add Leave Type"
+                title="New Leave Type"
                 isPending={createMutation.isPending}
                 error={createMutation.error}
                 onClose={() => setCreateOpen(false)}
@@ -243,7 +274,7 @@ function LeaveTypesPanel() {
             />
 
             <LeaveTypeFormDialog
-                key={editType ? `leave-type-edit-${editType.id}` : 'leave-type-edit-none'}
+                key={editType ? `lt-edit-${editType.id}` : 'lt-edit-none'}
                 open={!!editType}
                 title="Edit Leave Type"
                 initial={editType ?? undefined}
@@ -269,15 +300,11 @@ function LeaveTypeFormDialog(props: {
     const [requiresApproval, setRequiresApproval] = useState(props.initial?.requiresApproval ?? true)
     const [isActive, setIsActive] = useState(props.initial?.isActive ?? true)
 
-    const handleSubmit = () => {
-        props.onSubmit({ name: name.trim(), requiresApproval, isActive })
-    }
-
     return (
-        <Dialog open={props.open} onClose={props.onClose} maxWidth="xs" fullWidth>
-            <DialogTitle>{props.title}</DialogTitle>
-            <DialogContent>
-                <Stack spacing={2} sx={{ pt: 1 }}>
+        <AppDialog open={props.open} onClose={props.onClose} maxWidth="xs">
+            <AppDialogTitle>{props.title}</AppDialogTitle>
+            <AppDialogContent>
+                <Stack spacing={2}>
                     <TextField
                         label="Name"
                         value={name}
@@ -286,37 +313,30 @@ function LeaveTypeFormDialog(props: {
                         required
                     />
                     <FormControlLabel
-                        control={
-                            <Switch
-                                checked={requiresApproval}
-                                onChange={(e) => setRequiresApproval(e.target.checked)}
-                            />
-                        }
+                        control={<Switch checked={requiresApproval} onChange={(e) => setRequiresApproval(e.target.checked)} />}
                         label="Requires approval"
                     />
                     <FormControlLabel
-                        control={
-                            <Switch
-                                checked={isActive}
-                                onChange={(e) => setIsActive(e.target.checked)}
-                            />
-                        }
+                        control={<Switch checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />}
                         label="Active"
                     />
-                    {props.error != null && <Alert severity="error">{getErrorMessage(props.error)}</Alert>}
+                    {props.error != null && (
+                        <Alert severity="error">{getErrorMessage(props.error)}</Alert>
+                    )}
                 </Stack>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={props.onClose} disabled={props.isPending}>Cancel</Button>
+            </AppDialogContent>
+            <AppDialogActions>
+                <Button variant="outlined" sx={cancelBtnSx} onClick={props.onClose} disabled={props.isPending}>Cancel</Button>
                 <Button
                     variant="contained"
+                    sx={saveBtnSx}
                     disabled={props.isPending || !name.trim()}
-                    onClick={handleSubmit}
+                    onClick={() => props.onSubmit({ name: name.trim(), requiresApproval, isActive })}
                 >
                     Save
                 </Button>
-            </DialogActions>
-        </Dialog>
+            </AppDialogActions>
+        </AppDialog>
     )
 }
 

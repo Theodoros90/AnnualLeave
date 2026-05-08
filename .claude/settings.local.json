@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Start-Process -WindowStyle Hidden -FilePath \"cmd\" -ArgumentList \"/c npm run dev > vite-restart.log 2>&1\")"
+    ]
+  }
+}

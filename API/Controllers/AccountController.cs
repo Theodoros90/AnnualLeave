@@ -497,8 +497,9 @@ public class AccountController(
     [Authorize]
     [HttpPost("profile-image")]
     [RequestSizeLimit(5_000_000)]
-    public async Task<ActionResult> UploadProfileImage([FromForm] IFormFile file)
+    public async Task<ActionResult> UploadProfileImage([FromForm] UploadProfileImageDto dto)
     {
+        var file = dto.File;
         if (file is null || file.Length == 0)
         {
             return BadRequest(new { message = "Please select an image file." });
@@ -565,14 +566,12 @@ public class AccountController(
             UserId = userId,
             DepartmentId = departmentId,
             JobTitle = jobTitle,
+            AnnualLeaveEntitlement = 20,
+            LeaveBalance = 20,
             CreatedAt = DateTime.UtcNow
         };
 
         context.EmployeeProfiles.Add(employeeProfile);
-        await context.SaveChangesAsync(cancellationToken);
-        await context.Entry(employeeProfile).ReloadAsync(cancellationToken);
-
-        employeeProfile.LeaveBalance = employeeProfile.AnnualLeaveEntitlement;
         await context.SaveChangesAsync(cancellationToken);
 
         return employeeProfile;

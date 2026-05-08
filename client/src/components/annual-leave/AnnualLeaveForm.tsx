@@ -3,11 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
-import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
-import DialogContent from '@mui/material/DialogContent'
-import DialogTitle from '@mui/material/DialogTitle'
-import Divider from '@mui/material/Divider'
+import { AppDialog, AppDialogTitle, AppDialogContent, AppDialogActions, cancelBtnSx, saveBtnSx } from '../ui'
 import InputAdornment from '@mui/material/InputAdornment'
 import Stack from '@mui/material/Stack'
 import MenuItem from '@mui/material/MenuItem'
@@ -155,17 +151,15 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveF
     }
 
     return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 2.5 } }}>
-            <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>
+        <AppDialog open={open} onClose={onClose} maxWidth="sm">
+            <AppDialogTitle>
                 {dialogTitle}
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontWeight: 400 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontWeight: 400, fontSize: 13 }}>
                     {dialogDescription}
                 </Typography>
-            </DialogTitle>
+            </AppDialogTitle>
 
-            <Divider />
-
-            <DialogContent>
+            <AppDialogContent>
                 <Stack spacing={3} component="form" id="leave-form" onSubmit={handleSubmit} noValidate sx={{ pt: 1 }}>
                     {isAdmin && !isEdit && (
                         <TextField
@@ -298,23 +292,24 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false }: AnnualLeaveF
 
                     {error ? <Alert severity="error">{getErrorMessage(error)}</Alert> : null}
                 </Stack>
-            </DialogContent>
+            </AppDialogContent>
 
-            <DialogActions sx={{ px: 3, pb: 3 }}>
-                <Button onClick={onClose} disabled={isPending}>
+            <AppDialogActions>
+                <Button variant="outlined" sx={cancelBtnSx} onClick={onClose} disabled={isPending}>
                     Cancel
                 </Button>
                 <Button
                     type="submit"
                     form="leave-form"
                     variant="contained"
+                    sx={saveBtnSx}
                     disabled={isPending || leaveTypeId <= 0 || !reason.trim() || isLoadingLeaveTypes || (isAdmin && !isEdit && !assignedUserId)}
                     startIcon={isPending ? <CircularProgress size={16} color="inherit" /> : null}
                 >
                     {submitLabel}
                 </Button>
-            </DialogActions>
-        </Dialog>
+            </AppDialogActions>
+        </AppDialog>
     )
 }
 

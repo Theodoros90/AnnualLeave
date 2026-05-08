@@ -4,12 +4,9 @@ import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
-import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
-import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
-import DialogTitle from '@mui/material/DialogTitle'
 import IconButton from '@mui/material/IconButton'
+import { AppDialog, AppDialogTitle, AppDialogContent, AppDialogActions, cancelBtnSx, dangerBtnSx } from '../ui'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
@@ -394,36 +391,36 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
             />
 
             {/* Cancel confirmation dialog */}
-            <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} maxWidth="xs" fullWidth>
-                <DialogTitle fontWeight={700}>Cancel Leave Request?</DialogTitle>
-                <DialogContent>
+            <AppDialog open={deleteOpen} onClose={() => setDeleteOpen(false)} maxWidth="xs">
+                <AppDialogTitle>Cancel Leave Request?</AppDialogTitle>
+                <AppDialogContent>
                     <DialogContentText>
                         Cancel the leave request from{' '}
                         <strong>{formatDate(leave.startDate)}</strong> to{' '}
                         <strong>{formatDate(leave.endDate)}</strong>?
                     </DialogContentText>
-                </DialogContent>
-                <DialogActions sx={{ px: 3, pb: 3 }}>
-                    <Button onClick={() => setDeleteOpen(false)} disabled={deleteMutation.isPending}>
+                </AppDialogContent>
+                <AppDialogActions>
+                    <Button variant="outlined" sx={cancelBtnSx} onClick={() => setDeleteOpen(false)} disabled={deleteMutation.isPending}>
                         Keep
                     </Button>
                     <Button
                         variant="contained"
-                        color="error"
+                        sx={dangerBtnSx}
                         disabled={deleteMutation.isPending}
                         startIcon={deleteMutation.isPending ? <CircularProgress size={16} color="inherit" /> : null}
                         onClick={() => deleteMutation.mutate()}
                     >
                         {deleteMutation.isPending ? 'Cancelling...' : 'Cancel Request'}
                     </Button>
-                </DialogActions>
-            </Dialog>
+                </AppDialogActions>
+            </AppDialog>
 
             {/* Reject dialog */}
-            <Dialog open={rejectOpen} onClose={() => setRejectOpen(false)} maxWidth="xs" fullWidth>
-                <DialogTitle fontWeight={700}>Reject Leave Request?</DialogTitle>
-                <DialogContent>
-                    <Stack spacing={2} sx={{ pt: 1 }}>
+            <AppDialog open={rejectOpen} onClose={() => setRejectOpen(false)} maxWidth="xs">
+                <AppDialogTitle>Reject Leave Request?</AppDialogTitle>
+                <AppDialogContent>
+                    <Stack spacing={2}>
                         <DialogContentText>
                             Reject the leave request from{' '}
                             <strong>{formatDate(leave.startDate)}</strong> to{' '}
@@ -438,22 +435,22 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
                             fullWidth
                         />
                     </Stack>
-                </DialogContent>
-                <DialogActions sx={{ px: 3, pb: 3 }}>
-                    <Button onClick={() => setRejectOpen(false)} disabled={statusMutation.isPending}>
+                </AppDialogContent>
+                <AppDialogActions>
+                    <Button variant="outlined" sx={cancelBtnSx} onClick={() => setRejectOpen(false)} disabled={statusMutation.isPending}>
                         Cancel
                     </Button>
                     <Button
                         variant="contained"
-                        color="error"
+                        sx={dangerBtnSx}
                         disabled={statusMutation.isPending}
                         startIcon={statusMutation.isPending ? <CircularProgress size={16} color="inherit" /> : null}
                         onClick={() => statusMutation.mutate({ status: 'Rejected', comment: rejectComment || undefined })}
                     >
                         {statusMutation.isPending ? 'Rejecting...' : 'Reject'}
                     </Button>
-                </DialogActions>
-            </Dialog>
+                </AppDialogActions>
+            </AppDialog>
         </>
     )
 }

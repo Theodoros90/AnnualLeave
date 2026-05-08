@@ -1,22 +1,31 @@
 import { useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import Alert from '@mui/material/Alert'
-import Avatar from '@mui/material/Avatar'
-import Button from '@mui/material/Button'
+import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
-import Divider from '@mui/material/Divider'
-import Link from '@mui/material/Link'
-import Paper from '@mui/material/Paper'
+import IconButton from '@mui/material/IconButton'
+import InputAdornment from '@mui/material/InputAdornment'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import VisibilityOffRoundedIcon from '@mui/icons-material/VisibilityOffRounded'
+import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
 import { resetPassword } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
-import type { ResetPasswordRequest } from '../../lib/types'
 
-function getErrorMessage(error: unknown) {
-    return getApiErrorMessage(error, 'Unable to reset your password. Please request a new link and try again.')
-}
+const inputSx = {
+    '& .MuiOutlinedInput-root': {
+        borderRadius: '8px',
+        bgcolor: '#fff',
+        fontSize: 13,
+        '& fieldset': { borderColor: '#D1D5DB', borderWidth: '1.5px' },
+        '&:hover fieldset': { borderColor: '#9CA3AF', borderWidth: '1.5px' },
+        '&.Mui-focused': { boxShadow: '0 0 0 3px rgba(79,142,247,0.12)' },
+        '&.Mui-focused fieldset': { borderColor: '#4F8EF7', borderWidth: '1.5px' },
+    },
+    '& .MuiInputLabel-root': { fontSize: 12, fontWeight: 500, color: '#374151' },
+    '& .MuiInputLabel-root.Mui-focused': { color: '#4F8EF7' },
+} as const
 
 interface ResetPasswordFormProps {
     onBackToLogin: () => void
@@ -28,14 +37,14 @@ function ResetPasswordForm({ onBackToLogin, onRequestNewLink }: ResetPasswordFor
     const initialEmail = searchParams.get('email') ?? ''
     const initialToken = searchParams.get('token') ?? ''
 
-    const [values, setValues] = useState<ResetPasswordRequest>({
-        email: initialEmail,
-        token: initialToken,
-        newPassword: '',
-        confirmPassword: '',
-    })
+    const [email, setEmail] = useState(initialEmail)
+    const [newPassword, setNewPassword] = useState('')
+    const [confirmPassword, setConfirmPassword] = useState('')
+    const [showNew, setShowNew] = useState(false)
+    const [showConfirm, setShowConfirm] = useState(false)
 
-    const hasValidLink = Boolean(values.email && values.token)
+    const hasValidLink = Boolean(initialEmail && initialToken)
+    const pwMismatch = confirmPassword.length > 0 && newPassword !== confirmPassword
 
     const mutation = useMutation({
         mutationFn: resetPassword,
@@ -44,134 +53,123 @@ function ResetPasswordForm({ onBackToLogin, onRequestNewLink }: ResetPasswordFor
         },
     })
 
-    function handleChange(event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
-        const { name, value } = event.target
-        setValues((current) => ({ ...current, [name]: value }))
-    }
-
-    async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault()
-
-        if (!hasValidLink) {
-            return
-        }
-
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault()
+        if (!hasValidLink || pwMismatch) return
         mutation.reset()
-        await mutation.mutateAsync({
-            ...values,
-            email: values.email.trim(),
-            token: values.token.trim(),
-        })
+        await mutation.mutateAsync({ email: email.trim(), token: initialToken.trim(), newPassword, confirmPassword })
     }
 
     return (
-        <Paper
-            elevation={3}
-            sx={{
-                p: { xs: 4, md: 5 },
-                borderRadius: 3,
-                bgcolor: 'background.paper',
-            }}
-        >
-            <Stack spacing={3} component="form" onSubmit={handleSubmit} noValidate>
-                <Stack spacing={2} alignItems="center">
-                    <Avatar
-                        variant="rounded"
-                        sx={{ width: 52, height: 52, bgcolor: 'primary.main', fontWeight: 700, fontSize: 18 }}
-                    >
-                        AL
-                    </Avatar>
-                    <Stack spacing={0.5} alignItems="center">
-                        <Typography variant="h5" fontWeight={700}>
-                            Choose a new password
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" align="center">
-                            Set a new password for your verified Annual Leave account.
-                        </Typography>
-                    </Stack>
-                </Stack>
+        <Box component="form" onSubmit={handleSubmit} noValidate>
+            <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#1A1A2E', mb: 0.75 }}>Choose a new password</Typography>
+            <Typography sx={{ fontSize: 13, color: '#6B7280', mb: 2.5 }}>
+                Set a new password for your WorkFlow account
+            </Typography>
 
-                <Divider />
+            {!hasValidLink && (
+                <Alert severity="error" sx={{ mb: 2, borderRadius: '8px', fontSize: 12 }}>
+                    This reset link is incomplete or expired. Please request a new one.
+                </Alert>
+            )}
+            {mutation.isSuccess && (
+                <Alert severity="success" sx={{ mb: 2, borderRadius: '8px', fontSize: 12 }}>
+                    Your password has been reset. You can now sign in with your new password.
+                </Alert>
+            )}
+            {mutation.isError && (
+                <Alert severity="error" sx={{ mb: 2, borderRadius: '8px', fontSize: 12 }}>
+                    {getApiErrorMessage(mutation.error, 'Unable to reset password. Please request a new link.')}
+                </Alert>
+            )}
 
-                {!hasValidLink ? (
-                    <Alert severity="error">
-                        This password reset link is incomplete or expired. Please request a new reset email.
-                    </Alert>
-                ) : null}
-
-                {mutation.isSuccess ? (
-                    <Alert severity="success">
-                        Your password has been reset successfully. You can now sign in with your new password.
-                    </Alert>
-                ) : null}
-
-                {mutation.isError ? (
-                    <Alert severity="error">{getErrorMessage(mutation.error)}</Alert>
-                ) : null}
-
+            <Stack spacing={1.75} mb={2}>
                 <TextField
-                    label="Email"
-                    name="email"
+                    label="Email address"
                     type="email"
-                    value={values.email}
-                    onChange={handleChange}
-                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     required
                     fullWidth
                     disabled={mutation.isSuccess}
+                    autoComplete="email"
+                    InputProps={{
+                        startAdornment: <InputAdornment position="start"><Typography sx={{ fontSize: 15, lineHeight: 1 }}>✉️</Typography></InputAdornment>,
+                    }}
+                    sx={inputSx}
                 />
 
                 <TextField
                     label="New password"
-                    name="newPassword"
-                    type="password"
-                    value={values.newPassword}
-                    onChange={handleChange}
-                    autoComplete="new-password"
-                    helperText="Use at least 6 characters."
+                    type={showNew ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Create a strong password"
                     required
                     fullWidth
                     disabled={!hasValidLink || mutation.isSuccess}
+                    autoComplete="new-password"
+                    helperText="Use at least 6 characters."
+                    InputProps={{
+                        startAdornment: <InputAdornment position="start"><Typography sx={{ fontSize: 15, lineHeight: 1 }}>🔒</Typography></InputAdornment>,
+                        endAdornment: (
+                            <InputAdornment position="end">
+                                <IconButton size="small" onClick={() => setShowNew((v) => !v)} onMouseDown={(e) => e.preventDefault()} edge="end" sx={{ color: '#9CA3AF' }}>
+                                    {showNew ? <VisibilityOffRoundedIcon fontSize="small" /> : <VisibilityRoundedIcon fontSize="small" />}
+                                </IconButton>
+                            </InputAdornment>
+                        ),
+                    }}
+                    sx={inputSx}
                 />
 
                 <TextField
                     label="Confirm new password"
-                    name="confirmPassword"
-                    type="password"
-                    value={values.confirmPassword}
-                    onChange={handleChange}
-                    autoComplete="new-password"
+                    type={showConfirm ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repeat your password"
                     required
                     fullWidth
                     disabled={!hasValidLink || mutation.isSuccess}
+                    autoComplete="new-password"
+                    error={pwMismatch}
+                    helperText={pwMismatch ? 'Passwords do not match' : undefined}
+                    InputProps={{
+                        startAdornment: <InputAdornment position="start"><Typography sx={{ fontSize: 15, lineHeight: 1 }}>🔒</Typography></InputAdornment>,
+                        endAdornment: (
+                            <InputAdornment position="end">
+                                <IconButton size="small" onClick={() => setShowConfirm((v) => !v)} onMouseDown={(e) => e.preventDefault()} edge="end" sx={{ color: '#9CA3AF' }}>
+                                    {showConfirm ? <VisibilityOffRoundedIcon fontSize="small" /> : <VisibilityRoundedIcon fontSize="small" />}
+                                </IconButton>
+                            </InputAdornment>
+                        ),
+                    }}
+                    sx={inputSx}
                 />
-
-                <Button
-                    type="submit"
-                    variant="contained"
-                    size="large"
-                    fullWidth
-                    disabled={mutation.isPending || !hasValidLink || mutation.isSuccess}
-                    startIcon={mutation.isPending ? <CircularProgress size={18} color="inherit" /> : null}
-                    sx={{ minHeight: 48, borderRadius: 2 }}
-                >
-                    {mutation.isPending ? 'Resetting password...' : 'Reset password'}
-                </Button>
-
-                <Typography variant="body2" align="center" color="text.secondary">
-                    {mutation.isSuccess ? 'Ready to continue?' : 'Need another link?'}{' '}
-                    <Link
-                        component="button"
-                        type="button"
-                        variant="body2"
-                        onClick={mutation.isSuccess ? onBackToLogin : onRequestNewLink}
-                        underline="hover"
-                    >
-                        {mutation.isSuccess ? 'Go to sign in' : 'Request a new reset email'}
-                    </Link>
-                </Typography>
             </Stack>
-        </Paper>
+
+            <Box
+                component="button"
+                type="submit"
+                disabled={mutation.isPending || !hasValidLink || mutation.isSuccess || pwMismatch}
+                sx={{ width: '100%', py: '11px', borderRadius: '8px', fontSize: 14, fontWeight: 600, cursor: mutation.isPending ? 'not-allowed' : 'pointer', border: 'none', bgcolor: '#4F8EF7', color: '#fff', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 2, transition: 'all 0.15s', '&:hover:not(:disabled)': { bgcolor: '#3A7AE4', transform: 'translateY(-1px)', boxShadow: '0 4px 12px rgba(79,142,247,0.3)' }, '&:disabled': { opacity: 0.7 } }}
+            >
+                {mutation.isPending ? <><CircularProgress size={16} sx={{ color: '#fff' }} /> Resetting...</> : 'Reset Password'}
+            </Box>
+
+            <Typography sx={{ textAlign: 'center', fontSize: 13, color: '#6B7280' }}>
+                {mutation.isSuccess ? 'Ready to continue? ' : 'Need another link? '}
+                <Box
+                    component="button"
+                    type="button"
+                    onClick={mutation.isSuccess ? onBackToLogin : onRequestNewLink}
+                    sx={{ color: '#4F8EF7', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, p: 0, '&:hover': { textDecoration: 'underline' } }}
+                >
+                    {mutation.isSuccess ? 'Go to Sign In' : 'Request a new reset email'}
+                </Box>
+            </Typography>
+        </Box>
     )
 }
 

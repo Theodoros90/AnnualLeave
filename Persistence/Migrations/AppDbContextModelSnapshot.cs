@@ -50,8 +50,7 @@ namespace Persistence.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("EvidenceUrl")
-                        .HasMaxLength(2048)
-                        .HasColumnType("nvarchar(2048)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int?>("LeaveTypeId")
                         .HasColumnType("int");
@@ -66,6 +65,12 @@ namespace Persistence.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("UserId1")
+                        .HasColumnType("nvarchar(450)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ApprovedById");
@@ -77,6 +82,10 @@ namespace Persistence.Migrations
                     b.HasIndex("EmployeeProfileId");
 
                     b.HasIndex("LeaveTypeId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId1");
 
                     b.ToTable("AnnualLeaves");
                 });
@@ -91,31 +100,19 @@ namespace Persistence.Migrations
 
                     b.Property<string>("Code")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("SYSUTCDATETIME()");
+                        .HasColumnType("datetime2");
 
                     b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
+                        .HasColumnType("bit");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Code")
-                        .IsUnique();
-
-                    b.HasIndex("Name")
-                        .IsUnique();
 
                     b.ToTable("Departments");
                 });
@@ -123,36 +120,28 @@ namespace Persistence.Migrations
             modelBuilder.Entity("Domain.EmployeeProfile", b =>
                 {
                     b.Property<string>("Id")
-                        .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("AnnualLeaveEntitlement")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(22);
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("SYSUTCDATETIME()");
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("DepartmentId")
                         .HasColumnType("int");
 
                     b.Property<string>("JobTitle")
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("LeaveBalance")
                         .HasColumnType("int");
 
                     b.Property<string>("ManagerId")
-                        .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("UserId")
                         .IsRequired()
-                        .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
@@ -170,27 +159,21 @@ namespace Persistence.Migrations
             modelBuilder.Entity("Domain.LeaveStatusHistory", b =>
                 {
                     b.Property<string>("Id")
-                        .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("AnnualLeaveId")
                         .IsRequired()
-                        .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("ChangedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("SYSUTCDATETIME()");
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("ChangedByUserId")
                         .IsRequired()
-                        .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("Comment")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("NewStatus")
                         .HasColumnType("int");
@@ -230,6 +213,50 @@ namespace Persistence.Migrations
                     b.ToTable("LeaveTypes");
                 });
 
+            modelBuilder.Entity("Domain.Project", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("DepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Projects");
+                });
+
             modelBuilder.Entity("Domain.Role", b =>
                 {
                     b.Property<string>("Id")
@@ -255,6 +282,134 @@ namespace Persistence.Migrations
                         .HasFilter("[NormalizedName] IS NOT NULL");
 
                     b.ToTable("AspNetRoles", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.Timesheet", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ApproverId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int>("DepartmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("PeriodEnd")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("PeriodStart")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("TotalHours")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApproverId");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.ToTable("Timesheets");
+                });
+
+            modelBuilder.Entity("Domain.TimesheetEntry", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("HoursWorked")
+                        .HasColumnType("decimal(4,2)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("ProjectId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TimesheetId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("TimesheetId");
+
+                    b.ToTable("TimesheetEntries");
+                });
+
+            modelBuilder.Entity("Domain.TimesheetStatusHistory", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("ChangedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ChangedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("FromStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TimesheetId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("ToStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChangedByUserId");
+
+                    b.HasIndex("TimesheetId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("TimesheetStatusHistories");
                 });
 
             modelBuilder.Entity("Domain.User", b =>
@@ -336,19 +491,15 @@ namespace Persistence.Migrations
             modelBuilder.Entity("Domain.UserDepartment", b =>
                 {
                     b.Property<string>("UserId")
-                        .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("DepartmentId")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("AssignedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("SYSUTCDATETIME()");
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("AssignedByUserId")
-                        .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
                     b.HasKey("UserId", "DepartmentId");
@@ -469,30 +620,35 @@ namespace Persistence.Migrations
             modelBuilder.Entity("Domain.AnnualLeave", b =>
                 {
                     b.HasOne("Domain.User", "ApprovedBy")
-                        .WithMany("ApprovedAnnualLeaves")
+                        .WithMany()
                         .HasForeignKey("ApprovedById")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Domain.Department", "Department")
                         .WithMany("AnnualLeaves")
-                        .HasForeignKey("DepartmentId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .HasForeignKey("DepartmentId");
 
                     b.HasOne("Domain.User", "Employee")
-                        .WithMany("AnnualLeaves")
+                        .WithMany()
                         .HasForeignKey("EmployeeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("Domain.EmployeeProfile", "EmployeeProfile")
                         .WithMany("AnnualLeaves")
-                        .HasForeignKey("EmployeeProfileId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .HasForeignKey("EmployeeProfileId");
 
                     b.HasOne("Domain.LeaveType", "LeaveType")
                         .WithMany("AnnualLeaves")
-                        .HasForeignKey("LeaveTypeId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .HasForeignKey("LeaveTypeId");
+
+                    b.HasOne("Domain.User", null)
+                        .WithMany("AnnualLeaves")
+                        .HasForeignKey("UserId");
+
+                    b.HasOne("Domain.User", null)
+                        .WithMany("ApprovedAnnualLeaves")
+                        .HasForeignKey("UserId1");
 
                     b.Navigation("ApprovedBy");
 
@@ -510,18 +666,17 @@ namespace Persistence.Migrations
                     b.HasOne("Domain.Department", "Department")
                         .WithMany("EmployeeProfiles")
                         .HasForeignKey("DepartmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("Domain.EmployeeProfile", "Manager")
                         .WithMany("DirectReports")
-                        .HasForeignKey("ManagerId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .HasForeignKey("ManagerId");
 
                     b.HasOne("Domain.User", "User")
                         .WithOne("EmployeeProfile")
                         .HasForeignKey("Domain.EmployeeProfile", "UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Department");
@@ -542,12 +697,90 @@ namespace Persistence.Migrations
                     b.HasOne("Domain.User", "ChangedByUser")
                         .WithMany("LeaveStatusChanges")
                         .HasForeignKey("ChangedByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("AnnualLeave");
 
                     b.Navigation("ChangedByUser");
+                });
+
+            modelBuilder.Entity("Domain.Project", b =>
+                {
+                    b.HasOne("Domain.Department", "Department")
+                        .WithMany("Projects")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Department");
+                });
+
+            modelBuilder.Entity("Domain.Timesheet", b =>
+                {
+                    b.HasOne("Domain.User", "Approver")
+                        .WithMany("ApprovedTimesheets")
+                        .HasForeignKey("ApproverId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Domain.Department", "Department")
+                        .WithMany("Timesheets")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.EmployeeProfile", "Employee")
+                        .WithMany("Timesheets")
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Approver");
+
+                    b.Navigation("Department");
+
+                    b.Navigation("Employee");
+                });
+
+            modelBuilder.Entity("Domain.TimesheetEntry", b =>
+                {
+                    b.HasOne("Domain.Project", "Project")
+                        .WithMany("TimesheetEntries")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Timesheet", "Timesheet")
+                        .WithMany("Entries")
+                        .HasForeignKey("TimesheetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+
+                    b.Navigation("Timesheet");
+                });
+
+            modelBuilder.Entity("Domain.TimesheetStatusHistory", b =>
+                {
+                    b.HasOne("Domain.User", "ChangedByUser")
+                        .WithMany()
+                        .HasForeignKey("ChangedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Timesheet", "Timesheet")
+                        .WithMany("StatusHistory")
+                        .HasForeignKey("TimesheetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Domain.User", null)
+                        .WithMany("ChangedTimesheetStatuses")
+                        .HasForeignKey("UserId");
+
+                    b.Navigation("ChangedByUser");
+
+                    b.Navigation("Timesheet");
                 });
 
             modelBuilder.Entity("Domain.UserDepartment", b =>
@@ -642,6 +875,10 @@ namespace Persistence.Migrations
 
                     b.Navigation("EmployeeProfiles");
 
+                    b.Navigation("Projects");
+
+                    b.Navigation("Timesheets");
+
                     b.Navigation("UserDepartments");
                 });
 
@@ -650,6 +887,8 @@ namespace Persistence.Migrations
                     b.Navigation("AnnualLeaves");
 
                     b.Navigation("DirectReports");
+
+                    b.Navigation("Timesheets");
                 });
 
             modelBuilder.Entity("Domain.LeaveType", b =>
@@ -657,9 +896,21 @@ namespace Persistence.Migrations
                     b.Navigation("AnnualLeaves");
                 });
 
+            modelBuilder.Entity("Domain.Project", b =>
+                {
+                    b.Navigation("TimesheetEntries");
+                });
+
             modelBuilder.Entity("Domain.Role", b =>
                 {
                     b.Navigation("UserRoles");
+                });
+
+            modelBuilder.Entity("Domain.Timesheet", b =>
+                {
+                    b.Navigation("Entries");
+
+                    b.Navigation("StatusHistory");
                 });
 
             modelBuilder.Entity("Domain.User", b =>
@@ -668,7 +919,11 @@ namespace Persistence.Migrations
 
                     b.Navigation("ApprovedAnnualLeaves");
 
+                    b.Navigation("ApprovedTimesheets");
+
                     b.Navigation("AssignedUserDepartments");
+
+                    b.Navigation("ChangedTimesheetStatuses");
 
                     b.Navigation("EmployeeProfile");
 

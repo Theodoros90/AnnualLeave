@@ -14,6 +14,7 @@ public class EmployeeProfile
     public EmployeeProfile? Manager { get; set; }
     public ICollection<EmployeeProfile> DirectReports { get; set; } = new List<EmployeeProfile>();
     public ICollection<AnnualLeave> AnnualLeaves { get; set; } = new List<AnnualLeave>();
+    public ICollection<Timesheet> Timesheets { get; set; } = new List<Timesheet>();
 
     public int AnnualLeaveEntitlement { get; set; }
     public int LeaveBalance { get; set; }

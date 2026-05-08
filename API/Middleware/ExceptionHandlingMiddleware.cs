@@ -5,8 +5,11 @@ namespace API.Middleware;
 public class ExceptionHandlingMiddleware(
     RequestDelegate next,
     ILogger<ExceptionHandlingMiddleware> logger,
-    IHostEnvironment environment)
+    IHostEnvironment environment,
+    IConfiguration configuration)
 {
+    private static readonly string[] OAuthCallbackPaths = ["/signin-github", "/signin-google"];
+
     public async Task InvokeAsync(HttpContext context)
     {
         try
@@ -15,6 +18,20 @@ public class ExceptionHandlingMiddleware(
         }
         catch (Exception ex)
         {
+            // OAuth callback failures must redirect to the client login page, not return JSON 500,
+            // because the browser navigated here directly (no JS to handle a JSON error response).
+            if (IsOAuthCallback(context.Request.Path))
+            {
+                logger.LogWarning(ex, "OAuth callback failure for {Path}", context.Request.Path);
+                if (!context.Response.HasStarted)
+                {
+                    var clientBase = configuration["AppUrls:ClientBaseUrl"]?.TrimEnd('/') ?? "http://localhost:5173";
+                    var msg = Uri.EscapeDataString("Sign-in failed. Please try again.");
+                    context.Response.Redirect($"{clientBase}/?authStatus=error&authMessage={msg}#login");
+                }
+                return;
+            }
+
             var statusCode = MapStatusCode(ex);
             var message = MapMessage(ex);
 
@@ -45,6 +62,9 @@ public class ExceptionHandlingMiddleware(
             await context.Response.WriteAsJsonAsync(response);
         }
     }
+
+    private static bool IsOAuthCallback(PathString path) =>
+        OAuthCallbackPaths.Any(p => path.StartsWithSegments(p, StringComparison.OrdinalIgnoreCase));
 
     private static int MapStatusCode(Exception ex) => ex switch
     {
