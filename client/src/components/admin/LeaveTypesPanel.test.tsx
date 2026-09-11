@@ -291,7 +291,7 @@ it('lets the other built-in types be switched off', async () => {
 })
 
 /*
- * A flat "default allowance" is meaningless on Maternity and Paternity Leave: their
+ * A flat "allowance" is meaningless on Maternity and Paternity Leave: their
  * budget is per child, expressed by the three numbers above, and the card has always
  * quoted those instead. Leaving the input on screen invited an admin to set a number
  * nothing reads — and Maternity Leave ships with a stored 90 doing exactly that.
@@ -306,7 +306,7 @@ it.each(['Maternity Leave', 'Paternity Leave'])('offers no flat allowance field 
 
     fireEvent.click(screen.getByTitle('Edit'))
 
-    expect(screen.queryByLabelText('Default allowance')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Allowance')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Unit')).not.toBeInTheDocument()
 })
 
@@ -316,7 +316,7 @@ it('still offers the allowance field for a type whose budget really is a flat on
 
     fireEvent.click(screen.getByTitle('Edit'))
 
-    expect(screen.getByLabelText('Default allowance')).toBeInTheDocument()
+    expect(screen.getByLabelText('Allowance')).toBeInTheDocument()
 })
 
 it('clears the stored allowance when a parental type is saved', async () => {

@@ -484,7 +484,7 @@ function LeaveTypeCard({ derived, onEdit, onToggle, onDelete }: {
             }}>
                 <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                     <Box sx={{ fontSize: 10, color: 'text.disabled', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, mb: '2px' }}>
-                        Default allowance
+                        Allowance
                     </Box>
                     <Box sx={{ fontSize: 28, fontWeight: 700, color: 'text.primary', lineHeight: 1 }}>
                         {t.perChildEntitlement ? describeAllowance(t) : (
@@ -884,7 +884,7 @@ function LeaveTypeFormDialog(props: {
                     {!perChildEntitlement && (
                         <Stack direction="row" spacing={2}>
                             <TextField
-                                label="Default allowance"
+                                label="Allowance"
                                 type="number"
                                 value={defaultAllowance}
                                 onChange={(e) => setDefaultAllowance(Number(e.target.value))}
