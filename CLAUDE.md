@@ -97,7 +97,7 @@ that means when adding code:
 |--------|-----------|
 | `User` | Extends `IdentityUser`; has `DisplayName`, `ImageUrl`, `IsActive` (may this account sign in — a leaver is switched off rather than deleted, since `DeleteAdminUser` nulls out every approval they gave). `DateOfBirth` and `Gender` are recorded HR data an admin maintains on the Users panel. **`Gender` decides who is offered Maternity and Paternity Leave** — see [Who is offered parental leave](#domain-model-summary) below the table. It is nullable and `null` means "not specified", which the dialog offers explicitly so a value set by mistake can be taken back — see **Full-replace update DTOs** under [Backend Patterns](#backend-patterns) — and a `null` is offered **both** parental types rather than neither |
 | `AnnualLeave` | `EmployeeId`, `StartDate/EndDate`, `Status` (enum), `TotalDays` (computed, no weekends). `ChildId` is nullable — required on a request against a `PerChildEntitlement` type, `null` on every row predating the feature (and on any request against a type that isn't per-child), and a `null` `ChildId` counts against no per-child ledger |
-| `LeaveType` | `Name`, `IsActive`, `AffectsBalance` (is it deducted from the enforced pool), `DefaultAllowance` and `MaxCarryoverDays` — the allowance and the year-end cap that bounds it, both per type and both edited **only** on Leave Types. See [Leave is configured once](#domain-model-summary). `PerChildEntitlement` plus its three numbers (`PerChildTotalWeeks`, `PerChildWeeksPerYear`, `ChildEligibleUntilAge`) configure the second, per-child ledger — see [the two leave ledgers](#domain-model-summary) below the table. Annual, Maternity and Paternity Leave are **built-in** (`Domain/SystemLeaveTypes.cs`): they cannot be renamed or deleted, though every other setting on them stays editable. Keyed by name, which is sound only because the name is frozen and already unique case-insensitively; `LeaveTypeDto.IsSystem` derives the flag so the client keeps no copy of the list. Annual leave additionally cannot be **disabled** — it is the type the enforced pool is a budget for — but Maternity and Paternity can be, for an organisation that does not offer them |
+| `LeaveType` | `Name`, `IsActive`, `AffectsBalance` (is it deducted from the enforced pool), `DefaultAllowance` and `MaxCarryoverDays` — the allowance and the year-end cap that bounds it (and which it in turn bounds: a cap may not exceed the allowance, and is nullable, `null` meaning no cap at all), both per type and both edited **only** on Leave Types. See [Leave is configured once](#domain-model-summary). `PerChildEntitlement` plus its three numbers (`PerChildTotalWeeks`, `PerChildWeeksPerYear`, `ChildEligibleUntilAge`) configure the second, per-child ledger — see [the two leave ledgers](#domain-model-summary) below the table. Annual, Maternity and Paternity Leave are **built-in** (`Domain/SystemLeaveTypes.cs`): they cannot be renamed or deleted, though every other setting on them stays editable. Keyed by name, which is sound only because the name is frozen and already unique case-insensitively; `LeaveTypeDto.IsSystem` derives the flag so the client keeps no copy of the list. Annual leave additionally cannot be **disabled** — it is the type the enforced pool is a budget for — but Maternity and Paternity can be, for an organisation that does not offer them |
 | `Timesheet` | `EmployeeId`, `PeriodStart/End`, `TotalHours`, `Status` (Draft→Submitted→Approved/Rejected), `DepartmentId` (nullable — the department it was filed under, kept for history so it outlives its author's move; null when the author has none, i.e. an Admin, matching `AnnualLeave.DepartmentId`) |
 | `TimesheetEntry` | `TimesheetId`, `ProjectId`, `Date`, `HoursWorked` (decimal 4,2), optional `ActivityTypeId`, `ProjectTypeId` and `ProjectComponentId`. One entry per project **+ type + component** per date |
 | `Project` | `Name` (unique), `Code` (unique), `IsActive`; belongs to many `Department` via `ProjectDepartment` (which departments can see it), narrows activities via `ProjectActivityAssignment`, components via `ProjectComponentAssignment`, and its kinds of engagement via `ProjectTypeAssignment` |
@@ -121,10 +121,30 @@ used to edit both: the allowance as a second surface onto the same column, and t
 as an org-wide `AppSettings.MaxCarryoverDays` sitting a screen away from the allowance
 it bounds, with no way to say that sick leave carries nothing while annual leave
 carries five. The column is gone (migration `MoveCarryoverCapToLeaveType`, which
-copied the configured cap onto the `AffectsBalance` type first). A cap of 0 is an
-ordinary policy — nothing carries over — unlike a 0 allowance, which is a hazard.
+copied the configured cap onto the `AffectsBalance` type first).
 `client/src/lib/leave-allowance.ts` reads both figures (`annualLeaveAllowance`,
 `annualCarryoverCap`).
+
+**The cap is nullable, and all three of its readings mean something different:**
+`null` is no cap — every unused day carries; `0` is the opposite — nothing carries,
+an ordinary policy, unlike a 0 allowance, which is a hazard; `N` caps at N days and
+**may not exceed that type's own `DefaultAllowance`** (`UpsertLeaveTypeRequestValidator`).
+The bound is what migration `BoundCarryoverCapToTheAllowance` added, along with the
+nullability and a clamp of any stored cap above its allowance. Before it, the cap was
+checked against the calendar alone, so annual leave could grant 23 days a year and
+carry over 80 — reachable only after four straight years of taking none, so it read
+like a limit and behaved like none. That policy is real, but it is now the field left
+blank rather than a number chosen to be out of reach.
+
+Note the cap and the allowance are not the same quantity at year end: a closing balance
+is last year's carry-in plus this year's allowance, so 23 days carried into a 23-day
+year closes at 46 and a cap of 23 still expires 23 of them. That is why "carry
+everything" is `null` and not `cap = allowance`. `splitAtCarryoverCap` in
+`leave-allowance.ts` is the one place that arithmetic lives, and a `null` must never be
+flattened to 0 on the way to it — the two are opposites. Nothing performs a rollover
+yet: the figure drives the preview on Leave Settings and the leave type's card. A
+per-child type has no cap at all (the dialog hides the field and sends 0) — that ledger
+is bounded by the child's age, not by the leave year.
 
 `EmployeeProfile.AnnualLeaveEntitlement` and `LeaveBalance` are **derived, never
 edited per person**. Only three things write them, all from the allowance:

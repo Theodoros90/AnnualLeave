@@ -14,8 +14,12 @@ export interface LeaveType {
     attachmentPolicy: AttachmentPolicy
     defaultAllowance: number
     allowanceUnit: string
-    /** Unused days of this type that survive the year-end rollover. 0 = none carry. */
-    maxCarryoverDays: number
+    /**
+     * Unused days of this type that survive the year-end rollover, bounded by
+     * `defaultAllowance`. Three readings: `null` = no cap, everything carries;
+     * `0` = nothing carries; `N` = at most N days. See lib/leave-allowance.ts.
+     */
+    maxCarryoverDays: number | null
     /** When true this type's budget is per child, not per employee — see perChild* below. */
     perChildEntitlement: boolean
     /** Lifetime weeks per eligible child. 18 for paternity leave. */

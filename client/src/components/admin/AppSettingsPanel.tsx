@@ -21,7 +21,7 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
 import { getAppSettings, getDepartments, getEmployeeProfiles, getHolidayCountries, getLeaveTypes, updateAppSettings } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
-import { annualCarryoverCap, annualLeaveAllowance, employeeAnnualEntitlement } from '../../lib/leave-allowance'
+import { annualCarryoverCap, annualLeaveAllowance, describeCarryoverCap, employeeAnnualEntitlement, splitAtCarryoverCap } from '../../lib/leave-allowance'
 import type { AppSettings, HolidayCountry } from '../../lib/types'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
 
@@ -456,8 +456,9 @@ export default function AppSettingsPanel() {
             .filter(p => p.annualLeaveEntitlement > 0)
             .map(p => {
                 const closing = Math.max(0, p.leaveBalance ?? 0)
-                const carryover = Math.min(closing, carryoverCap)
-                const expires = Math.max(0, closing - carryoverCap)
+                // A null cap carries everything — distinct from a cap of 0, which
+                // expires everything. See splitAtCarryoverCap in lib/leave-allowance.ts.
+                const { carried: carryover, expired: expires } = splitAtCarryoverCap(closing, carryoverCap)
                 // Each employee reopens on their own entitlement, not on one shared figure.
                 const newBalance = carryover + employeeAnnualEntitlement(p, annualAllowance)
                 // An Admin has no department, so the id can be absent as well as
@@ -616,7 +617,7 @@ export default function AppSettingsPanel() {
                                     {([
                                         { label: 'Year', value: yearLabel },
                                         { label: 'Days Remaining', value: String(daysRemaining), valueColor: daysRemainingColor },
-                                        { label: 'Carryover Cap', value: `${carryoverCap} days` },
+                                        { label: 'Carryover Cap', value: describeCarryoverCap(carryoverCap) },
                                         { label: 'Next Reset', value: fmt(nextReset) },
                                     ] as { label: string; value: string; valueColor?: SxColor }[]).map((stat, idx) => (
                                         <StatCell key={stat.label} {...stat} divideLeft={idx % 2 === 1} divideTop={idx > 1} />
@@ -636,7 +637,9 @@ export default function AppSettingsPanel() {
                                         <ScheduleEvent label={`${FINAL_WARNING_DAYS}-day final warning`} date={fmt(finalWarnDate)} {...WARNING_EVENT} />
                                         <ScheduleEvent
                                             label="Year-end rollover" date={`${fmt(nextReset)} · midnight`}
-                                            note={`Will auto-calculate carryover (max ${carryoverCap} days), expire excess, and reset all balances.`}
+                                            note={carryoverCap === null
+                                                ? 'Will carry every unused day over and reset all balances — the type sets no cap.'
+                                                : `Will auto-calculate carryover (max ${carryoverCap} days), expire excess, and reset all balances.`}
                                             dot="error.main" filled badge="Year End" badgeBg={softBg('error')} badgeColor="error.dark" />
                                         <ScheduleEvent
                                             label="New year opens" date={fmt(nextReset)}
@@ -830,7 +833,9 @@ export default function AppSettingsPanel() {
                     {/* Both figures were quoted in a single run-on line in the header, which
                         had to be read twice to be parsed. Two lines, one job each. */}
                     <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
-                        Measured against the {carryoverCap}-day carryover cap and an entitlement of {annualAllowance} days/year — both set on Leave Types, the entitlement unless a per-employee figure overrides it.
+                        {carryoverCap === null
+                            ? <>Measured against no carryover cap — every unused day carries — and an entitlement of {annualAllowance} days/year, both set on Leave Types, the entitlement unless a per-employee figure overrides it.</>
+                            : <>Measured against the {carryoverCap}-day carryover cap and an entitlement of {annualAllowance} days/year — both set on Leave Types, the entitlement unless a per-employee figure overrides it.</>}
                     </Typography>
                     <Typography sx={{ fontSize: 11, color: 'text.disabled', mt: 0.5 }}>
                         Nothing here has happened yet: this is what a year-end rollover would do to today’s balances if no further leave is booked.

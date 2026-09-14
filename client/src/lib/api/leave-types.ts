@@ -13,7 +13,7 @@ export interface UpsertLeaveTypeRequest {
     attachmentPolicy: AttachmentPolicy
     defaultAllowance: number
     allowanceUnit: string
-    maxCarryoverDays: number
+    maxCarryoverDays: number | null
     perChildEntitlement: boolean
     perChildTotalWeeks: number
     perChildWeeksPerYear: number

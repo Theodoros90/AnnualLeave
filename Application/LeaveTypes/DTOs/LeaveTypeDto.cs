@@ -17,7 +17,7 @@ public class LeaveTypeDto
     public AttachmentPolicy AttachmentPolicy { get; set; }
     public int DefaultAllowance { get; set; }
     public string AllowanceUnit { get; set; } = "days/year";
-    public int MaxCarryoverDays { get; set; }
+    public int? MaxCarryoverDays { get; set; }
     public bool PerChildEntitlement { get; set; }
     public int PerChildTotalWeeks { get; set; }
     public int PerChildWeeksPerYear { get; set; }

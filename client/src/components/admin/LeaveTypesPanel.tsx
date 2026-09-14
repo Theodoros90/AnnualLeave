@@ -209,7 +209,9 @@ function LeaveTypesPanel() {
                the stored one back would restore a figure the dialog had cleared. */
             defaultAllowance: t.supportsPerChildEntitlement ? 0 : t.defaultAllowance,
             allowanceUnit: t.allowanceUnit,
-            maxCarryoverDays: t.maxCarryoverDays,
+            // Same reasoning: a per-child ledger does not roll over, so the dialog
+            // offers no cap for one and sends 0.
+            maxCarryoverDays: t.supportsPerChildEntitlement ? 0 : t.maxCarryoverDays,
             perChildEntitlement: t.perChildEntitlement,
             perChildTotalWeeks: t.perChildTotalWeeks,
             perChildWeeksPerYear: t.perChildWeeksPerYear,
@@ -496,11 +498,18 @@ function LeaveTypeCard({ derived, onEdit, onToggle, onDelete }: {
                             </>
                         )}
                     </Box>
-                    <Box sx={{ fontSize: 11, color: 'text.secondary', mt: '4px' }}>
-                        {t.maxCarryoverDays > 0
-                            ? `Carries over up to ${t.maxCarryoverDays} days`
-                            : 'No carryover — unused days expire at year end'}
-                    </Box>
+                    {/* Three readings to keep apart, and a fourth case with nothing to
+                        say: a per-child ledger is bounded by the child's age, not by
+                        the leave year, so it does not roll over at all. */}
+                    {!t.perChildEntitlement && (
+                        <Box sx={{ fontSize: 11, color: 'text.secondary', mt: '4px' }}>
+                            {t.maxCarryoverDays === null
+                                ? 'All unused days carry over'
+                                : t.maxCarryoverDays > 0
+                                    ? `Carries over up to ${t.maxCarryoverDays} days`
+                                    : 'No carryover — unused days expire at year end'}
+                        </Box>
+                    )}
                     {t.accrualNotes && (
                         <Box sx={{ fontSize: 11, color: 'text.secondary', mt: '4px' }}>{t.accrualNotes}</Box>
                     )}
@@ -767,7 +776,11 @@ function LeaveTypeFormDialog(props: {
     const [attachmentPolicy, setAttachmentPolicy] = useState<AttachmentPolicy>(i?.attachmentPolicy ?? 'None')
     const [defaultAllowance, setDefaultAllowance] = useState<number>(i?.defaultAllowance ?? 0)
     const [allowanceUnit, setAllowanceUnit] = useState(i?.allowanceUnit ?? 'days/year')
-    const [maxCarryoverDays, setMaxCarryoverDays] = useState<number>(i?.maxCarryoverDays ?? 0)
+    /* Blank is a value here, not an empty field: it is "no cap, everything carries",
+       the one reading the allowance cannot bound. So the state holds '' rather than
+       coercing to 0, which means the opposite. A new type starts at 0 — nothing
+       carries over until someone says otherwise. */
+    const [maxCarryoverDays, setMaxCarryoverDays] = useState<number | ''>(i ? i.maxCarryoverDays ?? '' : 0)
     const [accrualNotes, setAccrualNotes] = useState(i?.accrualNotes ?? '')
     const [minNoticeDays, setMinNoticeDays] = useState<number>(i?.minNoticeDays ?? 0)
     const [maxConsecutiveDays, setMaxConsecutiveDays] = useState<number>(i?.maxConsecutiveDays ?? 0)
@@ -809,7 +822,10 @@ function LeaveTypeFormDialog(props: {
             // A per-child type has no flat allowance — see the hidden field below.
             defaultAllowance: perChildEntitlement ? 0 : Number(defaultAllowance) || 0,
             allowanceUnit: allowanceUnit.trim() || 'days/year',
-            maxCarryoverDays: Number(maxCarryoverDays) || 0,
+            // A per-child ledger does not roll over at year end, so there is no cap to
+            // set for one. Otherwise a blank field is null — no cap — which `|| 0`
+            // would have turned into its opposite.
+            maxCarryoverDays: perChildEntitlement ? 0 : maxCarryoverDays === '' ? null : Number(maxCarryoverDays),
             perChildEntitlement,
             perChildTotalWeeks: Number(perChildTotalWeeks) || 0,
             perChildWeeksPerYear: Number(perChildWeeksPerYear) || 0,
@@ -900,18 +916,27 @@ function LeaveTypeFormDialog(props: {
                             />
                         </Stack>
                     )}
-                    {/* The cap belongs beside the allowance it bounds. It used to be one
-                        org-wide number on Leave Settings, which could not say that sick
-                        leave carries nothing while annual leave carries five. */}
-                    <TextField
-                        label="Max carryover (days)"
-                        type="number"
-                        value={maxCarryoverDays}
-                        onChange={(e) => setMaxCarryoverDays(Math.max(0, Number(e.target.value)))}
-                        inputProps={{ min: 0, max: 365 }}
-                        sx={{ width: 220 }}
-                        helperText="Unused days above this expire at year end. 0 = none carry over."
-                    />
+                    {/* The cap belongs beside the allowance it bounds — and is bounded
+                        by it: a cap larger than the allowance (80 against 23 days) is
+                        only reachable after years of taking no leave at all, so it
+                        reads like a limit and behaves like none. That policy is real,
+                        but it is the blank field, not an unreachable number.
+
+                        Hidden for a per-child type, like the allowance above it: that
+                        ledger is bounded by the child's age, not by the leave year,
+                        and does not roll over. */}
+                    {!perChildEntitlement && (
+                        <TextField
+                            label="Max carryover (days)"
+                            type="number"
+                            value={maxCarryoverDays}
+                            onChange={(e) => setMaxCarryoverDays(
+                                e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                            inputProps={{ min: 0, max: defaultAllowance }}
+                            sx={{ width: 220 }}
+                            helperText={`Unused days above this expire at year end. 0 = none carry over, blank = no cap. At most the ${defaultAllowance}-day allowance.`}
+                        />
+                    )}
 
                     {/* Per-child entitlement: a separate ledger, not a per-employee
                         allowance. There is no toggle, because this is not a setting —

@@ -64,10 +64,35 @@ export function balanceLeaveType(leaveTypes: LeaveType[]) {
  * How many unused annual-leave days survive the year-end rollover, as configured on
  * Leave Types beside the allowance they cap. This was an org-wide AppSettings column,
  * free to disagree with the per-type allowance and unable to say that sick leave
- * carries nothing. 0 means nothing carries over.
+ * carries nothing.
+ *
+ * Three readings, and `null` is not the missing one: `null` is no cap, every unused
+ * day carries; `0` is its opposite, nothing carries; `N` caps at N days. A `null`
+ * here must therefore not be flattened to 0 the way an absent value is — with no
+ * annual-leave type at all there is no balance to carry, which reads as 0.
  */
-export function annualCarryoverCap(leaveTypes: LeaveType[]) {
-    return balanceLeaveType(leaveTypes)?.maxCarryoverDays ?? 0
+export function annualCarryoverCap(leaveTypes: LeaveType[]): number | null {
+    const type = balanceLeaveType(leaveTypes)
+    return type ? type.maxCarryoverDays : 0
+}
+
+/**
+ * How a closing balance divides at the year end: what carries into next year and what
+ * expires. The cap is not the allowance — a closing balance is last year's carry-in
+ * plus this year's allowance, so 23 days carried into a 23-day year closes at 46 and
+ * a 23-day cap still expires 23 of them. Only `null` carries everything.
+ *
+ * Nothing performs the rollover yet; this is what the preview on Leave Settings shows.
+ */
+export function splitAtCarryoverCap(closingBalance: number, cap: number | null) {
+    const closing = Math.max(0, closingBalance)
+    if (cap === null) return { carried: closing, expired: 0 }
+    return { carried: Math.min(closing, cap), expired: Math.max(0, closing - cap) }
+}
+
+/** A carryover cap as a label, keeping "no cap" distinct from a cap of 0 days. */
+export function describeCarryoverCap(cap: number | null) {
+    return cap === null ? 'No cap' : `${cap} days`
 }
 
 /**

@@ -27,9 +27,22 @@ public class UpsertLeaveTypeRequestValidator : AbstractValidator<UpsertLeaveType
         RuleFor(x => x.EligibilityNotes).MaximumLength(250);
 
         RuleFor(x => x.DefaultAllowance).InclusiveBetween(0, 365);
-        RuleFor(x => x.MaxCarryoverDays)
-            .InclusiveBetween(0, 365)
-            .WithMessage("Max carryover days must be between 0 and 365.");
+        /* A cap on unused days of *this* type cannot sensibly exceed this type's own
+           allowance. Bounded only by the calendar, it could be set to 80 against a
+           23-day allowance — a figure reachable only after four consecutive years of
+           taking no leave, so it reads like a limit and behaves like none. "Nothing
+           expires" is a real policy, but it is null (the field left blank), not a
+           number chosen to be out of reach. */
+        When(x => x.MaxCarryoverDays.HasValue, () =>
+        {
+            RuleFor(x => x.MaxCarryoverDays)
+                .Cascade(CascadeMode.Stop)
+                .Must(days => days >= 0)
+                .WithMessage("Max carryover days cannot be negative.")
+                .Must((request, days) => days <= request.DefaultAllowance)
+                .WithMessage(request =>
+                    $"Max carryover cannot exceed the allowance of {request.DefaultAllowance} days. Leave it blank for no cap.");
+        });
         RuleFor(x => x.MinNoticeDays).InclusiveBetween(0, 365);
         RuleFor(x => x.MaxConsecutiveDays).InclusiveBetween(0, 365);
 

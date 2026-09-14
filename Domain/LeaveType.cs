@@ -31,8 +31,23 @@ public class LeaveType
     /* How many unused days of this type survive the year-end rollover. This was
        org-wide (AppSettings.MaxCarryoverDays), which made it a second number free to
        disagree with the allowance it caps, and left the cap unstated for every type
-       but annual leave. It belongs beside the allowance, per type. */
-    public int MaxCarryoverDays { get; set; }
+       but annual leave. It belongs beside the allowance, per type.
+
+       Three readings, and null is not the missing one: null is no cap, every unused
+       day carries; 0 is its opposite, nothing carries; N caps at N days and may not
+       exceed DefaultAllowance. No cap needs a value of its own because it is the one
+       reading the allowance cannot bound — it used to be spelled as a number large
+       enough that nothing reached it (80 against a 23-day allowance), which reads
+       like a limit and behaves like none.
+
+       The cap and the allowance are not the same quantity at year end: a closing
+       balance is last year's carry-in plus this year's allowance, so 23 days carried
+       into a 23-day year can close at 46. A cap equal to the allowance therefore
+       still expires days, which is why "carry everything" is null and not the
+       allowance. Nothing enforces any of this yet — there is no year-end rollover
+       job; the figure is read by the carryover preview on Leave Settings and by the
+       leave type's card. */
+    public int? MaxCarryoverDays { get; set; }
 
     /* Per-child entitlement. Paternity leave is not one budget per employee but one
        per child, bounded by the child's age -- so the three numbers that describe it

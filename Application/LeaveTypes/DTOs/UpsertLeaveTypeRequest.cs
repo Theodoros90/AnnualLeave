@@ -33,7 +33,7 @@ public class UpsertLeaveTypeRequest
     public string AllowanceUnit { get; set; } = "days/year";
 
     [Range(0, 365)]
-    public int MaxCarryoverDays { get; set; }
+    public int? MaxCarryoverDays { get; set; }
 
     /// <summary>
     /// Turns the per-child entitlement engine on. The three numbers below are
