@@ -295,6 +295,45 @@ Four things about it that are deliberate:
 - **Whitespace is not an attachment.** `AnnualLeave.EvidenceUrl` is free text, so
   the check trims before believing it.
 
+**Coverage is announced, not just recorded.** `AnnualLeave.DelegateId` — the
+colleague nominated on step 3 of the apply form — used to be a private note: stored,
+rendered in a detail drawer, and told to nobody, so the nominated colleague found
+out in the corridor or not at all.
+`Application/AnnualLeaves/Commands/CoverageNotification.cs` is the rule that emails
+them, and it is called from all three places a leave can reach `Approved`: the
+auto-approving branch of `CreateAnnualLeave`, `UpdateLeaveStatus`, and the status
+path of `EditAnnualLeave` (the one an admin uses from the edit dialog rather than
+the approve button). Five things about it are deliberate:
+
+- **Nothing is announced before approval.** A request can sit `Pending` for days
+  and then be rejected, and a team that rearranged itself around a trip that never
+  happened is worse off than one told late. The single exception is the `Coverage`
+  line on the manager's new-request email, which is part of what the approver is
+  deciding.
+- **No delegate means no announcement at all**, not an announcement saying nobody
+  is covering. The message is about coverage, so with nobody covering there is
+  nothing to send — which also keeps the department's inbox for the absences
+  somebody actually arranged cover for. The approver's email says
+  "Coverage: Nobody nominated" precisely because they are the one person who needs
+  to know it was left empty.
+- **Neither message carries the leave's `Reason`.** Step 4 of the apply form
+  promises the reason stays private; it reaches the manager deciding the request
+  and nobody else.
+- **The department is the employee's own department, and a null one announces to
+  nobody** — an Admin has no department, and "the same department as nobody" is not
+  a match, the same trap `ManagerNotificationRecipients` documents. A deactivated
+  account is never mailed either: a leaver covers nothing.
+- **Leaving `Approved` stands the delegate down**, with a note to them alone —
+  cancelled leave, or an approval taken back. The department hears nothing further,
+  because an absence that went away is visible on the calendar. Swapping the
+  delegate on an already-approved leave likewise tells the new delegate only. Note
+  what follows: **changing the dates of an announced absence re-announces nothing**,
+  so the department keeps the dates it was first told.
+
+`client/src/components/annual-leave/TeamLeavePage.tsx` renders "Covered by X" under
+the employee's name on each row, not only in the view dialog, so a manager scanning
+next week's absences can see who is holding the fort without opening anything.
+
 Two more traps worth knowing, both found the hard way:
 
 - **`Child` has no soft-delete query filter, and `EmployeeProfile`'s does not

@@ -150,6 +150,14 @@ public class CreateAnnualLeave
                     var dateRange = $"{annualLeave.StartDate:dd MMM yyyy} to {annualLeave.EndDate:dd MMM yyyy}";
                     var subject = $"New leave request from {employeeName}";
 
+                    // The approver decides with cover in front of them, rather than
+                    // having to open the request to find out whether any was
+                    // arranged. This is the only coverage detail that goes out
+                    // before approval — see CoverageNotification for why the rest
+                    // waits.
+                    var coverage = await CoverageNotification.DescribeAsync(
+                        context, annualLeave.DelegateId, cancellationToken);
+
                     foreach (var recipient in recipients)
                     {
                         // NotificationEmail encodes the display names and the
@@ -159,6 +167,7 @@ public class CreateAnnualLeave
                             .To(recipient.DisplayName ?? recipient.Email)
                             .Sentence($"You have a new {leaveTypeName} request from {employeeName} for {dateRange}.")
                             .Detail("Reason", annualLeave.Reason)
+                            .Detail("Coverage", coverage)
                             .Closing("Please log in to the Annual Leave system to review and take action.")
                             .Build();
 
@@ -170,6 +179,19 @@ public class CreateAnnualLeave
                             cancellationToken);
                     }
                 }
+            }
+            else
+            {
+                // The type approved it on the spot, so coverage is settled and can
+                // be announced now. A type that requires approval announces nothing
+                // here — UpdateLeaveStatus does it if and when a manager approves.
+                await CoverageNotification.AnnounceAsync(
+                    context,
+                    emailService,
+                    annualLeave,
+                    employeeProfile,
+                    notifyDepartment: true,
+                    cancellationToken);
             }
 
             return Result<string>.Success(annualLeave.Id);

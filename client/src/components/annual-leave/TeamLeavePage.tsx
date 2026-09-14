@@ -364,7 +364,19 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
 
                                     return (
                                         <TableRow key={leave.id} sx={{ '&:last-child td': { borderBottom: 'none' }, '&:hover td': { bgcolor: 'action.hover' } }}>
-                                            <TableCell sx={TD}><strong>{leave.employeeName}</strong></TableCell>
+                                            <TableCell sx={TD}>
+                                                <strong>{leave.employeeName}</strong>
+                                                {/* Coverage under the name rather than in its own
+                                                    column: it is a footnote to who is away, and the
+                                                    table is already eight columns wide. Without it
+                                                    the only way to see who is holding the fort was
+                                                    to open the request. */}
+                                                {leave.delegateName && (
+                                                    <Box sx={{ fontSize: 11, color: 'text.secondary', mt: 0.25 }}>
+                                                        Covered by {leave.delegateName}
+                                                    </Box>
+                                                )}
+                                            </TableCell>
                                             {isAdmin && (
                                                 <TableCell sx={TD}>
                                                     <DeptBadge dept={leave.departmentName} />

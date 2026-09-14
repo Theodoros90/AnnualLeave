@@ -159,7 +159,7 @@ public class LeaveDelegateTests
         });
         await db.SaveChangesAsync();
 
-        var handler = new EditAnnualLeave.Handler(db);
+        var handler = new EditAnnualLeave.Handler(db, new FakeEmailService());
 
         EditAnnualLeave.Command EditCmd(string? delegateId) => new()
         {

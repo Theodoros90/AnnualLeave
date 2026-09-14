@@ -259,7 +259,7 @@ public class ParentalLeaveEligibilityTests
         Assert.True(created.IsSuccess);
         var leaveId = await db.AnnualLeaves.Select(leave => leave.Id).SingleAsync();
 
-        var result = await new EditAnnualLeave.Handler(db).Handle(new EditAnnualLeave.Command
+        var result = await new EditAnnualLeave.Handler(db, new FakeEmailService()).Handle(new EditAnnualLeave.Command
         {
             AnnualLeave = new EditAnnualLeaveRequest
             {

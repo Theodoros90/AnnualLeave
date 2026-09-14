@@ -143,6 +143,22 @@ public class UpdateLeaveStatus
 
             await transaction.CommitAsync(cancellationToken);
 
+            // Coverage first, and before the early return below: whether the
+            // delegate and the department hear about an absence has nothing to do
+            // with whether the employee themselves has an email address on file.
+            if (newStatus == AnnualLeaveStatus.Approved)
+            {
+                await CoverageNotification.AnnounceAsync(
+                    context, emailService, annualLeave, employeeProfile, notifyDepartment: true, cancellationToken);
+            }
+            else if (oldStatus == AnnualLeaveStatus.Approved)
+            {
+                // Cancelled, or an approval taken back. Somebody was asked to hold
+                // the fort and needs to hear that they no longer have to.
+                await CoverageNotification.AnnounceStoodDownAsync(
+                    context, emailService, annualLeave, annualLeave.DelegateId, cancellationToken);
+            }
+
             var employeeContact = await context.Users
                 .AsNoTracking()
                 .Where(user => user.Id == annualLeave.EmployeeId)

@@ -203,7 +203,7 @@ public class LeaveBalanceAtomicityTests
         await SeedLeaveAsync(db, AnnualLeaveStatus.Pending);
         interceptor.Arm();
 
-        var handler = new EditAnnualLeave.Handler(db);
+        var handler = new EditAnnualLeave.Handler(db, new FakeEmailService());
 
         await AssertBalanceWriteFailedAsync(interceptor, () => handler.Handle(
             new EditAnnualLeave.Command

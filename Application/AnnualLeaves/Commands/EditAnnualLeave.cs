@@ -2,6 +2,7 @@
 using Application.AnnualLeaves.DTOs;
 using Application.Core;
 using Domain;
+using Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
@@ -17,7 +18,7 @@ public class EditAnnualLeave
         public bool IsAdmin { get; set; }
         public bool IsManager { get; set; }
     }
-    public class Handler(AppDbContext context) : IRequestHandler<Command, Result<Unit>>
+    public class Handler(AppDbContext context, IEmailService emailService) : IRequestHandler<Command, Result<Unit>>
     {
         public async Task<Result<Unit>> Handle(Command request, CancellationToken cancellationToken)
         {
@@ -62,6 +63,11 @@ public class EditAnnualLeave
             {
                 return Result<Unit>.Conflict("Approved and rejected leave requests cannot be edited.");
             }
+
+            // Read before the edit overwrites them: what the coverage emails go out
+            // for is the difference between these and where the leave ends up.
+            var statusBeforeEdit = annualLeave.Status;
+            var delegateBeforeEdit = annualLeave.DelegateId;
 
             annualLeave.StartDate = request.AnnualLeave.StartDate;
             annualLeave.EndDate = request.AnnualLeave.EndDate;
@@ -204,6 +210,31 @@ public class EditAnnualLeave
             }
 
             await transaction.CommitAsync(cancellationToken);
+
+            // Three ways an edit changes who should be hearing about coverage. The
+            // first is this command's own approval path, the one an admin uses from
+            // the edit dialog rather than from the approve button.
+            if (annualLeave.Status == AnnualLeaveStatus.Approved
+                && statusBeforeEdit != AnnualLeaveStatus.Approved)
+            {
+                await CoverageNotification.AnnounceAsync(
+                    context, emailService, annualLeave, employeeProfile, notifyDepartment: true, cancellationToken);
+            }
+            else if (annualLeave.Status == AnnualLeaveStatus.Approved
+                && annualLeave.DelegateId != delegateBeforeEdit)
+            {
+                // The absence was announced already and has not changed; only the
+                // name on the coverage has. The new delegate needs to know they are
+                // covering, but the department does not need telling twice.
+                await CoverageNotification.AnnounceAsync(
+                    context, emailService, annualLeave, employeeProfile, notifyDepartment: false, cancellationToken);
+            }
+            else if (statusBeforeEdit == AnnualLeaveStatus.Approved
+                && annualLeave.Status != AnnualLeaveStatus.Approved)
+            {
+                await CoverageNotification.AnnounceStoodDownAsync(
+                    context, emailService, annualLeave, delegateBeforeEdit, cancellationToken);
+            }
 
             return Result<Unit>.Success(Unit.Value);
         }

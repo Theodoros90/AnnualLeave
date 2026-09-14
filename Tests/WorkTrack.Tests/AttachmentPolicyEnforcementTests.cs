@@ -147,7 +147,7 @@ public class AttachmentPolicyEnforcementTests
     }
 
     private static Task<Result<Unit>> Edit(AppDbContext db, int leaveTypeId, string? evidenceUrl, bool isAdmin = false) =>
-        new EditAnnualLeave.Handler(db)
+        new EditAnnualLeave.Handler(db, new FakeEmailService())
             .Handle(new EditAnnualLeave.Command
             {
                 ChangedByUserId = isAdmin ? "admin-1" : UserId,

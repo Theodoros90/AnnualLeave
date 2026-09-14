@@ -28,7 +28,7 @@ public class PerChildLeaveHandlerTests
             .Handle(new CreateAnnualLeave.Command { AnnualLeave = request }, CancellationToken.None);
 
     private static Task<Result<Unit>> Edit(AppDbContext db, EditAnnualLeaveRequest request, bool isAdmin = false) =>
-        new EditAnnualLeave.Handler(db)
+        new EditAnnualLeave.Handler(db, new FakeEmailService())
             .Handle(new EditAnnualLeave.Command
             {
                 AnnualLeave = request,

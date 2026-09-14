@@ -24,13 +24,23 @@ internal static class TestDb
     }
 }
 
+/// <summary>One message a <see cref="FakeEmailService"/> was asked to send.</summary>
+internal sealed record SentEmail(string Recipient, string Subject, string HtmlBody, string? TextBody);
+
 /// <summary>
-/// No-op email sender — reports success without sending anything, and keeps the
-/// last message so tests can assert on what a recipient would have received.
+/// No-op email sender — reports success without sending anything, and keeps every
+/// message so tests can assert on what each recipient would have received.
+///
+/// The Last* properties are one message's worth of that: enough while every
+/// handler sent a single email, useless for a fan-out such as the coverage
+/// announcement, which is why <see cref="Sent"/> sits alongside them.
 /// </summary>
 internal sealed class FakeEmailService : IEmailService
 {
     public int SentCount { get; private set; }
+
+    /// <summary>Every message sent, in the order it was sent.</summary>
+    public List<SentEmail> Sent { get; } = [];
 
     public string? LastRecipient { get; private set; }
     public string? LastSubject { get; private set; }
@@ -48,6 +58,7 @@ internal sealed class FakeEmailService : IEmailService
         CancellationToken cancellationToken = default)
     {
         SentCount++;
+        Sent.Add(new SentEmail(toEmail, subject, htmlBody, textBody));
         LastRecipient = toEmail;
         LastSubject = subject;
         LastHtmlBody = htmlBody;
