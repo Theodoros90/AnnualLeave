@@ -21,12 +21,14 @@ import {
     getMyTimesheets, getTeamAttendance, getTeamAttendanceHistory, getTimesheets, rejectTimesheet, updateLeaveStatus,
 } from '../../lib/api'
 import { activityIcon } from '../../lib/hooks/useAttendance'
+import { useOfferedLeaveTypes } from '../../lib/hooks'
+import { buildLeaveBalanceRows, type LeaveBalanceRow } from '../../lib/leave-balance-rows'
 import { useStore } from '../../lib/mobx'
 import { iconForLeaveType } from './leave-icons'
 import { ActivityTypesPanel, AdminUsersPanel, AppSettingsPanel, ComponentsPanel, DataMaintenancePanel, DepartmentsPanel, LeaveTypesPanel, OrgSettingsPanel, ProjectsPanel, ProjectTypesPanel } from '..'
 import type {
     AnnualLeave, AnnualLeaveStatus, AttendanceIssue, DepartmentAttendance,
-    LeaveType, RecentActivity, TeamAttendance, TeamHistory, TeamMemberAttendance, Timesheet, TimesheetStatus, UserInfo,
+    RecentActivity, TeamAttendance, TeamHistory, TeamMemberAttendance, Timesheet, TimesheetStatus, UserInfo,
 } from '../../lib/types'
 
 const WEEKLY_TARGET = 40
@@ -156,6 +158,22 @@ function EmployeeDashboard({ user }: { user: UserInfo }) {
     const myApprovedThisYear = useMemo(
         () => leaves.filter((l) => l.employeeId === user.id && l.status === 'Approved' && new Date(l.startDate).getFullYear() === currentYear),
         [leaves, user.id, currentYear]
+    )
+
+    /* The balance card shows what the employee may actually request, measured
+       against whichever ledger the type keeps — the same two rules My Leave
+       applies, shared so the two cards cannot disagree. Listing every active type
+       against the pooled entitlement offered a woman paternity leave and reported
+       a per-child type as 0. */
+    const { offeredLeaveTypes, ledgerByTypeId } = useOfferedLeaveTypes(leaveTypes, user.gender)
+    const balanceRows = useMemo(
+        () => buildLeaveBalanceRows({
+            leaveTypes: offeredLeaveTypes,
+            approvedThisYear: myApprovedThisYear,
+            entitlement,
+            ledgerByTypeId,
+        }),
+        [offeredLeaveTypes, myApprovedThisYear, entitlement, ledgerByTypeId],
     )
 
     const balanceUsed = useMemo(() =>
@@ -296,12 +314,7 @@ function EmployeeDashboard({ user }: { user: UserInfo }) {
                     icon="📅"
                     action={<OutlineBtn onClick={() => uiStore.navigateToMyLeave('requests')}>View all</OutlineBtn>}
                 >
-                    <LeaveBalanceList
-                        leaveTypes={leaveTypes}
-                        approvedThisYear={myApprovedThisYear}
-                        leaveTypeById={leaveTypeById}
-                        entitlement={entitlement}
-                    />
+                    <LeaveBalanceList rows={balanceRows} />
                 </ActionCard>
 
                 <ActionCard title="Quick actions" icon="⚡">
@@ -1107,29 +1120,7 @@ function EmptyNextLeave({ onApply }: { onApply: () => void }) {
     )
 }
 
-function LeaveBalanceList({ leaveTypes, approvedThisYear, leaveTypeById, entitlement }: {
-    leaveTypes: LeaveType[]
-    approvedThisYear: AnnualLeave[]
-    leaveTypeById: Map<number, LeaveType>
-    entitlement: number
-}) {
-    const usedByType = new Map<number, number>()
-    for (const l of approvedThisYear) {
-        if (l.leaveTypeId != null) {
-            usedByType.set(l.leaveTypeId, (usedByType.get(l.leaveTypeId) ?? 0) + l.totalDays)
-        }
-    }
-    const rows = leaveTypes
-        .filter((lt) => lt.isActive)
-        .map((lt) => {
-            const used = usedByType.get(lt.id) ?? 0
-            const tracks = lt.affectsBalance
-            const total = tracks ? entitlement : 0
-            const remaining = Math.max(0, total - used)
-            const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0
-            return { id: lt.id, name: lt.name, used, total, remaining, pct, tracks }
-        })
-
+function LeaveBalanceList({ rows }: { rows: LeaveBalanceRow[] }) {
     if (rows.length === 0) {
         return <Box sx={{ fontSize: 12, color: 'text.secondary', py: '8px' }}>No active leave types.</Box>
     }
@@ -1137,18 +1128,19 @@ function LeaveBalanceList({ leaveTypes, approvedThisYear, leaveTypeById, entitle
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {rows.map((r) => {
-                const fillColor = !r.tracks ? 'text.disabled' : r.pct >= 90 ? 'error.main' : r.pct >= 70 ? 'warning.main' : 'success.main'
+                const pct = r.total > 0 ? Math.min(100, (r.used / r.total) * 100) : 0
+                const fillColor = !r.tracked ? 'text.disabled' : pct >= 90 ? 'error.main' : pct >= 70 ? 'warning.main' : 'success.main'
                 return (
                     <Box key={r.id} sx={{ display: 'grid', gridTemplateColumns: '28px 1fr auto', gap: '10px', alignItems: 'center' }}>
-                        <Box sx={{ fontSize: 18 }}>{iconForLeaveType(leaveTypeById.get(r.id)?.name)}</Box>
+                        <Box sx={{ fontSize: 18 }}>{iconForLeaveType(r.name)}</Box>
                         <Box>
                             <Box sx={{ fontSize: 12, fontWeight: 500, color: 'text.primary' }}>{r.name}</Box>
                             <Box sx={{ height: 5, bgcolor: 'action.hover', borderRadius: '3px', mt: '5px', overflow: 'hidden' }}>
-                                <Box sx={{ height: '100%', borderRadius: '3px', bgcolor: fillColor, width: `${r.pct}%` }} />
+                                <Box sx={{ height: '100%', borderRadius: '3px', bgcolor: fillColor, width: `${pct}%` }} />
                             </Box>
                         </Box>
                         <Box sx={{ fontSize: 13, color: 'text.secondary', fontVariantNumeric: 'tabular-nums', textAlign: 'right', minWidth: 50 }}>
-                            {r.tracks && r.total > 0 ? (
+                            {r.tracked && r.total > 0 ? (
                                 <>
                                     <Box component="strong" sx={{ fontSize: 14, color: 'text.primary', fontWeight: 700 }}>{r.remaining}</Box>
                                     /{r.total}

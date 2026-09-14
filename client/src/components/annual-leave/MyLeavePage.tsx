@@ -18,14 +18,15 @@ import {
     deleteAnnualLeave,
     getAnnualLeaves,
     getAppSettings,
-    getChildLeaveEntitlements,
     getEmployeeProfiles,
     getLeaveStatusHistories,
     getLeaveTypes,
 } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
+import { useOfferedLeaveTypes, type PerChildLedger } from '../../lib/hooks'
+import { buildLeaveBalanceRows } from '../../lib/leave-balance-rows'
 import { useStore } from '../../lib/mobx'
-import type { AnnualLeave, AnnualLeaveStatus, LeaveStatusHistory, UserInfo } from '../../lib/types'
+import type { AnnualLeave, AnnualLeaveStatus, ChildLeaveEntitlement, LeaveStatusHistory, UserInfo } from '../../lib/types'
 import AnnualLeaveForm from './AnnualLeaveForm'
 import { SweetAlert } from '../ui'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
@@ -62,6 +63,23 @@ function formatDate(date: string) {
     return new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+/**
+ * Formatted in UTC, unlike `formatDate` above. A date-only value parses as UTC
+ * midnight, so rendering it in local time anywhere west of UTC shows the day
+ * before — which, on a child's last eligible date, reads as a day less
+ * eligibility than the server will actually approve. `formatDate` stays local
+ * because what it formats are timestamps.
+ */
+function formatDateUtc(iso: string) {
+    return new Date(iso).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC',
+    })
+}
+
+function plural(count: number, one: string, many: string) {
+    return `${count} ${count === 1 ? one : many}`
+}
+
 function daysBetween(a: Date, b: Date) {
     return Math.round((b.getTime() - a.getTime()) / 86_400_000)
 }
@@ -88,17 +106,15 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
     const { data: profiles = [] } = useQuery({ queryKey: ['employeeProfiles'], queryFn: getEmployeeProfiles })
     const { data: settings } = useQuery({ queryKey: ['appSettings'], queryFn: getAppSettings })
     const { data: histories = [] } = useQuery({ queryKey: ['leaveStatusHistories'], queryFn: getLeaveStatusHistories })
-    // Prefix-matched by an earlier task's invalidation of ['childLeaveEntitlements'] —
-    // keep the key as ['childLeaveEntitlements', 'me'].
-    const { data: childEntitlements } = useQuery({
-        queryKey: ['childLeaveEntitlements', 'me'],
-        queryFn: () => getChildLeaveEntitlements(),
-    })
-
     const leaveTypeById = useMemo(
         () => new Map(leaveTypes.map((lt) => [lt.id, lt])),
         [leaveTypes]
     )
+
+    /* Which types this employee is offered, and the per-child ledger behind the
+       two that keep one — the same hook the employee dashboard's balance card
+       uses, so the two panels cannot disagree. */
+    const { offeredLeaveTypes, ledgerByTypeId, perChildLedgers } = useOfferedLeaveTypes(leaveTypes, user.gender)
 
     const latestStatusComment = useMemo(() => {
         const map = new Map<string, LeaveStatusHistory>()
@@ -162,23 +178,17 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
         return Math.max(0, daysBetween(now, lyEnd))
     }, [settings, today])
 
-    // Per-type breakdown for the balance panel
-    const balanceByType = useMemo(() => {
-        // Group approved leaves this year by type
-        const used: Record<string, number> = {}
-        for (const l of approvedThisYear) {
-            const lt = l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined
-            const name = lt?.name ?? 'Other'
-            used[name] = (used[name] ?? 0) + l.totalDays
-        }
-        return leaveTypes
-            .filter((lt) => lt.isActive)
-            .map((lt) => {
-                const u = used[lt.name] ?? 0
-                const total = lt.affectsBalance ? entitlement : 0
-                return { id: lt.id, name: lt.name, used: u, total, affectsBalance: lt.affectsBalance }
-            })
-    }, [leaveTypes, approvedThisYear, leaveTypeById, entitlement])
+    // Per-type breakdown for the balance panel. Both ledgers are quoted here; see
+    // buildLeaveBalanceRows for which type is measured against which.
+    const balanceByType = useMemo(
+        () => buildLeaveBalanceRows({
+            leaveTypes: offeredLeaveTypes,
+            approvedThisYear,
+            entitlement,
+            ledgerByTypeId,
+        }),
+        [offeredLeaveTypes, approvedThisYear, entitlement, ledgerByTypeId],
+    )
 
     // Year usage timeline — aggregate working-day count per month (current calendar year)
     const yearUsage = useMemo(() => {
@@ -313,53 +323,21 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
                         {balanceByType.length === 0
                             ? <Box sx={{ fontSize: 12, color: 'text.secondary' }}>No active leave types.</Box>
                             : balanceByType.map((b) => (
-                                <BalanceRow key={b.id} name={b.name} used={b.used} total={b.total} affectsBalance={b.affectsBalance} />
+                                <BalanceRow key={b.id} name={b.name} used={b.used} total={b.total}
+                                            remaining={b.remaining} tracked={b.tracked} />
                             ))}
                     </Box>
                 </Box>
             </Box>
 
-            {/* Per-child ledger (paternity leave, in practice). Renders only when the
-                employee has at least one child *and* an active leave type actually carries
-                a per-child entitlement — either gap means nothing to show, not an empty
-                card. */}
-            {childEntitlements?.leaveTypeId != null && childEntitlements.children.length > 0 && (
-                <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: '12px', p: '18px 20px', mb: '14px' }}>
-                    <Stack spacing={1}>
-                        <Box>
-                            <Typography variant="subtitle2" fontWeight={700}>
-                                {childEntitlements.leaveTypeName}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                                {`Leave year ${formatDate(childEntitlements.children[0].leaveYearStart)} – ${formatDate(childEntitlements.children[0].leaveYearEnd)}`}
-                            </Typography>
-                        </Box>
-
-                        {childEntitlements.children.map((child) => (
-                            <Stack
-                                key={child.childId}
-                                direction="row"
-                                justifyContent="space-between"
-                                alignItems="baseline"
-                                sx={{ opacity: child.isEligible ? 1 : 0.6 }}
-                            >
-                                <Typography variant="body2">
-                                    {`${child.name} · age ${child.ageYears}`}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    {child.isEligible
-                                        ? `${child.remainingDays} of ${child.totalDays} days left · ${child.thisYearRemainingDays} of ${child.thisYearCapDays} this year`
-                                        : `no longer eligible · ${child.usedDays} days used`}
-                                </Typography>
-                            </Stack>
-                        ))}
-
-                        <Typography variant="caption" color="text.secondary">
-                            {`${childEntitlements.eligibleChildCount} eligible child(ren) · ${childEntitlements.totalRemainingDays} days remaining in total`}
-                        </Typography>
-                    </Stack>
-                </Box>
-            )}
+            {/* A card per per-child ledger the employee is offered — paternity leave,
+                in practice, but maternity leave too where it is configured per child.
+                One card each rather than one card: the two types configure different
+                weeks and different cut-off ages, so their figures cannot be merged.
+                Nothing renders without children on file to describe. */}
+            {perChildLedgers.map((entry) => (
+                <PerChildLeaveCard key={entry.type.id} type={entry.type} ledger={entry.ledger} />
+            ))}
 
             {/* Year usage timeline */}
             <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: '12px', p: '18px 20px', mb: '14px' }}>
@@ -644,12 +622,17 @@ function EmptyUpcoming({ onApply }: { onApply: () => void }) {
     )
 }
 
-function BalanceRow({ name, used, total, affectsBalance }: {
-    name: string; used: number; total: number; affectsBalance: boolean
+/**
+ * One row of the balance panel. `tracked` is whether the type has an entitlement
+ * to count down at all — the pooled one, or a per-child ledger — which the caller
+ * decides, because the two are measured differently and only the caller knows
+ * which applies. A row that tracks nothing reports days taken and greys its bar.
+ */
+function BalanceRow({ name, used, total, remaining, tracked }: {
+    name: string; used: number; total: number; remaining: number; tracked: boolean
 }) {
-    const remaining = Math.max(0, total - used)
     const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0
-    const fillColor = !affectsBalance ? 'text.disabled' : pct >= 90 ? 'error.main' : pct >= 70 ? 'warning.main' : 'success.main'
+    const fillColor = !tracked ? 'text.disabled' : pct >= 90 ? 'error.main' : pct >= 70 ? 'warning.main' : 'success.main'
     return (
         <Box sx={{ display: 'grid', gridTemplateColumns: '28px 1fr auto', gap: '10px', alignItems: 'center' }}>
             <Box sx={{ fontSize: 18 }}>{iconForLeaveType(name)}</Box>
@@ -660,13 +643,132 @@ function BalanceRow({ name, used, total, affectsBalance }: {
                 </Box>
             </Box>
             <Box sx={{ fontSize: 13, color: 'text.secondary', fontVariantNumeric: 'tabular-nums', textAlign: 'right', minWidth: 50 }}>
-                {affectsBalance && total > 0 ? (
+                {tracked && total > 0 ? (
                     <>
                         <Box component="strong" sx={{ fontSize: 14, color: 'text.primary', fontWeight: 700 }}>{remaining}</Box>
                         /{total}
                     </>
                 ) : (
                     <Box component="strong" sx={{ fontSize: 14, color: 'text.primary', fontWeight: 700 }}>{used}</Box>
+                )}
+            </Box>
+        </Box>
+    )
+}
+
+/**
+ * The per-child ledger for one leave type, broken down a child at a time.
+ *
+ * Deliberately shaped like the pooled `BalanceRow` above — same grid, same bar,
+ * same remaining-over-total on the right — because the two panels describe the
+ * same thing for the same employee and sit one above the other. What they cannot
+ * share is the arithmetic: every figure here belongs to one child, and the two
+ * ledgers are disjoint (see CLAUDE.md, "There are two leave ledgers").
+ *
+ * Landmarked with an accessible name so the card can be reached as a whole, by a
+ * screen reader and by tests, rather than through whatever text happens to sit
+ * inside it.
+ */
+function PerChildLeaveCard({ type, ledger }: PerChildLedger) {
+    /* Every child carries the configured entitlement, an aged-out one included —
+       only their *remaining* figures are zeroed — so any child can describe the
+       policy. An eligible one is preferred purely so the sentence matches the
+       rows the reader is most likely to be looking at. */
+    const reference = ledger.children.find((child) => child.isEligible) ?? ledger.children[0]
+
+    return (
+        <Box
+            component="section"
+            aria-label={`${type.name} entitlement per child`}
+            sx={{
+                bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider',
+                borderRadius: '12px', p: '18px 20px', mb: '14px',
+            }}
+        >
+            <Box sx={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                gap: '12px', flexWrap: 'wrap',
+            }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: 13, fontWeight: 600, color: 'text.primary' }}>
+                    <Box component="span" sx={{ fontSize: 18, display: 'inline-flex', alignItems: 'center' }}>
+                        {iconForLeaveType(type.name)}
+                    </Box>
+                    {type.name}
+                </Box>
+                <Box sx={{ fontSize: 11, color: 'text.secondary' }}>
+                    {`Leave year ${formatDate(reference.leaveYearStart)} – ${formatDate(reference.leaveYearEnd)}`}
+                </Box>
+            </Box>
+
+            {/* What the entitlement actually is, read from the ledger the server
+                computed rather than from the leave type's own columns: Maternity
+                Leave is seeded with all three of them at 0, so quoting the type
+                would print "0 weeks per child" on the type that most needs the
+                sentence. */}
+            <Box sx={{ fontSize: 11, color: 'text.secondary', mt: '4px', mb: '14px' }}>
+                {reference.totalWeeks > 0
+                    ? `${plural(reference.totalWeeks, 'week', 'weeks')} per child · up to ${plural(reference.thisYearCapDays, 'day', 'days')} a leave year`
+                    : `${plural(reference.totalDays, 'day', 'days')} per child · up to ${plural(reference.thisYearCapDays, 'day', 'days')} a leave year`}
+            </Box>
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {ledger.children.map((child) => (
+                    <ChildBalanceRow key={child.childId} child={child} />
+                ))}
+            </Box>
+
+            <Divider sx={{ my: '12px' }} />
+
+            <Box sx={{ fontSize: 11, color: 'text.secondary' }}>
+                {`${plural(ledger.eligibleChildCount, 'eligible child', 'eligible children')} · ${ledger.totalRemainingDays} days remaining in total`}
+            </Box>
+        </Box>
+    )
+}
+
+/**
+ * One child's row of that card. An aged-out child keeps their row — their usage
+ * is real history and hiding it would leave the total unexplained — but loses the
+ * figures that no longer mean anything: the remaining-days column and the bar,
+ * which would otherwise draw a full green entitlement nobody can book.
+ */
+function ChildBalanceRow({ child }: { child: ChildLeaveEntitlement }) {
+    const pct = child.totalDays > 0 ? Math.min(100, (child.usedDays / child.totalDays) * 100) : 0
+    const fillColor = pct >= 90 ? 'error.main' : pct >= 70 ? 'warning.main' : 'success.main'
+
+    return (
+        <Box sx={{
+            display: 'grid', gridTemplateColumns: '28px 1fr auto', gap: '10px', alignItems: 'center',
+            opacity: child.isEligible ? 1 : 0.6,
+        }}>
+            <Box sx={{ fontSize: 18 }}>👶</Box>
+            <Box>
+                <Box sx={{ fontSize: 12, fontWeight: 500, color: 'text.primary' }}>
+                    {child.name}
+                    <Box component="span" sx={{ color: 'text.secondary', fontWeight: 400 }}>{` · age ${child.ageYears}`}</Box>
+                </Box>
+                {child.isEligible && (
+                    <Box sx={{ height: 5, bgcolor: 'action.hover', borderRadius: '3px', mt: '5px', overflow: 'hidden' }}>
+                        <Box sx={{ height: '100%', borderRadius: '3px', bgcolor: fillColor, width: `${pct}%` }} />
+                    </Box>
+                )}
+                <Box sx={{ fontSize: 11, color: 'text.secondary', mt: '5px' }}>
+                    {child.isEligible
+                        ? `${child.thisYearRemainingDays} of ${child.thisYearCapDays} days left this year · eligible until ${formatDateUtc(child.lastEligibleDate)}`
+                        : `No longer eligible · ${plural(child.usedDays, 'day used', 'days used')}`}
+                </Box>
+            </Box>
+            <Box sx={{
+                fontSize: 13, color: 'text.secondary', fontVariantNumeric: 'tabular-nums',
+                textAlign: 'right', minWidth: 50,
+            }}>
+                {child.isEligible && (
+                    <>
+                        <Box component="strong" sx={{ fontSize: 14, color: 'text.primary', fontWeight: 700 }}>
+                            {child.remainingDays}
+                        </Box>
+                        /{child.totalDays}
+                    </>
                 )}
             </Box>
         </Box>
