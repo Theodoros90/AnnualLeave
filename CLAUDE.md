@@ -343,6 +343,54 @@ Six things about it that are deliberate:
   type list lands a tick after the dialog opens, and until it does every type reads
   as "no half days", which would wipe the duration before anyone touched anything.
 
+**The two limits on the leave type are enforced, in different units.**
+`LeaveType.MinNoticeDays` bounds how soon a request may start and
+`LeaveType.MaxConsecutiveDays` how long it may run.
+`Application/AnnualLeaves/Commands/NoticePeriodRule.cs` and `MaxConsecutiveRule.cs`
+are the rules, called from `CreateAnnualLeave` and `EditAnnualLeave`;
+`client/src/lib/leave-limits.ts` mirrors both. Keep them in step, the same way
+`AttachmentPolicyRule` and `attachment-policy.ts` are kept in step.
+
+Both were display-only before. The admin dialog saved them and the type's card
+rendered "Minimum 7 days notice required" and "Max 15 consecutive days per
+request", while `ApplyLeavePage` warned "Short notice" below a hardcoded seven
+days for every type alike and never mentioned length at all — the same shape of
+guess as the old `name.includes('sick')` attachment sniff. A type asking 30 days
+notice changed nothing an employee could see.
+
+Five things about them that are deliberate:
+
+- **Notice is counted in calendar days; the maximum in business days.** "30 days
+  notice" is how an HR policy states it, and the card says "days notice" plainly.
+  The maximum instead counts what `AnnualLeave.TotalDays` holds, so "17
+  consecutive days" and "17 days deducted" are the same 17 — which is what the
+  seeded data already assumed: Paternity Leave's 25 is exactly its
+  `PerChildWeeksPerYear` of 5 at `BusinessDaysPerWeek`, and Maternity Leave's 90
+  matches its own 90-day allowance.
+- **A 0 in either is "no limit", not "nothing allowed"** — the opposite reading of
+  a 0 `DefaultAllowance`, and the same trap `MaxCarryoverDays` documents.
+- **Notice is re-checked on an edit only when the start date moves.** It is the
+  one limit with a clock in it: a request filed properly in advance drifts towards
+  its own start date every day it sits there, so checking it on every edit would
+  strand it — the reason could not be corrected the morning before a trip. The
+  maximum has no clock and is checked on every edit. Neither is re-checked in
+  `UpdateLeaveStatus`: re-testing notice at approval would refuse leave purely
+  because the manager was slow.
+- **No exemption for an admin**, matching `AttachmentPolicyRule`. Note this bites
+  on real data: Maternity is seeded at 30 days notice and Sabbatical at 60, and
+  nothing enforced them before, so requests that were accepted yesterday are
+  refused now.
+- **`AnnualLeaveForm` blocks on notice but only *warns* on length.** Its
+  `requestedDays` excludes weekends but not public holidays — that dialog has no
+  holiday list — so the figure only ever errs high, and blocking on it would
+  refuse requests `MaxConsecutiveRule` allows. `ApplyLeavePage` has the holiday
+  set and blocks on both. A mirror may under-refuse; it must never over-refuse.
+
+`ApplyLeavePage` also dims calendar days inside the notice period, so the limit
+reads like the weekends and public holidays beside it — but only for a type that
+actually asks for notice, since a 0 would otherwise put the earliest start at
+today and quietly ban backdating, which no rule here does.
+
 **Coverage is announced, not just recorded.** `AnnualLeave.DelegateId` — the
 colleague nominated on step 3 of the apply form — used to be a private note: stored,
 rendered in a detail drawer, and told to nobody, so the nominated colleague found

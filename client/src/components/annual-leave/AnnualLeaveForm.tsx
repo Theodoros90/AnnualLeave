@@ -16,6 +16,7 @@ import Box from '@mui/material/Box'
 import { createAnnualLeave, editAnnualLeave, getChildLeaveEntitlements, getLeaveTypes, getAdminUsers, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered } from '../../lib/parental-leave'
 import { attachmentRequirement, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
+import { maxConsecutiveError, noticeError } from '../../lib/leave-limits'
 import { collapseToHalfDay, durationLabel, isHalfDayOffered } from '../../lib/half-day'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
@@ -132,6 +133,16 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
     // Mirrors HalfDayRule.Check, which refuses a half day on a type that offers
     // none — so the buttons go rather than failing on the round trip.
     const halfDayOffered = isHalfDayOffered(selectedLeaveType)
+
+    /* The leave type's notice period, mirroring NoticePeriodRule.Check — and only
+       when the start date actually moves, exactly as EditAnnualLeave does it.
+       Notice is the one limit with a clock in it: a request filed properly in
+       advance drifts towards its own start date every day it sits there, so
+       checking it on every edit would strand a request nobody is trying to bring
+       forward — the reason could not be corrected the morning before a trip. */
+    const startDateMoved = !isEdit || watchedStartDate !== (leave?.startDate?.slice(0, 10) ?? '')
+    const noticeBreach = startDateMoved ? noticeError(selectedLeaveType, watchedStartDate) : null
+
     // On the admin create path, no employee is chosen yet means no ledger to
     // load — showing the picker anyway would fetch the signed-in admin's own
     // children instead of placeholder text explaining why there's nothing yet.
@@ -166,6 +177,14 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
         }
         return count
     }, [watchedStartDate, watchedEndDate])
+
+    /* The length limit is advisory here, not blocking, and that is the difference
+       from ApplyLeavePage, which blocks on it. `requestedDays` excludes weekends
+       but NOT public holidays — this dialog has no holiday list — so it reads high
+       near one. Blocking on a figure that only errs upwards would refuse requests
+       MaxConsecutiveRule would have allowed, which is the one direction a mirror
+       must never fail in. So it warns, and the server makes the call. */
+    const lengthWarning = maxConsecutiveError(selectedLeaveType, requestedDays ?? 0)
 
     const { data: adminUsers, isLoading: isLoadingUsers } = useQuery({
         queryKey: ['adminUsers'],
@@ -736,6 +755,12 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                         </Stack>
                     )}
 
+                    {!readOnly && noticeBreach ? <Alert severity="error">{noticeBreach}</Alert> : null}
+                    {/* Advisory, not a blocker — see `lengthWarning` above. */}
+                    {!readOnly && !noticeBreach && lengthWarning
+                        ? <Alert severity="warning">{lengthWarning}</Alert>
+                        : null}
+
                     {error ? <Alert severity="error">{getErrorMessage(error)}</Alert> : null}
                 </Stack>
             </AppDialogContent>
@@ -750,7 +775,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                         form="leave-form"
                         variant="contained"
                         sx={saveBtnSx}
-                        disabled={isPending || isLoadingLeaveTypes || childPickerBlocked || attachmentMissing}
+                        disabled={isPending || isLoadingLeaveTypes || childPickerBlocked || attachmentMissing || !!noticeBreach}
                         startIcon={isPending ? <CircularProgress size={16} color="inherit" /> : null}
                     >
                         {submitLabel}

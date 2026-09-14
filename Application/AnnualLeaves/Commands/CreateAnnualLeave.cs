@@ -54,6 +54,22 @@ public class CreateAnnualLeave
             if (halfDayError is not null)
                 return Result<string>.Failure(halfDayError);
 
+            /* The two limits the leave type's card has always advertised and nothing
+               has ever enforced. Beside the checks above because they are the same
+               kind of refusal: the employee can act on both without leaving the form,
+               and client/src/lib/leave-limits.ts mirrors them, so reaching here means
+               a crafted request or a stale page. No exemption for an admin filing on
+               somebody else's behalf, matching AttachmentPolicyRule. */
+            var noticeError = NoticePeriodRule.Check(
+                leaveType, annualLeave.StartDate, DateTime.UtcNow.Date);
+            if (noticeError is not null)
+                return Result<string>.Failure(noticeError);
+
+            var maxConsecutiveError = await MaxConsecutiveRule.CheckAsync(
+                context, leaveType, annualLeave.StartDate, annualLeave.EndDate, cancellationToken);
+            if (maxConsecutiveError is not null)
+                return Result<string>.Failure(maxConsecutiveError);
+
             /* Maternity and Paternity Leave are offered on the employee's recorded
                gender and their having a child young enough to qualify. The client
                hides the cards; this is what makes hiding them mean something. Runs

@@ -69,6 +69,15 @@ public class EditAnnualLeave
             var statusBeforeEdit = annualLeave.Status;
             var delegateBeforeEdit = annualLeave.DelegateId;
 
+            /* Read for the same reason, and needed because notice is the one limit
+               with a clock in it: a request filed properly in advance drifts towards
+               its own start date every day it sits there, so by the time somebody
+               opens it the notice period may long since have passed. Checking notice
+               on every edit would strand such a request — the reason could not be
+               corrected the morning before a trip. So it is checked only when the
+               start date actually moves. */
+            var startDateBeforeEdit = annualLeave.StartDate;
+
             annualLeave.StartDate = request.AnnualLeave.StartDate;
             annualLeave.EndDate = request.AnnualLeave.EndDate;
             annualLeave.Duration = request.AnnualLeave.Duration;
@@ -104,6 +113,27 @@ public class EditAnnualLeave
                     editedLeaveType, annualLeave.Duration, annualLeave.StartDate, annualLeave.EndDate);
                 if (halfDayError is not null)
                     return Result<Unit>.Failure(halfDayError);
+
+                /* Only when the start date moves — see startDateBeforeEdit above.
+                   An edit that leaves the dates alone is not somebody trying to
+                   bring a request forward, so the notice period has nothing to say
+                   about it. Moving it at all re-earns the check, including moving
+                   it further away, which passes on its merits. */
+                if (annualLeave.StartDate.Date != startDateBeforeEdit.Date)
+                {
+                    var noticeError = NoticePeriodRule.Check(
+                        editedLeaveType, annualLeave.StartDate, DateTime.UtcNow.Date);
+                    if (noticeError is not null)
+                        return Result<Unit>.Failure(noticeError);
+                }
+
+                /* Unconditional, unlike the notice check: the maximum has no clock
+                   in it, so a request that breaches it was lengthened deliberately
+                   or moved onto a type with a shorter limit. */
+                var maxConsecutiveError = await MaxConsecutiveRule.CheckAsync(
+                    context, editedLeaveType, annualLeave.StartDate, annualLeave.EndDate, cancellationToken);
+                if (maxConsecutiveError is not null)
+                    return Result<Unit>.Failure(maxConsecutiveError);
             }
 
             annualLeave.DelegateId = string.IsNullOrWhiteSpace(request.AnnualLeave.DelegateId)

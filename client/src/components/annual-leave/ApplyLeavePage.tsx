@@ -9,6 +9,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import { createAnnualLeave, getAnnualLeaves, getChildLeaveEntitlements, getEmployeeProfiles, getHolidays, getLeaveTypes, getTeammates, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered, isParentalLeaveType } from '../../lib/parental-leave'
 import { attachmentRequirement, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
+import { earliestStartDate, maxConsecutiveError, noticeError } from '../../lib/leave-limits'
 import { chargeableDays, collapseToHalfDay, durationLabel, isHalfDay, isHalfDayOffered, type LeaveDurationValue } from '../../lib/half-day'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
@@ -339,7 +340,18 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     const balanceAfter = selectedAffectsBalance ? currentBalance - daysDeducted : currentBalance
     const balancePct = entitlement > 0 ? Math.min(100, ((usedDays + (selectedAffectsBalance ? daysDeducted : 0)) / entitlement) * 100) : 0
     const notice = daysNotice(startDate)
-    const isShortNotice = !!startDate && notice >= 0 && notice < 7
+
+    /* The type's own two limits, replacing a pair of guesses. "Short notice" used
+       to mean "fewer than seven days" for every type alike, advisory and hardcoded,
+       while `maxConsecutiveDays` was not consulted at all — so a type asking for 30
+       days notice said nothing, and a request twice as long as its type allows
+       submitted happily. `leave-limits.ts` mirrors the server rules; these two
+       block submit, and the advisory below survives for a request that clears the
+       limit but is still soon. */
+    const earliestStart = earliestStartDate(selectedType)
+    const noticeBreach = noticeError(selectedType, startDate)
+    const lengthBreach = maxConsecutiveError(selectedType, workingDays)
+    const isShortNotice = !noticeBreach && !!startDate && notice >= 0 && notice < 7
     const isInsufficient = selectedAffectsBalance && balanceAfter < 0
 
     /* The second ledger. Everything above describes the pooled balance, and
@@ -512,6 +524,10 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         && (!requiresChild || (!!childId && !childPickerBlocked))
         && !isOverPerChildCap
         && !attachmentMissing
+        // The leave type's own limits on when a request may start and how long it
+        // may run. Both are refusals the server will certainly make.
+        && !noticeBreach
+        && !lengthBreach
 
     const uploadMutation = useMutation({
         mutationFn: (file: File) => uploadLeaveEvidence(file),
@@ -794,12 +810,25 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                 const isStart = iso === startDate
                                 const isEnd = iso === endDate
                                 const inRange = !!startDate && !!endDate && iso > startDate && iso < endDate
-                                const clickable = !isWeekend && !isHoliday
+                                /* Inside the type's notice period. Dimming these
+                                   rather than only refusing on submit means the
+                                   limit reads as part of the calendar, the way
+                                   weekends and public holidays already do.
+
+                                   Gated on the type actually asking for notice: a
+                                   type asking for none puts `earliestStart` at
+                                   today, and dimming everything before that would
+                                   quietly ban backdating — a separate rule nobody
+                                   asked for, and not one the server enforces. */
+                                const isTooSoon = (selectedType?.minNoticeDays ?? 0) > 0 && iso < earliestStart
+                                const clickable = !isWeekend && !isHoliday && !isTooSoon
                                 const tooltip = isHoliday
                                     ? `🎉 ${holidayName}`
-                                    : teammates
-                                        ? `${teammates.join(', ')} on leave`
-                                        : ''
+                                    : isTooSoon
+                                        ? `${selectedType?.name ?? 'This leave type'} needs ${selectedType?.minNoticeDays ?? 0} days notice`
+                                        : teammates
+                                            ? `${teammates.join(', ')} on leave`
+                                            : ''
                                 return (
                                     <Box
                                         key={iso}
@@ -808,6 +837,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                         sx={calCellSx({
                                             weekend: isWeekend,
                                             holiday: isHoliday,
+                                            tooSoon: isTooSoon,
                                             teammate: !!teammates,
                                             today: isToday,
                                             rangeStart: isStart,
@@ -1232,13 +1262,23 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                             {conflictNames.length === 1 ? 'is' : 'are'} also off during these dates. Coverage may be tight.
                         </Warning>
                     )}
+                    {noticeBreach && (
+                        <Warning tone="error">
+                            <strong>Too soon.</strong> {noticeBreach}
+                        </Warning>
+                    )}
+                    {lengthBreach && (
+                        <Warning tone="error">
+                            <strong>Too long.</strong> {lengthBreach}
+                        </Warning>
+                    )}
                     {isShortNotice && (
                         <Warning tone="info">
                             <strong>Short notice.</strong>{' '}
                             {notice === 0 ? 'Today' : notice === 1 ? 'Tomorrow' : `${notice} days from now`} — approval may take longer than usual.
                         </Warning>
                     )}
-                    {workingDays > 0 && conflictNames.length === 0 && !isInsufficient && !isOverPerChildCap && !isShortNotice && (
+                    {workingDays > 0 && conflictNames.length === 0 && !isInsufficient && !isOverPerChildCap && !isShortNotice && !noticeBreach && !lengthBreach && (
                         <Warning tone="good">All clear — no conflicts, good notice, plenty of balance.</Warning>
                     )}
 
@@ -1274,16 +1314,23 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                         // "Pick dates" is the wrong instruction once
                                         // the dates are picked and it is the child
                                         // that is missing.
+                                        // The leave type's own two limits, named
+                                        // rather than answered with "Pick dates",
+                                        // which the dates already are.
+                                        : lengthBreach
+                                            ? 'Shorten the request to continue'
+                                        : noticeBreach
+                                            ? 'Start later to continue'
                                         : isOverPerChildCap
                                             ? 'Shorten the request to continue'
-                                            : requiresChild && !!startDate && !!endDate && !childId
-                                                ? 'Select a child to continue'
-                                                // Same shape as the child clause: only
-                                                // once the dates are in is the missing
-                                                // document the thing standing in the way.
-                                                : attachmentMissing && !!startDate && !!endDate
-                                                    ? 'Attach a document to continue'
-                                                    : 'Pick dates to continue'}
+                                        : requiresChild && !!startDate && !!endDate && !childId
+                                            ? 'Select a child to continue'
+                                        // Same shape as the child clause: only once
+                                        // the dates are in is the missing document
+                                        // the thing standing in the way.
+                                        : attachmentMissing && !!startDate && !!endDate
+                                            ? 'Attach a document to continue'
+                                        : 'Pick dates to continue'}
                         </Box>
                         <Box
                             component="button"
@@ -1632,16 +1679,18 @@ const sectionSubSx = {
     pl: '30px',
 } as const
 
-function calCellSx({ weekend, holiday, teammate, today, rangeStart, rangeEnd, inRange, otherMonth }: {
+function calCellSx({ weekend, holiday, teammate, today, rangeStart, rangeEnd, inRange, otherMonth, tooSoon }: {
     weekend?: boolean; holiday?: boolean; teammate?: boolean; today?: boolean
     rangeStart?: boolean; rangeEnd?: boolean; inRange?: boolean; otherMonth?: boolean
+    /** Inside the leave type's notice period — see `earliestStartDate`. */
+    tooSoon?: boolean
 }) {
     const isEdge = rangeStart || rangeEnd
     let bg: SxColor | undefined
     let color: SxColor = 'text.primary'
     let borderRadius = '6px'
     if (otherMonth) color = 'divider'
-    else if (weekend) color = 'text.disabled'
+    else if (weekend || tooSoon) color = 'text.disabled'
     if (holiday && !isEdge) {
         bg = softBg('warning')
         color = 'warning.dark'
@@ -1657,7 +1706,7 @@ function calCellSx({ weekend, holiday, teammate, today, rangeStart, rangeEnd, in
         borderRadius = '0'
     }
 
-    const disabled = weekend || holiday || otherMonth
+    const disabled = weekend || holiday || otherMonth || tooSoon
     return {
         aspectRatio: '1',
         display: 'flex',
