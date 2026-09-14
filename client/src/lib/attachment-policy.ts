@@ -16,7 +16,7 @@ import type { LeaveType } from './types'
  * request submitted happily with no document. The admin's setting decides now.
  */
 export type AttachmentRequirement =
-    /** Nothing is asked. The upload is still offered — an employee may volunteer one. */
+    /** Nothing is asked, and nothing is offered — see `isAttachmentOffered`. */
     | 'none'
     /** `Optional`: encouraged, rendered in amber. Never blocks. */
     | 'encouraged'
@@ -47,4 +47,22 @@ export function isAttachmentMissing(
     hasFile: boolean,
 ): boolean {
     return attachmentRequirement(type) === 'required' && !hasFile
+}
+
+/**
+ * Whether the upload is shown at all. `None` means *no attachment needed*, so the
+ * whole section goes — an upload offered under a type the admin set to None is a
+ * step that asks for something nobody wants.
+ *
+ * `hasExistingEvidence` is the one exception, and it is about history rather than
+ * policy: a request filed before the policy moved to None still carries a
+ * document, and the edit form is the only place to open it. A freshly staged file
+ * is *not* that — a form that hides the section must drop the file with it, or it
+ * uploads on submit with nothing on screen to say so.
+ */
+export function isAttachmentOffered(
+    type: Pick<LeaveType, 'attachmentPolicy'> | undefined,
+    hasExistingEvidence: boolean,
+): boolean {
+    return attachmentRequirement(type) !== 'none' || hasExistingEvidence
 }

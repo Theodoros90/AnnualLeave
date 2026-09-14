@@ -8,7 +8,7 @@ import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import { createAnnualLeave, getAnnualLeaves, getChildLeaveEntitlements, getEmployeeProfiles, getHolidays, getLeaveTypes, getTeammates, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered, isParentalLeaveType } from '../../lib/parental-leave'
-import { attachmentRequirement, isAttachmentMissing } from '../../lib/attachment-policy'
+import { attachmentRequirement, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
 import { AppDialog, AppDialogActions, AppDialogContent, AppDialogTitle, cancelBtnSx } from '../ui'
@@ -488,6 +488,10 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     const isBereavement = typeNameLower.includes('bereavement')
 
     const attachmentRule = attachmentRequirement(selectedType)
+    // Nothing to apply for on this page carries evidence yet, so the policy alone
+    // decides: "No attachment needed" takes step 5 off the form rather than
+    // offering an upload under an "(optional)" label.
+    const attachmentOffered = isAttachmentOffered(selectedType, false)
     const attachmentRecommended = attachmentRule === 'encouraged' && !attachment
     // Mirrors AttachmentPolicyRule.Check on the server, which refuses the request
     // outright — so this disables submit rather than letting it fail on the round trip.
@@ -547,6 +551,14 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
             if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
         }
     }, [attachment])
+
+    /* Switching to a type that asks for no document hides step 5, and a file left
+       staged behind it would still upload on submit with nothing on screen saying
+       so. Drop it with the section. */
+    useEffect(() => {
+        if (!attachmentOffered) removeAttachment()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [attachmentOffered])
 
     function acceptFiles(fileList: FileList | null) {
         if (!fileList || fileList.length === 0) return
@@ -877,198 +889,201 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                     </Box>
                 </Box>
 
-                {/* Step 5: Supporting documents */}
-                <Box sx={sectionSx}>
-                    <Box sx={sectionTitleSx}>
-                        <Box component="span" sx={sectionNumSx}>5</Box>
-                        Supporting documents
-                        <Box
-                            component="span"
-                            sx={{
-                                fontWeight: attachmentRule === 'required' ? 600 : 400,
-                                color: attachmentRule === 'required'
-                                    ? 'error.main'
-                                    : attachmentRule === 'encouraged' ? 'warning.dark' : 'text.disabled',
-                                fontSize: 12,
-                                ml: '6px',
-                            }}
-                        >
-                            {attachmentRule === 'required'
-                                ? '(required)'
-                                : attachmentRule === 'encouraged' ? '(recommended)' : '(optional)'}
-                        </Box>
-                    </Box>
-                    {/* The policy decides whether it is asked for; the type's name
-                        still decides how to describe it, since "a doctor's note" is
-                        better guidance than "a supporting document" when we can tell. */}
-                    <Box sx={sectionSubSx}>
-                        {isSickLeave
-                            ? "Doctor's note, prescription, or appointment confirmation. Attach a PDF or photo — only your manager and HR can see it."
-                            : isBereavement
-                                ? 'A death certificate or funeral notice helps approvals go through faster.'
-                                : attachmentRule === 'required'
-                                    ? `${selectedType?.name ?? 'This leave type'} cannot be submitted without a supporting document — only your manager and HR can see it.`
-                                    : 'Anything that helps your manager approve: itinerary, booking confirmation, appointment letter.'}
-                    </Box>
-
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png,.heic,.webp,.doc,.docx,application/pdf,image/*"
-                        style={{ display: 'none' }}
-                        onChange={(e) => acceptFiles(e.target.files)}
-                    />
-
-                    {!attachment && (
-                        <Box
-                            onClick={() => fileInputRef.current?.click()}
-                            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
-                            onDragLeave={() => setIsDragOver(false)}
-                            onDrop={(e) => {
-                                e.preventDefault()
-                                setIsDragOver(false)
-                                acceptFiles(e.dataTransfer.files)
-                            }}
-                            sx={{
-                                border: '2px dashed',
-                                borderColor: isDragOver
-                                    ? 'primary.main'
-                                    : attachmentMissing
+                {/* Step 5: Supporting documents. Absent entirely for a type set to
+                    "No attachment needed" — see isAttachmentOffered. */}
+                {attachmentOffered && (
+                    <Box sx={sectionSx}>
+                        <Box sx={sectionTitleSx}>
+                            <Box component="span" sx={sectionNumSx}>5</Box>
+                            Supporting documents
+                            <Box
+                                component="span"
+                                sx={{
+                                    fontWeight: attachmentRule === 'required' ? 600 : 400,
+                                    color: attachmentRule === 'required'
                                         ? 'error.main'
-                                        : attachmentRecommended
-                                            ? 'warning.main'
-                                            : 'divider',
-                                bgcolor: isDragOver
-                                    ? softBg('primary')
-                                    : attachmentMissing
-                                        ? softBg('error')
-                                        : attachmentRecommended
-                                            ? softBg('warning')
-                                            : 'action.hover',
-                                borderRadius: '10px',
-                                p: '20px 16px',
-                                textAlign: 'center',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s',
-                                '&:hover': { borderColor: 'primary.main', bgcolor: softBg('primary') },
-                            }}
-                        >
-                            <Box sx={{ fontSize: 28, mb: '8px' }}>📎</Box>
-                            <Box sx={{ fontSize: 13, fontWeight: 500, color: 'text.primary', mb: '4px' }}>
-                                Drop a file here or{' '}
-                                <Box component="span" sx={{ color: 'primary.main', textDecoration: 'underline' }}>browse your device</Box>
-                            </Box>
-                            <Box sx={{ fontSize: 11, color: 'text.secondary' }}>
-                                PDF, JPG, PNG, HEIC, or Word · up to 10 MB
+                                        : attachmentRule === 'encouraged' ? 'warning.dark' : 'text.disabled',
+                                    fontSize: 12,
+                                    ml: '6px',
+                                }}
+                            >
+                                {attachmentRule === 'required'
+                                    ? '(required)'
+                                    : attachmentRule === 'encouraged' ? '(recommended)' : '(optional)'}
                             </Box>
                         </Box>
-                    )}
+                        {/* The policy decides whether it is asked for; the type's name
+                            still decides how to describe it, since "a doctor's note" is
+                            better guidance than "a supporting document" when we can tell. */}
+                        <Box sx={sectionSubSx}>
+                            {isSickLeave
+                                ? "Doctor's note, prescription, or appointment confirmation. Attach a PDF or photo — only your manager and HR can see it."
+                                : isBereavement
+                                    ? 'A death certificate or funeral notice helps approvals go through faster.'
+                                    : attachmentRule === 'required'
+                                        ? `${selectedType?.name ?? 'This leave type'} cannot be submitted without a supporting document — only your manager and HR can see it.`
+                                        : 'Anything that helps your manager approve: itinerary, booking confirmation, appointment letter.'}
+                        </Box>
 
-                    {attachment && (
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '8px', mt: '10px' }}>
-                            <Box sx={{
-                                display: 'flex', alignItems: 'center', gap: '10px',
-                                p: '10px 12px', bgcolor: 'background.paper',
-                                border: '1px solid', borderColor: 'divider', borderRadius: '8px',
-                            }}>
-                                {attachment.kind === 'img' && attachment.previewUrl ? (
-                                    <Box
-                                        component="img"
-                                        src={attachment.previewUrl}
-                                        alt=""
-                                        sx={{
-                                            width: 36, height: 36, borderRadius: '6px',
-                                            objectFit: 'cover', flexShrink: 0,
-                                            border: '1px solid', borderColor: 'divider',
-                                        }}
-                                    />
-                                ) : (
-                                    <Box sx={fileIconSx(attachment.kind)}>
-                                        {attachment.kind === 'pdf' ? '📄'
-                                            : attachment.kind === 'doc' ? '📝'
-                                                : attachment.kind === 'img' ? '🖼️'
-                                                    : '📎'}
-                                    </Box>
-                                )}
-                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                    <Box sx={{
-                                        fontSize: 12, fontWeight: 500, color: 'text.primary',
-                                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                                    }}>
-                                        {attachment.name}
-                                    </Box>
-                                    <Box sx={{
-                                        fontSize: 11, color: 'text.secondary', mt: '2px',
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                    }}>
-                                        <Box component="span">{formatBytes(attachment.size)}</Box>
-                                        <Box component="span">·</Box>
-                                        <Box component="span" sx={{ color: 'success.main', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                            ✓ Ready to send
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,.heic,.webp,.doc,.docx,application/pdf,image/*"
+                            style={{ display: 'none' }}
+                            onChange={(e) => acceptFiles(e.target.files)}
+                        />
+
+                        {!attachment && (
+                            <Box
+                                onClick={() => fileInputRef.current?.click()}
+                                onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
+                                onDragLeave={() => setIsDragOver(false)}
+                                onDrop={(e) => {
+                                    e.preventDefault()
+                                    setIsDragOver(false)
+                                    acceptFiles(e.dataTransfer.files)
+                                }}
+                                sx={{
+                                    border: '2px dashed',
+                                    borderColor: isDragOver
+                                        ? 'primary.main'
+                                        : attachmentMissing
+                                            ? 'error.main'
+                                            : attachmentRecommended
+                                                ? 'warning.main'
+                                                : 'divider',
+                                    bgcolor: isDragOver
+                                        ? softBg('primary')
+                                        : attachmentMissing
+                                            ? softBg('error')
+                                            : attachmentRecommended
+                                                ? softBg('warning')
+                                                : 'action.hover',
+                                    borderRadius: '10px',
+                                    p: '20px 16px',
+                                    textAlign: 'center',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s',
+                                    '&:hover': { borderColor: 'primary.main', bgcolor: softBg('primary') },
+                                }}
+                            >
+                                <Box sx={{ fontSize: 28, mb: '8px' }}>📎</Box>
+                                <Box sx={{ fontSize: 13, fontWeight: 500, color: 'text.primary', mb: '4px' }}>
+                                    Drop a file here or{' '}
+                                    <Box component="span" sx={{ color: 'primary.main', textDecoration: 'underline' }}>browse your device</Box>
+                                </Box>
+                                <Box sx={{ fontSize: 11, color: 'text.secondary' }}>
+                                    PDF, JPG, PNG, HEIC, or Word · up to 10 MB
+                                </Box>
+                            </Box>
+                        )}
+
+                        {attachment && (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: '8px', mt: '10px' }}>
+                                <Box sx={{
+                                    display: 'flex', alignItems: 'center', gap: '10px',
+                                    p: '10px 12px', bgcolor: 'background.paper',
+                                    border: '1px solid', borderColor: 'divider', borderRadius: '8px',
+                                }}>
+                                    {attachment.kind === 'img' && attachment.previewUrl ? (
+                                        <Box
+                                            component="img"
+                                            src={attachment.previewUrl}
+                                            alt=""
+                                            sx={{
+                                                width: 36, height: 36, borderRadius: '6px',
+                                                objectFit: 'cover', flexShrink: 0,
+                                                border: '1px solid', borderColor: 'divider',
+                                            }}
+                                        />
+                                    ) : (
+                                        <Box sx={fileIconSx(attachment.kind)}>
+                                            {attachment.kind === 'pdf' ? '📄'
+                                                : attachment.kind === 'doc' ? '📝'
+                                                    : attachment.kind === 'img' ? '🖼️'
+                                                        : '📎'}
+                                        </Box>
+                                    )}
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                        <Box sx={{
+                                            fontSize: 12, fontWeight: 500, color: 'text.primary',
+                                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                        }}>
+                                            {attachment.name}
+                                        </Box>
+                                        <Box sx={{
+                                            fontSize: 11, color: 'text.secondary', mt: '2px',
+                                            display: 'flex', alignItems: 'center', gap: '8px',
+                                        }}>
+                                            <Box component="span">{formatBytes(attachment.size)}</Box>
+                                            <Box component="span">·</Box>
+                                            <Box component="span" sx={{ color: 'success.main', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                                ✓ Ready to send
+                                            </Box>
                                         </Box>
                                     </Box>
+                                    <Box
+                                        component="button"
+                                        type="button"
+                                        onClick={removeAttachment}
+                                        disabled={isPending}
+                                        title="Remove"
+                                        sx={{
+                                            bgcolor: 'transparent', border: 'none', color: 'text.disabled',
+                                            cursor: 'pointer', fontSize: 14, p: '4px 8px',
+                                            borderRadius: '4px', fontFamily: 'inherit',
+                                            '&:hover': { bgcolor: softBg('error'), color: 'error.dark' },
+                                            '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
+                                        }}
+                                    >
+                                        ✕
+                                    </Box>
                                 </Box>
-                                <Box
-                                    component="button"
-                                    type="button"
-                                    onClick={removeAttachment}
-                                    disabled={isPending}
-                                    title="Remove"
-                                    sx={{
-                                        bgcolor: 'transparent', border: 'none', color: 'text.disabled',
-                                        cursor: 'pointer', fontSize: 14, p: '4px 8px',
-                                        borderRadius: '4px', fontFamily: 'inherit',
-                                        '&:hover': { bgcolor: softBg('error'), color: 'error.dark' },
-                                        '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
-                                    }}
-                                >
-                                    ✕
+                            </Box>
+                        )}
+
+                        {uploadError && (
+                            <Box sx={{
+                                mt: '10px', p: '8px 12px', bgcolor: softBg('error'),
+                                border: '1px solid', borderColor: 'error.main', borderRadius: '6px',
+                                fontSize: 11, color: 'error.dark',
+                            }}>
+                                {uploadError}
+                            </Box>
+                        )}
+
+                        {attachmentMissing && (
+                            <Box sx={{
+                                mt: '10px', p: '8px 12px', bgcolor: softBg('error'),
+                                border: '1px solid', borderColor: 'error.main', borderRadius: '6px',
+                                fontSize: 11, color: 'error.dark',
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                            }}>
+                                <Box component="span">📎</Box>
+                                <Box component="span">
+                                    {selectedType?.name} requires a supporting document before it can be submitted.
                                 </Box>
                             </Box>
-                        </Box>
-                    )}
+                        )}
 
-                    {uploadError && (
-                        <Box sx={{
-                            mt: '10px', p: '8px 12px', bgcolor: softBg('error'),
-                            border: '1px solid', borderColor: 'error.main', borderRadius: '6px',
-                            fontSize: 11, color: 'error.dark',
-                        }}>
-                            {uploadError}
-                        </Box>
-                    )}
-
-                    {attachmentMissing && (
-                        <Box sx={{
-                            mt: '10px', p: '8px 12px', bgcolor: softBg('error'),
-                            border: '1px solid', borderColor: 'error.main', borderRadius: '6px',
-                            fontSize: 11, color: 'error.dark',
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                        }}>
-                            <Box component="span">📎</Box>
-                            <Box component="span">
-                                {selectedType?.name} requires a supporting document before it can be submitted.
+                        {attachmentRecommended && (
+                            <Box sx={{
+                                mt: '10px', p: '8px 12px', bgcolor: softBg('warning'),
+                                border: '1px solid', borderColor: 'warning.main', borderRadius: '6px',
+                                fontSize: 11, color: 'warning.dark',
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                            }}>
+                                <Box component="span">💡</Box>
+                                <Box component="span">
+                                    {/* Kept specific where the name lets us be. */}
+                                    {isSickLeave
+                                        ? "Tip: Sick leave is much faster to approve with a doctor's note attached."
+                                        : `Tip: ${selectedType?.name} is much faster to approve with a document attached.`}
+                                </Box>
                             </Box>
-                        </Box>
-                    )}
-
-                    {attachmentRecommended && (
-                        <Box sx={{
-                            mt: '10px', p: '8px 12px', bgcolor: softBg('warning'),
-                            border: '1px solid', borderColor: 'warning.main', borderRadius: '6px',
-                            fontSize: 11, color: 'warning.dark',
-                            display: 'flex', alignItems: 'center', gap: '6px',
-                        }}>
-                            <Box component="span">💡</Box>
-                            <Box component="span">
-                                {/* Kept specific where the name lets us be. */}
-                                {isSickLeave
-                                    ? "Tip: Sick leave is much faster to approve with a doctor's note attached."
-                                    : `Tip: ${selectedType?.name} is much faster to approve with a document attached.`}
-                            </Box>
-                        </Box>
-                    )}
-                </Box>
+                        )}
+                    </Box>
+                )}
             </Box>
 
             {/* RIGHT COLUMN — sticky summary */}
@@ -1100,12 +1115,16 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                         <SummaryRow l="Back at work" r={endDate ? nextWorkingDay(endDate, holidaySet) : '—'} />
                         <SummaryRow l="Days deducted" r={selectedAffectsBalance ? String(daysDeducted) : '0 (unpaid)'} />
                         <SummaryRow l="Coverage" r={selectedDelegate ? selectedDelegate.displayName : 'None'} muted={!selectedDelegate} />
-                        <SummaryRow
-                            l="Attachments"
-                            r={attachment ? `📎 1 file` : attachmentMissing ? 'Required' : 'None'}
-                            muted={!attachment && !attachmentMissing}
-                            tone={attachmentMissing ? 'error' : undefined}
-                        />
+                        {/* Nothing to summarise when the type asks for no document
+                            and step 5 is not on the form. */}
+                        {attachmentOffered && (
+                            <SummaryRow
+                                l="Attachments"
+                                r={attachment ? `📎 1 file` : attachmentMissing ? 'Required' : 'None'}
+                                muted={!attachment && !attachmentMissing}
+                                tone={attachmentMissing ? 'error' : undefined}
+                            />
+                        )}
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', py: '8px', fontSize: 12, mt: '6px', pt: '12px', borderTop: '2px solid', borderTopColor: 'divider' }}>
                             <Box sx={{ fontWeight: 600, color: 'text.primary' }}>
                                 {/* Not named after the selected child: the figure covers

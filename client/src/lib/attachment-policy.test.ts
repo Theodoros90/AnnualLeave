@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attachmentRequirement, isAttachmentMissing } from './attachment-policy'
+import { attachmentRequirement, isAttachmentMissing, isAttachmentOffered } from './attachment-policy'
 import type { LeaveType } from './types'
 
 /**
@@ -78,5 +78,33 @@ describe('isAttachmentMissing', () => {
      */
     it('does not block before a type is chosen', () => {
         expect(isAttachmentMissing(undefined, false)).toBe(false)
+    })
+})
+
+describe('isAttachmentOffered', () => {
+    it('offers the upload for a type that asks for a document either way', () => {
+        expect(isAttachmentOffered(leaveType({ attachmentPolicy: 'Required' }), false)).toBe(true)
+        expect(isAttachmentOffered(leaveType({ attachmentPolicy: 'Optional' }), false)).toBe(true)
+    })
+
+    it('offers nothing under a None policy', () => {
+        expect(isAttachmentOffered(leaveType({ attachmentPolicy: 'None' }), false)).toBe(false)
+    })
+
+    /**
+     * A fresh form has no type selected, which reads as 'none' — so the section
+     * is absent until the employee picks a type that asks for a document.
+     */
+    it('offers nothing before a type is chosen', () => {
+        expect(isAttachmentOffered(undefined, false)).toBe(false)
+    })
+
+    /**
+     * A request filed before the policy was moved to None still carries its
+     * document. Hiding the section would hide that from the one screen that can
+     * open it, so evidence already on the request keeps the section visible.
+     */
+    it('keeps the section for evidence the request already carries', () => {
+        expect(isAttachmentOffered(leaveType({ attachmentPolicy: 'None' }), true)).toBe(true)
     })
 })

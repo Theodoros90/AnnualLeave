@@ -258,8 +258,8 @@ blank select.
 **The attachment policy is enforced, not advertised.** `LeaveType.AttachmentPolicy`
 (`None`/`Optional`/`Required`) decides whether a request may be filed without a
 supporting document. Only `Required` refuses anything — `Optional` is encouragement
-rendered in amber and `None` is silence, and if either could refuse, an admin
-nudging a type towards documentation would lock employees out of it instead.
+rendered in amber and `None` offers no upload at all, and if either could refuse, an
+admin nudging a type towards documentation would lock employees out of it instead.
 
 `Application/AnnualLeaves/Commands/AttachmentPolicyRule.cs` is the rule, called
 from `CreateAnnualLeave` and `EditAnnualLeave`;
@@ -267,8 +267,19 @@ from `CreateAnnualLeave` and `EditAnnualLeave`;
 submit the API is certain to refuse. Keep the two in step, the same way
 `ParentalLeaveEligibility` and `parental-leave.ts` are kept in step.
 
-Three things about it that are deliberate:
+Four things about it that are deliberate:
 
+- **`None` means the section is not there.** `isAttachmentOffered` in
+  `attachment-policy.ts` decides that: a type set to *No attachment needed* drops
+  step 5 off `ApplyLeavePage` (and its "Attachments" summary row) and the evidence
+  block off `AnnualLeaveForm` entirely, rather than rendering the dropzone under an
+  "(optional)" label. Two consequences to keep. A form that hides the section must
+  **drop any file staged behind it** — both forms do, in an effect on the flag —
+  or it uploads on submit with nothing on screen saying so. And evidence a request
+  *already carries* keeps the block visible in `AnnualLeaveForm` even under `None`:
+  that dialog is the only place to open it, and a policy moved to `None` afterwards
+  must not hide a document somebody actually filed. Note a fresh form with no type
+  chosen reads as `none` too, so the step appears only once a type asks for one.
 - **It was display-only until this rule.** The admin dialog saved the policy and
   the leave type's card rendered it, while `ApplyLeavePage` decided the same thing
   from the type's *name* — anything containing "sick" got the amber label, and

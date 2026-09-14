@@ -116,6 +116,13 @@ function documentsSection(): HTMLElement {
     return el
 }
 
+/** Nothing of step 5 on the page at all — heading, dropzone or summary row. */
+function expectNoDocumentsSection() {
+    expect(screen.queryByText('Supporting documents')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Drop a file here or/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Attachments')).not.toBeInTheDocument()
+}
+
 /** The dropzone's input is hidden, so drive it directly. */
 function stageFile(container: HTMLElement) {
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
@@ -158,24 +165,65 @@ describe('ApplyLeavePage — supporting documents follow the attachment policy',
         expect(await screen.findByRole('button', { name: /submit for approval/i })).toBeEnabled()
     })
 
-    it('asks for nothing under a None policy', async () => {
+    /**
+     * "No attachment needed" means the step is not there. It used to render the
+     * whole dropzone under an "(optional)" label, which offered an upload for a
+     * type the admin had said wants no document — five steps where four were the
+     * request.
+     */
+    it('hides the section entirely under a None policy', async () => {
         await renderWithType({ attachmentPolicy: 'None' })
         pickDates()
 
-        expect(within(documentsSection()).getByText('(optional)')).toBeInTheDocument()
+        expectNoDocumentsSection()
         expect(await screen.findByRole('button', { name: /submit for approval/i })).toBeEnabled()
     })
 
     /**
      * The guess this replaces. A type called "Sick Leave" that the admin left at
-     * None must read as optional — the setting decides, not the name.
+     * None asks for nothing — the setting decides, not the name.
      */
     it('does not read a requirement out of the leave type name', async () => {
         await renderWithType({ name: 'Sick Leave', attachmentPolicy: 'None' })
         pickDates()
 
-        expect(within(documentsSection()).getByText('(optional)')).toBeInTheDocument()
-        expect(within(documentsSection()).queryByText('(required)')).not.toBeInTheDocument()
+        expectNoDocumentsSection()
         expect(await screen.findByRole('button', { name: /submit for approval/i })).toBeEnabled()
+    })
+
+    /**
+     * Switching away from a type that took a document must not leave the file
+     * staged behind the hidden section — it would upload on submit with nothing
+     * on screen to say so.
+     */
+    it('drops a staged document when the employee switches to a None type', async () => {
+        const optional = { ...BASE_TYPE, id: 1, name: 'Sick Leave', attachmentPolicy: 'Optional' as const }
+        const none = { ...BASE_TYPE, id: 2, name: 'Annual Leave', attachmentPolicy: 'None' as const }
+        api.getLeaveTypes.mockResolvedValue([optional, none] as never)
+
+        const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        const { container } = render(
+            <StoreProvider>
+                <QueryClientProvider client={queryClient}>
+                    <ApplyLeavePage user={USER} />
+                </QueryClientProvider>
+            </StoreProvider>,
+        )
+
+        fireEvent.click(await screen.findByRole('button', { name: /sick leave/i }))
+        pickDates()
+        stageFile(container)
+        expect(await screen.findByText('doctors-note.pdf')).toBeInTheDocument()
+
+        fireEvent.click(screen.getByRole('button', { name: /annual leave/i }))
+        await waitFor(expectNoDocumentsSection)
+        expect(screen.queryByText('doctors-note.pdf')).not.toBeInTheDocument()
+
+        fireEvent.click(await screen.findByRole('button', { name: /submit for approval/i }))
+        await waitFor(() => expect(api.createAnnualLeave).toHaveBeenCalledTimes(1))
+        expect(api.uploadLeaveEvidence).not.toHaveBeenCalled()
+        expect(api.createAnnualLeave).toHaveBeenCalledWith(
+            expect.objectContaining({ evidenceUrl: undefined }),
+        )
     })
 })

@@ -15,7 +15,7 @@ import { AttachFile as AttachFileIcon, CalendarMonth as CalendarMonthIcon, OpenI
 import Box from '@mui/material/Box'
 import { createAnnualLeave, editAnnualLeave, getChildLeaveEntitlements, getLeaveTypes, getAdminUsers, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered } from '../../lib/parental-leave'
-import { attachmentRequirement, isAttachmentMissing } from '../../lib/attachment-policy'
+import { attachmentRequirement, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
@@ -114,6 +114,12 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
         selectedLeaveType,
         !!evidenceFile || !!evidenceUrl.trim(),
     )
+    /* A type set to "No attachment needed" gets no upload at all. Evidence the
+       request already carries is the exception: this dialog is the only place to
+       open it, and a policy moved to None afterwards must not hide the document
+       somebody actually filed. A file staged in this session is not that — see
+       the reset below. */
+    const attachmentOffered = isAttachmentOffered(selectedLeaveType, !!evidenceUrl.trim())
     // On the admin create path, no employee is chosen yet means no ledger to
     // load — showing the picker anyway would fetch the signed-in admin's own
     // children instead of placeholder text explaining why there's nothing yet.
@@ -209,6 +215,13 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
         setChildPickerBlocked(false)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, leave?.id])
+
+    /* Switching to a type that asks for no document takes the upload off the
+       dialog, and a file left staged behind it would still upload on Save with
+       nothing on screen to say so. */
+    useEffect(() => {
+        if (!attachmentOffered) setEvidenceFile(null)
+    }, [attachmentOffered])
 
     const createMutation = useMutation({
         mutationFn: (req: CreateAnnualLeaveRequest) => createAnnualLeave(req),
@@ -600,58 +613,66 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                         )
                     })()}
 
-                    <Stack spacing={0.75}>
-                        {!readOnly && (
-                            <Button component="label" variant="outlined" startIcon={<AttachFileIcon />} disabled={isPending} sx={{ alignSelf: 'flex-start' }}>
-                                {evidenceFile ? 'Change evidence file' : evidenceUrl ? 'Replace evidence file' : 'Upload evidence'}
-                                <input
-                                    hidden
-                                    type="file"
-                                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                                    onChange={(event) => {
-                                        const selectedFile = event.target.files?.[0] ?? null
-                                        setEvidenceFile(selectedFile)
-                                    }}
-                                />
-                            </Button>
-                        )}
+                    {/* Evidence. Off the dialog entirely for a type set to "No
+                        attachment needed", unless the request already carries a
+                        document — see isAttachmentOffered. */}
+                    {attachmentOffered && (
+                        <Stack spacing={0.75}>
+                            {!readOnly && (
+                                <Button component="label" variant="outlined" startIcon={<AttachFileIcon />} disabled={isPending} sx={{ alignSelf: 'flex-start' }}>
+                                    {evidenceFile ? 'Change evidence file' : evidenceUrl ? 'Replace evidence file' : 'Upload evidence'}
+                                    <input
+                                        hidden
+                                        type="file"
+                                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                                        onChange={(event) => {
+                                            const selectedFile = event.target.files?.[0] ?? null
+                                            setEvidenceFile(selectedFile)
+                                        }}
+                                    />
+                                </Button>
+                            )}
 
-                        {evidenceFile ? (
-                            <Typography variant="body2" color="text.secondary">
-                                Selected file: {evidenceFile.name}
-                            </Typography>
-                        ) : evidenceUrl ? (
-                            <Button
-                                size="small"
-                                // Reached only when evidenceUrl is non-empty, so the
-                                // resolver cannot return undefined here.
-                                href={resolveFileUrl(evidenceUrl) ?? evidenceUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                endIcon={<OpenInNewIcon fontSize="inherit" />}
-                                sx={{ alignSelf: 'flex-start', px: 0, textTransform: 'none' }}
-                            >
-                                {readOnly ? 'View evidence' : 'View current evidence'}
-                            </Button>
-                        ) : readOnly ? (
-                            <Typography variant="body2" color="text.disabled">
-                                No evidence attached.
-                            </Typography>
-                        ) : null}
+                            {evidenceFile ? (
+                                <Typography variant="body2" color="text.secondary">
+                                    Selected file: {evidenceFile.name}
+                                </Typography>
+                            ) : evidenceUrl ? (
+                                <Button
+                                    size="small"
+                                    // Reached only when evidenceUrl is non-empty, so the
+                                    // resolver cannot return undefined here.
+                                    href={resolveFileUrl(evidenceUrl) ?? evidenceUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    endIcon={<OpenInNewIcon fontSize="inherit" />}
+                                    sx={{ alignSelf: 'flex-start', px: 0, textTransform: 'none' }}
+                                >
+                                    {readOnly ? 'View evidence' : 'View current evidence'}
+                                </Button>
+                            ) : readOnly ? (
+                                <Typography variant="body2" color="text.disabled">
+                                    No evidence attached.
+                                </Typography>
+                            ) : null}
 
-                        {!readOnly && (
-                            <Typography
-                                variant="caption"
-                                color={attachmentMissing ? 'error' : 'text.secondary'}
-                            >
-                                {attachmentRule === 'required'
-                                    ? 'Required: upload PDF, image, DOC, or DOCX evidence (max 10 MB).'
-                                    : attachmentRule === 'encouraged'
-                                        ? 'Recommended: upload PDF, image, DOC, or DOCX evidence (max 10 MB).'
-                                        : 'Optional: upload PDF, image, DOC, or DOCX evidence (max 10 MB).'}
-                            </Typography>
-                        )}
-                    </Stack>
+                            {!readOnly && (
+                                <Typography
+                                    variant="caption"
+                                    color={attachmentMissing ? 'error' : 'text.secondary'}
+                                >
+                                    {attachmentRule === 'required'
+                                        ? 'Required: upload PDF, image, DOC, or DOCX evidence (max 10 MB).'
+                                        : attachmentRule === 'encouraged'
+                                            ? 'Recommended: upload PDF, image, DOC, or DOCX evidence (max 10 MB).'
+                                            /* Only reachable for a request that carries evidence under a type
+                                               since set to "No attachment needed" — anything else hides this
+                                               whole block, so "Optional" would be describing a form nobody sees. */
+                                            : 'This leave type no longer asks for a document. The one already attached is kept.'}
+                                </Typography>
+                            )}
+                        </Stack>
+                    )}
 
                     {error ? <Alert severity="error">{getErrorMessage(error)}</Alert> : null}
                 </Stack>

@@ -106,11 +106,55 @@ describe('AnnualLeaveForm — the attachment policy gates Save', () => {
         await waitFor(() => expect(saveButton()).toBeEnabled())
     })
 
-    it('never blocks Save for a type that asks for nothing', async () => {
+    /**
+     * "No attachment needed" takes the upload off the dialog rather than offering
+     * it under an "Optional:" caption — an upload for a type the admin said wants
+     * no document.
+     */
+    it('offers no upload at all for a type that asks for nothing', async () => {
         const select = await renderForm()
         await chooseType(select, 'Annual Leave')
 
-        expect(screen.getByText(/optional: upload PDF/i)).toBeInTheDocument()
+        await waitFor(() => expect(saveButton()).toBeEnabled())
+        expect(screen.queryByRole('button', { name: /upload evidence/i })).not.toBeInTheDocument()
+        expect(screen.queryByText(/upload PDF, image, DOC, or DOCX/i)).not.toBeInTheDocument()
+    })
+
+    /**
+     * A file staged under a type that took one must not survive behind the hidden
+     * section — it would upload on Save with nothing on screen to say so.
+     */
+    it('drops a staged file when the type switches to one that asks for nothing', async () => {
+        const select = await renderForm()
+        await chooseType(select, 'Evidence Leave')
+
+        const input = document.querySelector('input[type="file"]') as HTMLInputElement
+        fireEvent.change(input, {
+            target: { files: [new File(['%PDF-1.4'], 'note.pdf', { type: 'application/pdf' })] },
+        })
+        expect(await screen.findByText(/note\.pdf/)).toBeInTheDocument()
+
+        await chooseType(select, 'Annual Leave')
+
+        await waitFor(() => expect(screen.queryByText(/note\.pdf/)).not.toBeInTheDocument())
+        expect(screen.queryByRole('button', { name: /evidence file/i })).not.toBeInTheDocument()
+    })
+
+    /**
+     * The exception to hiding it. This dialog is the only place to open a request's
+     * document, so a policy moved to None afterwards must not hide one already filed.
+     */
+    it('keeps the evidence visible when the request already carries one', async () => {
+        await renderForm({
+            id: 'L1', employeeId: USER.id, employeeName: USER.displayName,
+            leaveTypeId: RELAXED_TYPE.id, leaveTypeName: RELAXED_TYPE.name,
+            startDate: '2026-06-01T00:00:00', endDate: '2026-06-05T00:00:00',
+            status: 'Pending', reason: 'Out of office', totalDays: 5,
+            evidenceUrl: EVIDENCE_URL, delegateId: null, childId: null,
+        } as never)
+
+        expect(await screen.findByRole('link', { name: /view current evidence/i })).toBeInTheDocument()
+        expect(screen.queryByText(/optional: upload PDF/i)).not.toBeInTheDocument()
         await waitFor(() => expect(saveButton()).toBeEnabled())
     })
 
