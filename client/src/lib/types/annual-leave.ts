@@ -1,3 +1,5 @@
+import type { LeaveDurationValue } from '../half-day'
+
 export type AnnualLeaveStatus =
     | 'Pending'
     | 'Approved'
@@ -7,6 +9,11 @@ export type AnnualLeaveStatus =
 export interface AnnualLeaveBase {
     startDate: string
     endDate: string
+    /**
+     * Whole days, or half of one. Omitted reads as `'Full'` on the server, which is
+     * what every client sent before half days were persisted at all.
+     */
+    duration?: LeaveDurationValue
     leaveTypeId: number
     reason: string
     evidenceUrl?: string | null
@@ -28,7 +35,9 @@ export interface AnnualLeave {
     status: AnnualLeaveStatus
     createdAt: string
     approvedAt: string | null
+    /** Days charged, so 0.5 for a half day — not always a whole number. */
     totalDays: number
+    duration: LeaveDurationValue
     employeeName: string
     departmentName: string
     childId: string | null

@@ -71,6 +71,7 @@ public class EditAnnualLeave
 
             annualLeave.StartDate = request.AnnualLeave.StartDate;
             annualLeave.EndDate = request.AnnualLeave.EndDate;
+            annualLeave.Duration = request.AnnualLeave.Duration;
             annualLeave.LeaveTypeId = request.AnnualLeave.LeaveTypeId;
 
             var editedLeaveType = await context.LeaveTypes
@@ -95,6 +96,14 @@ public class EditAnnualLeave
                 var attachmentError = AttachmentPolicyRule.Check(editedLeaveType, annualLeave.EvidenceUrl);
                 if (attachmentError is not null)
                     return Result<Unit>.Failure(attachmentError);
+
+                /* Likewise no exemption: an edit can move a request onto a type
+                   that offers no half days, or widen a half day's dates past the
+                   single date one covers. */
+                var halfDayError = HalfDayRule.Check(
+                    editedLeaveType, annualLeave.Duration, annualLeave.StartDate, annualLeave.EndDate);
+                if (halfDayError is not null)
+                    return Result<Unit>.Failure(halfDayError);
             }
 
             annualLeave.DelegateId = string.IsNullOrWhiteSpace(request.AnnualLeave.DelegateId)

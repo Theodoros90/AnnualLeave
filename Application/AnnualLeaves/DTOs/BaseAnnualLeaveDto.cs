@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel.DataAnnotations;
+using Domain.Services;
 
 namespace Application.AnnualLeaves.DTOs;
 
@@ -8,6 +9,17 @@ public class BaseAnnualLeaveDto
     public DateTime StartDate { get; set; }
 
     public DateTime EndDate { get; set; }
+
+    /// <summary>
+    /// Whole days, or half of one. Absent from the payload means
+    /// <see cref="LeaveDuration.Full"/>, which is both the enum's default and what
+    /// every client sent before half days were persisted at all.
+    ///
+    /// <c>HalfDayRule</c> decides whether the selected type accepts it and whether
+    /// the dates are narrow enough for it — the handlers call it rather than the
+    /// validator, because the answer depends on the leave type.
+    /// </summary>
+    public LeaveDuration Duration { get; set; } = LeaveDuration.Full;
 
     [Range(1, int.MaxValue)]
     public int LeaveTypeId { get; set; }

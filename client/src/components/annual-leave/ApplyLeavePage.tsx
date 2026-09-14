@@ -9,6 +9,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import { createAnnualLeave, getAnnualLeaves, getChildLeaveEntitlements, getEmployeeProfiles, getHolidays, getLeaveTypes, getTeammates, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered, isParentalLeaveType } from '../../lib/parental-leave'
 import { attachmentRequirement, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
+import { chargeableDays, collapseToHalfDay, durationLabel, isHalfDay, isHalfDayOffered, type LeaveDurationValue } from '../../lib/half-day'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
 import { AppDialog, AppDialogActions, AppDialogContent, AppDialogTitle, cancelBtnSx } from '../ui'
@@ -33,7 +34,10 @@ function buildApplyLeaveSchema(perChildLeaveTypeIds: number[]) {
     return z
         .object({
             leaveTypeId: z.number().int().positive('Choose a leave type to continue.'),
-            duration: z.enum(['full', 'half-am', 'half-pm']),
+            // The server's own member names, so the value goes into the payload
+            // untranslated. They used to be 'full' | 'half-am' | 'half-pm', which
+            // was free to drift because nothing ever sent them anywhere.
+            duration: z.enum(['Full', 'HalfDayMorning', 'HalfDayAfternoon']),
             startDate: z.string().min(1, 'Pick a start date on the calendar.'),
             endDate: z.string().min(1, 'Pick an end date on the calendar.'),
             reason: z.string().max(500, 'Reason must be 500 characters or fewer.').optional(),
@@ -235,7 +239,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         mode: 'onChange',
         defaultValues: {
             leaveTypeId: 0,
-            duration: 'full',
+            duration: 'Full',
             startDate: '',
             endDate: '',
             reason: '',
@@ -331,7 +335,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
 
     const currentBalance = Math.max(0, entitlement - usedDays)
     const workingDays = workingDaysBetween(startDate, endDate, holidaySet)
-    const daysDeducted = duration === 'full' ? workingDays : workingDays > 0 ? workingDays * 0.5 : 0
+    const daysDeducted = chargeableDays(workingDays, duration)
     const balanceAfter = selectedAffectsBalance ? currentBalance - daysDeducted : currentBalance
     const balancePct = entitlement > 0 ? Math.min(100, ((usedDays + (selectedAffectsBalance ? daysDeducted : 0)) / entitlement) * 100) : 0
     const notice = daysNotice(startDate)
@@ -497,6 +501,10 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     // outright — so this disables submit rather than letting it fail on the round trip.
     const attachmentMissing = isAttachmentMissing(selectedType, !!attachment)
 
+    // Mirrors HalfDayRule.Check, which refuses a half day on a type that offers
+    // none — so the buttons go rather than failing on the round trip.
+    const halfDayOffered = isHalfDayOffered(selectedType)
+
     const canSubmit = !!startDate && !!endDate && leaveTypeId > 0 && !isInsufficient
         // A per-child type with no child, a picker that has nothing to offer, or
         // more days than the chosen child has left: all requests the server will
@@ -521,6 +529,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                 leaveTypeId: values.leaveTypeId,
                 startDate: values.startDate,
                 endDate: values.endDate,
+                duration: values.duration,
                 reason: (values.reason ?? '').trim() || '—',
                 evidenceUrl,
                 delegateId: values.delegateId?.trim() || undefined,
@@ -560,6 +569,16 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [attachmentOffered])
 
+    /* The same trap one control over: switching to a type that offers no half days
+       takes the toggle off screen, and a half day left selected behind it would
+       post a duration the server refuses with nothing visible to explain why. */
+    useEffect(() => {
+        // Guarded on the type being resolved: until the type list lands every type
+        // reads as "no half days", and an unguarded reset would fight a choice made
+        // while a refetch was in flight.
+        if (selectedType && !halfDayOffered) setValue('duration', 'Full', { shouldValidate: true })
+    }, [selectedType, halfDayOffered, setValue])
+
     function acceptFiles(fileList: FileList | null) {
         if (!fileList || fileList.length === 0) return
         const file = fileList[0] // backend stores a single evidence URL
@@ -594,6 +613,18 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
 
     function pickDate(iso: string) {
         const opts = { shouldValidate: true, shouldDirty: true } as const
+
+        /* A half day covers exactly one date, so one click is the whole answer.
+           Falling through to the range logic below is what made the feature look
+           broken: the first click set the start and cleared the end, leaving the
+           form on "End date —, Working days 0" with submit disabled, and the only
+           way forward was to click the same cell a second time. */
+        if (isHalfDay(duration)) {
+            setValue('startDate', iso, opts)
+            setValue('endDate', iso, opts)
+            return
+        }
+
         if (!startDate || (startDate && endDate)) {
             setValue('startDate', iso, opts)
             setValue('endDate', '', opts)
@@ -603,6 +634,17 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         } else {
             setValue('endDate', iso, opts)
         }
+    }
+
+    /* Switching to a half day after a range has been picked. Without this the form
+       would post a week calling itself a half day, which HalfDayRule refuses — and
+       the summary panel would quote 0.5 days for it on the way. */
+    function chooseDuration(next: LeaveDurationValue) {
+        const opts = { shouldValidate: true, shouldDirty: true } as const
+        setValue('duration', next, opts)
+
+        const collapsed = collapseToHalfDay(startDate, endDate, next)
+        if (collapsed.endDate !== endDate) setValue('endDate', collapsed.endDate, opts)
     }
 
     function navMonth(delta: number) {
@@ -701,12 +743,23 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                         Click a start date, then an end date. Weekends are excluded automatically.
                     </Box>
 
-                    {/* Duration toggle */}
-                    <Box sx={{ display: 'flex', gap: '4px', p: '3px', bgcolor: 'action.hover', borderRadius: '8px', width: 'fit-content', mb: '14px' }}>
-                        <DurationButton active={duration === 'full'} onClick={() => setValue('duration', 'full', { shouldDirty: true })}>Full day(s)</DurationButton>
-                        <DurationButton active={duration === 'half-am'} onClick={() => setValue('duration', 'half-am', { shouldDirty: true })}>Half day (AM)</DurationButton>
-                        <DurationButton active={duration === 'half-pm'} onClick={() => setValue('duration', 'half-pm', { shouldDirty: true })}>Half day (PM)</DurationButton>
-                    </Box>
+                    {/* Duration toggle. Absent entirely for a type the admin has
+                        switched half days off for: a toggle offering one option is
+                        noise, and offering all three was worse — it promised a
+                        choice the server had no way to honour. */}
+                    {halfDayOffered && (
+                        <Box sx={{ display: 'flex', gap: '4px', p: '3px', bgcolor: 'action.hover', borderRadius: '8px', width: 'fit-content', mb: '14px' }}>
+                            {(['Full', 'HalfDayMorning', 'HalfDayAfternoon'] as const).map((option) => (
+                                <DurationButton
+                                    key={option}
+                                    active={duration === option}
+                                    onClick={() => chooseDuration(option)}
+                                >
+                                    {durationLabel(option)}
+                                </DurationButton>
+                            ))}
+                        </Box>
+                    )}
 
                     {/* Mini calendar */}
                     <Box sx={{ bgcolor: 'action.hover', border: '1px solid', borderColor: 'divider', borderRadius: '8px', p: '12px 14px' }}>

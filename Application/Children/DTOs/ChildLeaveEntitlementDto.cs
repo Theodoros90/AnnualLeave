@@ -18,13 +18,17 @@ public class ChildLeaveEntitlementDto
     /// <summary>Lifetime entitlement in business days. 90 for 18 weeks.</summary>
     public int TotalDays { get; set; }
     public decimal TotalWeeks { get; set; }
-    public int UsedDays { get; set; }
-    public int RemainingDays { get; set; }
+
+    /* Used and remaining are decimal where the caps above are int: a cap is weeks
+       times five and always whole, but what has been spent against it need not be —
+       a half day charges this ledger 0.5, the same as it charges the pooled one. */
+    public decimal UsedDays { get; set; }
+    public decimal RemainingDays { get; set; }
 
     /// <summary>The per-year cap in business days. 25 for 5 weeks.</summary>
     public int ThisYearCapDays { get; set; }
-    public int ThisYearUsedDays { get; set; }
-    public int ThisYearRemainingDays { get; set; }
+    public decimal ThisYearUsedDays { get; set; }
+    public decimal ThisYearRemainingDays { get; set; }
 
     /// <summary>The leave-year window the "this year" figures describe.</summary>
     public DateTime LeaveYearStart { get; set; }
@@ -42,9 +46,9 @@ public class ChildLeaveEntitlementSummaryDto
     public string LeaveTypeName { get; set; } = string.Empty;
 
     public int EligibleChildCount { get; set; }
-    public int TotalRemainingDays { get; set; }
+    public decimal TotalRemainingDays { get; set; }
     public int ThisYearCapDays { get; set; }
-    public int ThisYearRemainingDays { get; set; }
+    public decimal ThisYearRemainingDays { get; set; }
 
     /// <summary>
     /// Every declared child, ineligible ones included with <c>IsEligible</c> false,

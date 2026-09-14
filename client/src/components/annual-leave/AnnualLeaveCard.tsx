@@ -23,6 +23,7 @@ import {
     Edit as EditIcon,
     MoreVert as MoreVertIcon,
 } from '@mui/icons-material'
+import { durationLabel, isHalfDay } from '../../lib/half-day'
 import { useDeleteAnnualLeave, useLeaveTypes, useUpdateLeaveStatus } from '../../lib/hooks'
 import type { AnnualLeave, AnnualLeaveStatus, UserInfo } from '../../lib/types'
 import AnnualLeaveForm from './AnnualLeaveForm'
@@ -156,8 +157,14 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
                                         borderColor: 'info.main',
                                     }}
                                 />
+                                {/* "0.5 days" is true but silent about which half.
+                                    AM and PM cost the same, so the distinction only
+                                    exists to be read — a colleague scanning the card
+                                    wants to know whether you are in this morning. */}
                                 <Chip
-                                    label={`${leave.totalDays} day${leave.totalDays !== 1 ? 's' : ''}`}
+                                    label={isHalfDay(leave.duration)
+                                        ? durationLabel(leave.duration)
+                                        : `${leave.totalDays} day${leave.totalDays !== 1 ? 's' : ''}`}
                                     size="small"
                                     variant="outlined"
                                     sx={{

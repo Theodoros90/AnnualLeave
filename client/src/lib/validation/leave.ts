@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { LeaveDurationValue } from '../half-day'
 
 const MS_PER_DAY = 86_400_000
 
@@ -31,6 +32,10 @@ export function buildAnnualLeaveSchema(requireEmployee: boolean, perChildLeaveTy
             childId: z.string(),
             startDate: z.string().min(1, 'Start date is required.'),
             endDate: z.string().min(1, 'End date is required.'),
+            // Whether the type offers half days at all is HalfDayRule's business,
+            // mirrored by `half-day.ts`: it depends on the selected leave type, so
+            // it cannot be settled here any more than childId can.
+            duration: z.enum(['Full', 'HalfDayMorning', 'HalfDayAfternoon']),
             leaveTypeId: z.number().int().min(1, 'Please select a leave type.'),
             reason: z
                 .string()
@@ -63,6 +68,7 @@ export type AnnualLeaveFormValues = {
     childId: string
     startDate: string
     endDate: string
+    duration: LeaveDurationValue
     leaveTypeId: number
     reason: string
 }

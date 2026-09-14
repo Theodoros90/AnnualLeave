@@ -69,6 +69,7 @@ function monthOffset(months: number, day: number) {
 
 function leave(over: Partial<AnnualLeave> & Pick<AnnualLeave, 'id' | 'employeeId' | 'employeeName' | 'startDate' | 'endDate'>): AnnualLeave {
     return {
+        duration: 'Full',
         leaveTypeId: 1,
         reason: 'Time off.',
         evidenceUrl: null,

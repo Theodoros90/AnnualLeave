@@ -46,6 +46,14 @@ public class CreateAnnualLeave
             if (attachmentError is not null)
                 return Result<string>.Failure(attachmentError);
 
+            /* Beside the attachment check and for the same reason: the employee can
+               act on it without leaving the form, and the client mirrors it so
+               reaching here means a crafted request or a stale page. */
+            var halfDayError = HalfDayRule.Check(
+                leaveType, annualLeave.Duration, annualLeave.StartDate, annualLeave.EndDate);
+            if (halfDayError is not null)
+                return Result<string>.Failure(halfDayError);
+
             /* Maternity and Paternity Leave are offered on the employee's recorded
                gender and their having a child young enough to qualify. The client
                hides the cards; this is what makes hiding them mean something. Runs

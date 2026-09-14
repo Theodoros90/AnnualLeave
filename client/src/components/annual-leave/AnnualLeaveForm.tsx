@@ -16,6 +16,7 @@ import Box from '@mui/material/Box'
 import { createAnnualLeave, editAnnualLeave, getChildLeaveEntitlements, getLeaveTypes, getAdminUsers, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered } from '../../lib/parental-leave'
 import { attachmentRequirement, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
+import { collapseToHalfDay, durationLabel, isHalfDayOffered } from '../../lib/half-day'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
@@ -84,11 +85,17 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
         childId: leave?.childId ?? '',
         startDate: leave ? toInputDate(leave.startDate) : '',
         endDate: leave ? toInputDate(leave.endDate) : '',
+        /* Carried through from the request being edited. This dialog is a full
+           replace — it posts every field it holds — so defaulting to 'Full' here
+           would turn an admin's correction to the reason into a promotion from half
+           a day to a whole one, taking another half day off the balance with
+           nothing on screen having said so. */
+        duration: leave?.duration ?? 'Full',
         leaveTypeId: leave?.leaveTypeId ?? 0,
         reason: leave?.reason ?? '',
     })
 
-    const { control, handleSubmit, reset, watch } = useForm<AnnualLeaveFormValues>({
+    const { control, handleSubmit, reset, watch, setValue } = useForm<AnnualLeaveFormValues>({
         resolver: zodResolver(schema),
         defaultValues: buildDefaults(),
     })
@@ -97,6 +104,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
     const watchedEmployeeId = watch('employeeId')
     const watchedStartDate = watch('startDate')
     const watchedEndDate = watch('endDate')
+    const watchedDuration = watch('duration')
 
     const requiresChild = perChildLeaveTypeIds.includes(watchedLeaveTypeId)
     // The configured cut-off age for the selected type, so the picker never quotes
@@ -120,6 +128,10 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
        somebody actually filed. A file staged in this session is not that — see
        the reset below. */
     const attachmentOffered = isAttachmentOffered(selectedLeaveType, !!evidenceUrl.trim())
+
+    // Mirrors HalfDayRule.Check, which refuses a half day on a type that offers
+    // none — so the buttons go rather than failing on the round trip.
+    const halfDayOffered = isHalfDayOffered(selectedLeaveType)
     // On the admin create path, no employee is chosen yet means no ledger to
     // load — showing the picker anyway would fetch the signed-in admin's own
     // children instead of placeholder text explaining why there's nothing yet.
@@ -223,6 +235,28 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
         if (!attachmentOffered) setEvidenceFile(null)
     }, [attachmentOffered])
 
+    /* The same trap one control over: a half day left selected behind a toggle that
+       is no longer on screen would post a duration the server refuses, with nothing
+       visible to explain why. */
+    useEffect(() => {
+        /* Guarded on the type being resolved, not on halfDayOffered alone. The type
+           list arrives a tick after the dialog opens, and until it does every type
+           reads as "no half days" — so an unguarded reset would wipe the duration
+           off a half day being edited before anybody had touched anything. */
+        if (selectedLeaveType && !halfDayOffered) setValue('duration', 'Full', { shouldValidate: true })
+
+    }, [selectedLeaveType, halfDayOffered, setValue])
+
+    /* A half day covers exactly one date, here as much as on the apply page. Run on
+       the duration rather than in the button handler so it also catches a date typed
+       into the End Date field after the half day was chosen. */
+    useEffect(() => {
+        const collapsed = collapseToHalfDay(watchedStartDate, watchedEndDate, watchedDuration)
+        if (collapsed.endDate !== watchedEndDate) {
+            setValue('endDate', collapsed.endDate, { shouldValidate: true })
+        }
+    }, [watchedDuration, watchedStartDate, watchedEndDate, setValue])
+
     const createMutation = useMutation({
         mutationFn: (req: CreateAnnualLeaveRequest) => createAnnualLeave(req),
         onSuccess: () => {
@@ -289,6 +323,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                     id: leave.id,
                     startDate: values.startDate,
                     endDate: values.endDate,
+                    duration: values.duration,
                     leaveTypeId: values.leaveTypeId,
                     // Sent only for a per-child type. The server clears it for any
                     // other type regardless, so there is no point handing it a
@@ -304,6 +339,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                 await createMutation.mutateAsync({
                     startDate: values.startDate,
                     endDate: values.endDate,
+                    duration: values.duration,
                     leaveTypeId: values.leaveTypeId,
                     childId: requiresChild ? values.childId : undefined,
                     reason: values.reason,
@@ -395,6 +431,32 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                                             </MenuItem>
                                         ))}
                                 </TextField>
+                            )}
+                        />
+                    )}
+                    {/* Whole days or half of one. Absent for a type the admin has
+                        switched half days off for, and in read-only mode, where the
+                        duration is already spelled out beside the dates. */}
+                    {halfDayOffered && !readOnly && (
+                        <Controller
+                            name="duration"
+                            control={control}
+                            render={({ field }) => (
+                                <Box sx={{ display: 'flex', gap: '4px', p: '3px', bgcolor: 'action.hover', borderRadius: '8px', width: 'fit-content' }}>
+                                    {(['Full', 'HalfDayMorning', 'HalfDayAfternoon'] as const).map((option) => (
+                                        <Button
+                                            key={option}
+                                            size="small"
+                                            disableElevation
+                                            aria-pressed={field.value === option}
+                                            variant={field.value === option ? 'contained' : 'text'}
+                                            onClick={() => field.onChange(option)}
+                                            sx={{ textTransform: 'none', fontSize: 13, fontWeight: 600, borderRadius: '6px', px: 1.5 }}
+                                        >
+                                            {durationLabel(option)}
+                                        </Button>
+                                    ))}
+                                </Box>
                             )}
                         />
                     )}

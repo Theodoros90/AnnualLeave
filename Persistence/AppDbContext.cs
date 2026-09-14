@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Domain;
+using Domain.Services;
 
 namespace Persistence;
 
@@ -235,6 +236,13 @@ public class AppDbContext : IdentityDbContext<
 
         builder.Entity<AnnualLeave>(entity =>
         {
+            // Stored as its int value, and LeaveDuration.Full is 0 — so every row
+            // written before the column existed reads as a full day, which is what
+            // it was charged as.
+            entity.Property(al => al.Duration)
+                .HasDefaultValue(LeaveDuration.Full)
+                .IsRequired();
+
             entity.HasOne(al => al.Employee)
                 .WithMany()
                 .HasForeignKey(al => al.EmployeeId)
@@ -479,6 +487,13 @@ public class AppDbContext : IdentityDbContext<
         {
             entity.Property(e => e.IsDeleted).HasDefaultValue(false).IsRequired();
             entity.HasQueryFilter(e => !e.IsDeleted);
+
+            // Fractional because a half day costs 0.5. decimal(5,2) matches
+            // Timesheet.TotalHours; the scale only ever carries a .5, but the width
+            // leaves room for an allowance far larger than anyone grants.
+            entity.Property(e => e.LeaveBalance)
+                .HasColumnType("decimal(5,2)")
+                .IsRequired();
 
             // Spelled out because the convention default moves when DepartmentId
             // becomes optional: a required foreign key gets Cascade, an optional one

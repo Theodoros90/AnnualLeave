@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel.DataAnnotations;
+using Domain.Services;
 
 namespace Application.AnnualLeaves.DTOs;
 
@@ -41,8 +42,21 @@ public class AnnualLeaveDto
     public DateTime? ApprovedAt { get; set; }
 
 
-    [Range(1, int.MaxValue)]
-    public int TotalDays { get; set; }
+    /// <summary>
+    /// Days charged, which for a half day is 0.5. Decimal, and carrying no
+    /// <c>[Range(1, …)]</c>: that attribute sat here while the type was int and
+    /// would now reject the very value this field exists to report. It was never
+    /// doing anything useful regardless — this is a response DTO, and nothing
+    /// validates what the server is about to send.
+    /// </summary>
+    public decimal TotalDays { get; set; }
+
+    /// <summary>
+    /// "Full", "HalfDayMorning" or "HalfDayAfternoon". A string for the same reason
+    /// <see cref="Status"/> is one: the client reads it as a label, and a number
+    /// would make the wire format turn on the enum's declaration order.
+    /// </summary>
+    public string Duration { get; set; } = nameof(LeaveDuration.Full);
 
     public string EmployeeName { get; set; } = string.Empty;
 

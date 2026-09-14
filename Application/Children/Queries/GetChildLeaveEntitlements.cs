@@ -92,7 +92,7 @@ public class GetChildLeaveEntitlements
                 var approved = await PerChildLeaveBalanceCalculator.ApprovedLeaveForChildAsync(
                     context, child.Id, excludeLeaveId: null, cancellationToken);
 
-                var usedDays = await PerChildLeaveBalanceCalculator.UsedBusinessDaysAsync(
+                var usedDays = await PerChildLeaveBalanceCalculator.UsedChargeableDaysAsync(
                     context, approved, cancellationToken);
 
                 var usedThisYear = approved.Sum(leave => LeaveCalculationService.CalculateBusinessDaysInLeaveYear(
