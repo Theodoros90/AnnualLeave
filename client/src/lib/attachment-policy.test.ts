@@ -1,0 +1,82 @@
+import { describe, expect, it } from 'vitest'
+import { attachmentRequirement, isAttachmentMissing } from './attachment-policy'
+import type { LeaveType } from './types'
+
+/**
+ * The client half of the attachment rule. The server
+ * (`Application/AnnualLeaves/Commands/AttachmentPolicyRule.cs`) is what enforces
+ * it; this decides what the employee is told and whether submit is offered at all.
+ *
+ * The behaviour these pin, in one line: the admin's setting decides, not the leave
+ * type's name. The apply page used to read "(recommended for sick leave)" off
+ * `name.includes('sick')`, so a type set to Required still read "(optional)".
+ */
+
+function leaveType(overrides: Partial<LeaveType> = {}): LeaveType {
+    return {
+        id: 1,
+        name: 'Personal Days',
+        requiresApproval: true,
+        isActive: true,
+        affectsBalance: false,
+        icon: '',
+        colorKey: 'personal',
+        description: '',
+        paid: true,
+        attachmentPolicy: 'None',
+        defaultAllowance: 3,
+        allowanceUnit: 'days/year',
+        maxCarryoverDays: 0,
+        perChildEntitlement: false,
+        perChildTotalWeeks: 0,
+        perChildWeeksPerYear: 0,
+        childEligibleUntilAge: 0,
+        accrualNotes: '',
+        minNoticeDays: 1,
+        maxConsecutiveDays: 3,
+        halfDayAllowed: false,
+        eligibilityNotes: 'All employees',
+        eligibilityScope: 'All',
+        ...overrides,
+    }
+}
+
+describe('attachmentRequirement', () => {
+    it('reads the requirement off the policy, not the type name', () => {
+        expect(attachmentRequirement(leaveType({ attachmentPolicy: 'Required' }))).toBe('required')
+        expect(attachmentRequirement(leaveType({ attachmentPolicy: 'Optional' }))).toBe('encouraged')
+        expect(attachmentRequirement(leaveType({ attachmentPolicy: 'None' }))).toBe('none')
+    })
+
+    it('asks nothing of a type that is not yet selected', () => {
+        expect(attachmentRequirement(undefined)).toBe('none')
+    })
+
+    /**
+     * The name-sniffing this replaces: a type called "Sick Leave" got the amber
+     * treatment whatever the admin had configured.
+     */
+    it('does not treat a sick-sounding name as a policy', () => {
+        expect(attachmentRequirement(leaveType({ name: 'Sick Leave', attachmentPolicy: 'None' }))).toBe('none')
+    })
+})
+
+describe('isAttachmentMissing', () => {
+    it('is true only for a required policy with no file staged', () => {
+        expect(isAttachmentMissing(leaveType({ attachmentPolicy: 'Required' }), false)).toBe(true)
+        expect(isAttachmentMissing(leaveType({ attachmentPolicy: 'Required' }), true)).toBe(false)
+    })
+
+    it('never blocks an encouraged or unneeded attachment', () => {
+        expect(isAttachmentMissing(leaveType({ attachmentPolicy: 'Optional' }), false)).toBe(false)
+        expect(isAttachmentMissing(leaveType({ attachmentPolicy: 'None' }), false)).toBe(false)
+    })
+
+    /**
+     * Submit is disabled on a dozen other grounds before a type is chosen; this
+     * must not be one of them, or the button never enables on a fresh form.
+     */
+    it('does not block before a type is chosen', () => {
+        expect(isAttachmentMissing(undefined, false)).toBe(false)
+    })
+})

@@ -97,7 +97,7 @@ that means when adding code:
 |--------|-----------|
 | `User` | Extends `IdentityUser`; has `DisplayName`, `ImageUrl`, `IsActive` (may this account sign in — a leaver is switched off rather than deleted, since `DeleteAdminUser` nulls out every approval they gave). `DateOfBirth` and `Gender` are recorded HR data an admin maintains on the Users panel. **`Gender` decides who is offered Maternity and Paternity Leave** — see [Who is offered parental leave](#domain-model-summary) below the table. It is nullable and `null` means "not specified", which the dialog offers explicitly so a value set by mistake can be taken back — see **Full-replace update DTOs** under [Backend Patterns](#backend-patterns) — and a `null` is offered **both** parental types rather than neither |
 | `AnnualLeave` | `EmployeeId`, `StartDate/EndDate`, `Status` (enum), `TotalDays` (computed, no weekends). `ChildId` is nullable — required on a request against a `PerChildEntitlement` type, `null` on every row predating the feature (and on any request against a type that isn't per-child), and a `null` `ChildId` counts against no per-child ledger |
-| `LeaveType` | `Name`, `IsActive`, `AffectsBalance` (is it deducted from the enforced pool), `DefaultAllowance` and `MaxCarryoverDays` — the allowance and the year-end cap that bounds it (and which it in turn bounds: a cap may not exceed the allowance, and is nullable, `null` meaning no cap at all), both per type and both edited **only** on Leave Types. See [Leave is configured once](#domain-model-summary). `PerChildEntitlement` plus its three numbers (`PerChildTotalWeeks`, `PerChildWeeksPerYear`, `ChildEligibleUntilAge`) configure the second, per-child ledger — see [the two leave ledgers](#domain-model-summary) below the table. Annual, Maternity and Paternity Leave are **built-in** (`Domain/SystemLeaveTypes.cs`): they cannot be renamed or deleted, though every other setting on them stays editable. Keyed by name, which is sound only because the name is frozen and already unique case-insensitively; `LeaveTypeDto.IsSystem` derives the flag so the client keeps no copy of the list. Annual leave additionally cannot be **disabled** — it is the type the enforced pool is a budget for — but Maternity and Paternity can be, for an organisation that does not offer them |
+| `LeaveType` | `Name`, `IsActive`, `AffectsBalance` (is it deducted from the enforced pool), `DefaultAllowance` and `MaxCarryoverDays` — the allowance and the year-end cap that bounds it (and which it in turn bounds: a cap may not exceed the allowance, and is nullable, `null` meaning no cap at all), both per type and both edited **only** on Leave Types. See [Leave is configured once](#domain-model-summary). `PerChildEntitlement` plus its three numbers (`PerChildTotalWeeks`, `PerChildWeeksPerYear`, `ChildEligibleUntilAge`) configure the second, per-child ledger — see [the two leave ledgers](#domain-model-summary) below the table. `AttachmentPolicy` decides whether a request needs a supporting document, and is enforced on create and edit — see [the attachment policy](#domain-model-summary) below the table. Annual, Maternity and Paternity Leave are **built-in** (`Domain/SystemLeaveTypes.cs`): they cannot be renamed or deleted, though every other setting on them stays editable. Keyed by name, which is sound only because the name is frozen and already unique case-insensitively; `LeaveTypeDto.IsSystem` derives the flag so the client keeps no copy of the list. Annual leave additionally cannot be **disabled** — it is the type the enforced pool is a budget for — but Maternity and Paternity can be, for an organisation that does not offer them |
 | `Timesheet` | `EmployeeId`, `PeriodStart/End`, `TotalHours`, `Status` (Draft→Submitted→Approved/Rejected), `DepartmentId` (nullable — the department it was filed under, kept for history so it outlives its author's move; null when the author has none, i.e. an Admin, matching `AnnualLeave.DepartmentId`) |
 | `TimesheetEntry` | `TimesheetId`, `ProjectId`, `Date`, `HoursWorked` (decimal 4,2), optional `ActivityTypeId`, `ProjectTypeId` and `ProjectComponentId`. One entry per project **+ type + component** per date |
 | `Project` | `Name` (unique), `Code` (unique), `IsActive`; belongs to many `Department` via `ProjectDepartment` (which departments can see it), narrows activities via `ProjectActivityAssignment`, components via `ProjectComponentAssignment`, and its kinds of engagement via `ProjectTypeAssignment` |
@@ -254,6 +254,35 @@ they are filing for, so that path keeps the whole list and lets the server answe
 `AnnualLeaveForm` also keeps an existing request's own type on the list even when
 the rule would no longer offer it, so editing an old request does not open on a
 blank select.
+
+**The attachment policy is enforced, not advertised.** `LeaveType.AttachmentPolicy`
+(`None`/`Optional`/`Required`) decides whether a request may be filed without a
+supporting document. Only `Required` refuses anything — `Optional` is encouragement
+rendered in amber and `None` is silence, and if either could refuse, an admin
+nudging a type towards documentation would lock employees out of it instead.
+
+`Application/AnnualLeaves/Commands/AttachmentPolicyRule.cs` is the rule, called
+from `CreateAnnualLeave` and `EditAnnualLeave`;
+`client/src/lib/attachment-policy.ts` mirrors it so neither leave form offers a
+submit the API is certain to refuse. Keep the two in step, the same way
+`ParentalLeaveEligibility` and `parental-leave.ts` are kept in step.
+
+Three things about it that are deliberate:
+
+- **It was display-only until this rule.** The admin dialog saved the policy and
+  the leave type's card rendered it, while `ApplyLeavePage` decided the same thing
+  from the type's *name* — anything containing "sick" got the amber label, and
+  everything else read "(optional)". So a type set to *Attachment required* changed
+  nothing an employee could see and submitted happily with no document. The name
+  now only picks the wording of step 5's subtitle ("a doctor's note" beats "a
+  supporting document" where we can tell); the policy decides everything else.
+- **There is no exemption, and it will bite on real data.** An admin filing on
+  somebody's behalf is refused like anyone else, and a request filed *before* the
+  policy was set to `Required` carries no evidence — so editing one, even to fix
+  the reason, means attaching a document first. That is the rule as chosen, not an
+  oversight.
+- **Whitespace is not an attachment.** `AnnualLeave.EvidenceUrl` is free text, so
+  the check trims before believing it.
 
 Two more traps worth knowing, both found the hard way:
 

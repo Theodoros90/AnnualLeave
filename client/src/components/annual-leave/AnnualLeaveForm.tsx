@@ -15,6 +15,7 @@ import { AttachFile as AttachFileIcon, CalendarMonth as CalendarMonthIcon, OpenI
 import Box from '@mui/material/Box'
 import { createAnnualLeave, editAnnualLeave, getChildLeaveEntitlements, getLeaveTypes, getAdminUsers, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered } from '../../lib/parental-leave'
+import { attachmentRequirement, isAttachmentMissing } from '../../lib/attachment-policy'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
@@ -102,6 +103,17 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
     // an invented one. 0 while the type list is still loading, which is also what
     // the server reports when nothing carries a per-child entitlement.
     const childEligibleUntilAge = (leaveTypes ?? []).find((lt) => lt.id === watchedLeaveTypeId)?.childEligibleUntilAge ?? 0
+
+    /* The attachment policy, enforced by AttachmentPolicyRule on the server for
+       every caller — an admin filing on somebody's behalf included. A request that
+       predates the policy carries no evidence, so editing one means attaching a
+       document; leaving Save enabled would only turn that into a failed round trip. */
+    const selectedLeaveType = (leaveTypes ?? []).find((lt) => lt.id === watchedLeaveTypeId)
+    const attachmentRule = attachmentRequirement(selectedLeaveType)
+    const attachmentMissing = isAttachmentMissing(
+        selectedLeaveType,
+        !!evidenceFile || !!evidenceUrl.trim(),
+    )
     // On the admin create path, no employee is chosen yet means no ledger to
     // load — showing the picker anyway would fetch the signed-in admin's own
     // children instead of placeholder text explaining why there's nothing yet.
@@ -628,8 +640,15 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                         ) : null}
 
                         {!readOnly && (
-                            <Typography variant="caption" color="text.secondary">
-                                Optional: upload PDF, image, DOC, or DOCX evidence (max 10 MB).
+                            <Typography
+                                variant="caption"
+                                color={attachmentMissing ? 'error' : 'text.secondary'}
+                            >
+                                {attachmentRule === 'required'
+                                    ? 'Required: upload PDF, image, DOC, or DOCX evidence (max 10 MB).'
+                                    : attachmentRule === 'encouraged'
+                                        ? 'Recommended: upload PDF, image, DOC, or DOCX evidence (max 10 MB).'
+                                        : 'Optional: upload PDF, image, DOC, or DOCX evidence (max 10 MB).'}
                             </Typography>
                         )}
                     </Stack>
@@ -648,7 +667,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                         form="leave-form"
                         variant="contained"
                         sx={saveBtnSx}
-                        disabled={isPending || isLoadingLeaveTypes || childPickerBlocked}
+                        disabled={isPending || isLoadingLeaveTypes || childPickerBlocked || attachmentMissing}
                         startIcon={isPending ? <CircularProgress size={16} color="inherit" /> : null}
                     >
                         {submitLabel}

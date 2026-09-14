@@ -78,6 +78,19 @@ public class EditAnnualLeave
 
             annualLeave.Reason = request.AnnualLeave.Reason;
             annualLeave.EvidenceUrl = request.AnnualLeave.EvidenceUrl;
+
+            /* Same gate as on create, and deliberately with no exemption: an edit
+               can move a request onto a type that requires evidence, and a request
+               filed before the policy was set carries none. An admin fixing the
+               reason on such a row has to attach one — the rule is about the leave
+               type, not about who is typing. */
+            if (editedLeaveType is not null)
+            {
+                var attachmentError = AttachmentPolicyRule.Check(editedLeaveType, annualLeave.EvidenceUrl);
+                if (attachmentError is not null)
+                    return Result<Unit>.Failure(attachmentError);
+            }
+
             annualLeave.DelegateId = string.IsNullOrWhiteSpace(request.AnnualLeave.DelegateId)
                 ? null
                 : request.AnnualLeave.DelegateId;

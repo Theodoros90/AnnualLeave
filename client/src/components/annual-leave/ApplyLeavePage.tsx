@@ -8,6 +8,7 @@ import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import { createAnnualLeave, getAnnualLeaves, getChildLeaveEntitlements, getEmployeeProfiles, getHolidays, getLeaveTypes, getTeammates, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered, isParentalLeaveType } from '../../lib/parental-leave'
+import { attachmentRequirement, isAttachmentMissing } from '../../lib/attachment-policy'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
 import { AppDialog, AppDialogActions, AppDialogContent, AppDialogTitle, cancelBtnSx } from '../ui'
@@ -478,10 +479,19 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         setDelegateSearch('')
     }
 
+    /* Only the wording of step 5's subtitle now. Whether a document is asked for
+       at all is the leave type's AttachmentPolicy, which an admin sets on Leave
+       Types — these two used to decide that as well, so a type set to "Attachment
+       required" still read "(optional)" unless it happened to be called Sick Leave. */
     const typeNameLower = selectedType?.name.toLowerCase() ?? ''
     const isSickLeave = typeNameLower.includes('sick')
     const isBereavement = typeNameLower.includes('bereavement')
-    const attachmentRecommended = isSickLeave && !attachment
+
+    const attachmentRule = attachmentRequirement(selectedType)
+    const attachmentRecommended = attachmentRule === 'encouraged' && !attachment
+    // Mirrors AttachmentPolicyRule.Check on the server, which refuses the request
+    // outright — so this disables submit rather than letting it fail on the round trip.
+    const attachmentMissing = isAttachmentMissing(selectedType, !!attachment)
 
     const canSubmit = !!startDate && !!endDate && leaveTypeId > 0 && !isInsufficient
         // A per-child type with no child, a picker that has nothing to offer, or
@@ -489,6 +499,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         // certainly refuse.
         && (!requiresChild || (!!childId && !childPickerBlocked))
         && !isOverPerChildCap
+        && !attachmentMissing
 
     const uploadMutation = useMutation({
         mutationFn: (file: File) => uploadLeaveEvidence(file),
@@ -874,21 +885,30 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                         <Box
                             component="span"
                             sx={{
-                                fontWeight: 400,
-                                color: isSickLeave ? 'warning.dark' : 'text.disabled',
+                                fontWeight: attachmentRule === 'required' ? 600 : 400,
+                                color: attachmentRule === 'required'
+                                    ? 'error.main'
+                                    : attachmentRule === 'encouraged' ? 'warning.dark' : 'text.disabled',
                                 fontSize: 12,
                                 ml: '6px',
                             }}
                         >
-                            {isSickLeave ? '(recommended for sick leave)' : '(optional)'}
+                            {attachmentRule === 'required'
+                                ? '(required)'
+                                : attachmentRule === 'encouraged' ? '(recommended)' : '(optional)'}
                         </Box>
                     </Box>
+                    {/* The policy decides whether it is asked for; the type's name
+                        still decides how to describe it, since "a doctor's note" is
+                        better guidance than "a supporting document" when we can tell. */}
                     <Box sx={sectionSubSx}>
                         {isSickLeave
                             ? "Doctor's note, prescription, or appointment confirmation. Attach a PDF or photo — only your manager and HR can see it."
                             : isBereavement
                                 ? 'A death certificate or funeral notice helps approvals go through faster.'
-                                : 'Anything that helps your manager approve: itinerary, booking confirmation, appointment letter.'}
+                                : attachmentRule === 'required'
+                                    ? `${selectedType?.name ?? 'This leave type'} cannot be submitted without a supporting document — only your manager and HR can see it.`
+                                    : 'Anything that helps your manager approve: itinerary, booking confirmation, appointment letter.'}
                     </Box>
 
                     <input
@@ -913,14 +933,18 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                 border: '2px dashed',
                                 borderColor: isDragOver
                                     ? 'primary.main'
-                                    : attachmentRecommended
-                                        ? 'warning.main'
-                                        : 'divider',
+                                    : attachmentMissing
+                                        ? 'error.main'
+                                        : attachmentRecommended
+                                            ? 'warning.main'
+                                            : 'divider',
                                 bgcolor: isDragOver
                                     ? softBg('primary')
-                                    : attachmentRecommended
-                                        ? softBg('warning')
-                                        : 'action.hover',
+                                    : attachmentMissing
+                                        ? softBg('error')
+                                        : attachmentRecommended
+                                            ? softBg('warning')
+                                            : 'action.hover',
                                 borderRadius: '10px',
                                 p: '20px 16px',
                                 textAlign: 'center',
@@ -1014,6 +1038,20 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                         </Box>
                     )}
 
+                    {attachmentMissing && (
+                        <Box sx={{
+                            mt: '10px', p: '8px 12px', bgcolor: softBg('error'),
+                            border: '1px solid', borderColor: 'error.main', borderRadius: '6px',
+                            fontSize: 11, color: 'error.dark',
+                            display: 'flex', alignItems: 'center', gap: '6px',
+                        }}>
+                            <Box component="span">📎</Box>
+                            <Box component="span">
+                                {selectedType?.name} requires a supporting document before it can be submitted.
+                            </Box>
+                        </Box>
+                    )}
+
                     {attachmentRecommended && (
                         <Box sx={{
                             mt: '10px', p: '8px 12px', bgcolor: softBg('warning'),
@@ -1022,7 +1060,12 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                             display: 'flex', alignItems: 'center', gap: '6px',
                         }}>
                             <Box component="span">💡</Box>
-                            <Box component="span">Tip: Sick leave is much faster to approve with a doctor's note attached.</Box>
+                            <Box component="span">
+                                {/* Kept specific where the name lets us be. */}
+                                {isSickLeave
+                                    ? "Tip: Sick leave is much faster to approve with a doctor's note attached."
+                                    : `Tip: ${selectedType?.name} is much faster to approve with a document attached.`}
+                            </Box>
                         </Box>
                     )}
                 </Box>
@@ -1057,7 +1100,12 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                         <SummaryRow l="Back at work" r={endDate ? nextWorkingDay(endDate, holidaySet) : '—'} />
                         <SummaryRow l="Days deducted" r={selectedAffectsBalance ? String(daysDeducted) : '0 (unpaid)'} />
                         <SummaryRow l="Coverage" r={selectedDelegate ? selectedDelegate.displayName : 'None'} muted={!selectedDelegate} />
-                        <SummaryRow l="Attachments" r={attachment ? `📎 1 file` : 'None'} muted={!attachment} />
+                        <SummaryRow
+                            l="Attachments"
+                            r={attachment ? `📎 1 file` : attachmentMissing ? 'Required' : 'None'}
+                            muted={!attachment && !attachmentMissing}
+                            tone={attachmentMissing ? 'error' : undefined}
+                        />
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', py: '8px', fontSize: 12, mt: '6px', pt: '12px', borderTop: '2px solid', borderTopColor: 'divider' }}>
                             <Box sx={{ fontWeight: 600, color: 'text.primary' }}>
                                 {/* Not named after the selected child: the figure covers
@@ -1158,7 +1206,12 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                             ? 'Shorten the request to continue'
                                             : requiresChild && !!startDate && !!endDate && !childId
                                                 ? 'Select a child to continue'
-                                                : 'Pick dates to continue'}
+                                                // Same shape as the child clause: only
+                                                // once the dates are in is the missing
+                                                // document the thing standing in the way.
+                                                : attachmentMissing && !!startDate && !!endDate
+                                                    ? 'Attach a document to continue'
+                                                    : 'Pick dates to continue'}
                         </Box>
                         <Box
                             component="button"
@@ -1409,11 +1462,15 @@ function DelegateAvatar({ name }: { name: string }) {
     )
 }
 
-function SummaryRow({ l, r, muted }: { l: string; r: string; muted?: boolean }) {
+/** `tone` marks a value that is standing in the way, not merely absent. */
+function SummaryRow({ l, r, muted, tone }: { l: string; r: string; muted?: boolean; tone?: 'error' }) {
     return (
         <Box sx={{ display: 'flex', justifyContent: 'space-between', py: '8px', fontSize: 12, borderBottom: '1px solid', borderBottomColor: 'divider' }}>
             <Box sx={{ color: 'text.secondary' }}>{l}</Box>
-            <Box sx={{ fontWeight: muted ? 400 : 600, color: muted ? 'text.disabled' : 'text.primary' }}>{r}</Box>
+            <Box sx={{
+                fontWeight: muted ? 400 : 600,
+                color: tone === 'error' ? 'error.main' : muted ? 'text.disabled' : 'text.primary',
+            }}>{r}</Box>
         </Box>
     )
 }

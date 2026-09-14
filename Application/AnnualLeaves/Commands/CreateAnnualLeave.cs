@@ -39,6 +39,13 @@ public class CreateAnnualLeave
             if (leaveType is null)
                 return Result<string>.Failure("Selected leave type is not available.");
 
+            /* First of the three type-driven refusals, because it is the one the
+               employee can act on without leaving the form. The client disables
+               submit for it, so reaching this is a crafted request or a stale page. */
+            var attachmentError = AttachmentPolicyRule.Check(leaveType, annualLeave.EvidenceUrl);
+            if (attachmentError is not null)
+                return Result<string>.Failure(attachmentError);
+
             /* Maternity and Paternity Leave are offered on the employee's recorded
                gender and their having a child young enough to qualify. The client
                hides the cards; this is what makes hiding them mean something. Runs
