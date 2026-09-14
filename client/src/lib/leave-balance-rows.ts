@@ -1,12 +1,18 @@
+import { allowanceForLeaveType } from './leave-allowance'
 import type { AnnualLeave, ChildLeaveEntitlementSummary, LeaveType } from './types'
 
 /**
  * One row of a "leave balance" panel — the employee dashboard's and My Leave's,
  * which show the same figures and so read them from here.
  *
- * `tracked` is whether the type has an entitlement to count down at all. A row
- * that tracks nothing (sick leave, unpaid leave) has no total to measure against,
- * so it reports `used` and nothing else.
+ * `tracked` is whether the type has an entitlement to count down at all — an
+ * allowance above 0, whichever ledger it comes from. It is deliberately *not*
+ * `affectsBalance`: that flag only says whether the type is also deducted from the
+ * pooled budget the API enforces, and reading it as "has a budget" reported sick
+ * leave, personal days, bereavement and unpaid leave as a bare 0 apiece while
+ * Leave Types gave each of them an allowance. A row that genuinely tracks nothing
+ * — a type whose allowance is 0 — has no total to measure against, so it reports
+ * `used` and nothing else.
  */
 export interface LeaveBalanceRow {
     id: number
@@ -42,6 +48,12 @@ interface BuildArgs {
  * page whose card below it offered 40 days. A per-child row is `tracked` even
  * before its ledger arrives: `total` is 0 until then, which reads as days taken,
  * and the figures fill in when the query settles.
+ *
+ * Both panels are headed with the current year and set these rows beside "Annual
+ * Leave 23/23", so every row answers the same question: how much may I book in
+ * this leave year. A per-child row therefore quotes the *yearly* cap summed over
+ * eligible children — 5 days against a child's lifetime 20, not 20. The card
+ * below the panel is where the lifetime ledger is broken down, and it says so.
  */
 export function buildLeaveBalanceRows({
     leaveTypes,
@@ -64,22 +76,33 @@ export function buildLeaveBalanceRows({
             return {
                 id: leaveType.id,
                 name: leaveType.name,
-                used: eligible.reduce((sum, child) => sum + child.usedDays, 0),
-                total: eligible.reduce((sum, child) => sum + child.totalDays, 0),
-                remaining: eligible.reduce((sum, child) => sum + child.remainingDays, 0),
+                used: eligible.reduce((sum, child) => sum + child.thisYearUsedDays, 0),
+                total: eligible.reduce((sum, child) => sum + child.thisYearCapDays, 0),
+                // Repeated from the server, never recomputed as cap minus used: it
+                // is already the lesser of the yearly and the lifetime remainder,
+                // so a child two days short of exhausting their 20 offers two.
+                remaining: eligible.reduce((sum, child) => sum + child.thisYearRemainingDays, 0),
                 tracked: true,
             }
         }
 
+        /* The pooled type is measured against the employee's own entitlement, which
+           is the figure the API enforces and may be overridden per person. Every
+           other type is measured against its own allowance — `affectsBalance` says
+           only whether a type is *also* deducted from that pool, never that it has
+           no budget, and the seeded types all set one (sick leave 10 days a year,
+           personal days 3). Reading it as "no budget" is what left four rows
+           reporting a bare 0 beside annual leave's 23/23. Same rule as
+           `allowanceForRequest`, which an admin's view of a request already uses. */
         const used = usedByTypeId.get(leaveType.id) ?? 0
-        const total = leaveType.affectsBalance ? entitlement : 0
+        const total = leaveType.affectsBalance ? entitlement : allowanceForLeaveType(leaveType)
         return {
             id: leaveType.id,
             name: leaveType.name,
             used,
             total,
             remaining: Math.max(0, total - used),
-            tracked: leaveType.affectsBalance,
+            tracked: total > 0,
         }
     })
 }

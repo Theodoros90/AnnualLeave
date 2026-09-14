@@ -129,10 +129,13 @@ describe('EmployeeDashboard leave balance card', () => {
         expect(within(balanceCard()).queryByText('Paternity Leave')).toBeNull()
     })
 
-    it('measures a per-child type against its own ledger, not the pooled balance', async () => {
+    /* The card sits beside this year's figures, so a per-child row quotes what this
+       leave year allows — the 5-day cap for each of two eligible children — rather
+       than the 20 days each is entitled to across their whole eligibility. */
+    it("measures a per-child type against its own ledger's yearly cap, not the pooled balance", async () => {
         await renderDashboard()
 
-        await waitFor(() => expect(balanceRow('Maternity Leave').textContent).toContain('40/40'))
+        await waitFor(() => expect(balanceRow('Maternity Leave').textContent).toContain('10/10'))
     })
 
     it('still measures annual leave against the pooled entitlement', async () => {

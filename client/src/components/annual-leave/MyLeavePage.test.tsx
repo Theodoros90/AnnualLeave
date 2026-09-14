@@ -138,10 +138,14 @@ describe('MyLeavePage balance panel', () => {
         expect(within(balancePanel()).queryByText('Paternity Leave')).toBeNull()
     })
 
-    it('measures a per-child type against its own ledger, not the pooled balance', async () => {
+    /* The panel is headed with the year, so a per-child row quotes what this leave
+       year allows — the 5-day cap for each of two eligible children — and not the
+       20 days a child is entitled to over their whole eligibility. The card below
+       is where the lifetime ledger is broken down. */
+    it("measures a per-child type against its own ledger's yearly cap, not the pooled balance", async () => {
         await renderPage()
 
-        await waitFor(() => expect(balanceRow('Maternity Leave').textContent).toContain('40/40'))
+        await waitFor(() => expect(balanceRow('Maternity Leave').textContent).toContain('10/10'))
     })
 
     it('still measures annual leave against the pooled entitlement', async () => {
