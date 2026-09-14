@@ -59,10 +59,11 @@ const HEADER_GRADIENTS: Record<string, string> = {
     unpaid:      'linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%)',
     maternity:   'linear-gradient(135deg, #FCE7F3 0%, #FBCFE8 100%)',
     paternity:   'linear-gradient(135deg, #DBEAFE 0%, #BAE6FD 100%)',
+    military:    'linear-gradient(135deg, #ECFCCB 0%, #D9F99D 100%)',
     default:     'linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%)',
 }
 
-const COLOR_KEYS = ['annual', 'sick', 'personal', 'bereavement', 'unpaid', 'maternity', 'paternity', 'default']
+const COLOR_KEYS = ['annual', 'sick', 'personal', 'bereavement', 'unpaid', 'maternity', 'paternity', 'military', 'default']
 
 type StatusFilter = 'all' | 'enabled' | 'disabled'
 type CategoryFilter = 'all' | 'paid' | 'unpaid' | 'special'

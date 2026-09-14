@@ -807,6 +807,33 @@ public class DbInitializer
                 MinNoticeDays = 60, MaxConsecutiveDays = 90, HalfDayAllowed = false,
                 EligibilityNotes = "Tenured employees (5+ years)", EligibilityScope = EligibilityScope.Limited
             },
+            new LeaveType
+            {
+                // Deliberately not a SystemLeaveTypes entry. Nothing finds this type
+                // by name — unlike Annual, Maternity and Paternity, which the
+                // allowance helpers and ParentalLeaveEligibility look up by name — so
+                // an organisation without national service can rename, disable or
+                // delete it like any other type it owns.
+                Name = "Military Leave", Icon = "🎖️", ColorKey = "military",
+                Description = "Compulsory national service, reservist call-up, or military training.",
+                RequiresApproval = true, IsActive = true,
+                // A call-up is not a holiday. Charging it to the enforced pool would
+                // spend an annual allowance on time off the employee never asked for
+                // and cannot decline.
+                AffectsBalance = false, Paid = true,
+                // The call-up papers. Safe to require on a type with no requests yet:
+                // the retroactive bite AttachmentPolicyRule documents needs rows that
+                // predate the policy, and a new type has none.
+                AttachmentPolicy = AttachmentPolicy.Required,
+                DefaultAllowance = 30, AllowanceUnit = "days/year",
+                AccrualNotes = "Granted per call-up · Evidence required",
+                // 0 notice, and it has to be 0 now that NoticePeriodRule refuses a
+                // late request rather than merely captioning one: call-up papers
+                // arrive when they arrive, so any figure here would refuse exactly
+                // the requests this type exists to record.
+                MinNoticeDays = 0, MaxConsecutiveDays = 30, HalfDayAllowed = false,
+                EligibilityNotes = "Employees called up for national service", EligibilityScope = EligibilityScope.Limited
+            },
         };
 
         await context.LeaveTypes.AddRangeAsync(leaveTypes);
