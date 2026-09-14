@@ -164,6 +164,21 @@ function LeaveTypesPanel() {
         return [...out].sort((a, b) => a.type.name.localeCompare(b.type.name))
     }, [derivedAll, statusFilter, categoryFilter, searchText])
 
+    /*
+     * The built-in types render in their own group ahead of the rest, because what
+     * sets them apart is a rule an admin runs into rather than reads: they can be
+     * reconfigured and disabled freely, but never renamed or deleted. That used to
+     * surface only once the edit dialog opened on a greyed-out name, or on pressing
+     * a delete button that was not there.
+     *
+     * Split over "filtered" rather than "derivedAll", so search and the two filters
+     * keep meaning exactly what they did -- the grouping is a rendering decision,
+     * not a third filter. "isSystem" is server-derived from the name
+     * (Domain/SystemLeaveTypes.cs), so there is no client-side list to keep in step.
+     */
+    const builtIn = useMemo(() => filtered.filter((d) => d.type.isSystem), [filtered])
+    const custom = useMemo(() => filtered.filter((d) => !d.type.isSystem), [filtered])
+
     /* Aggregate stats */
     const totalActive = derivedAll.filter((d) => d.type.isActive).length
     const totalRequestsYTD = derivedAll.reduce((s, d) => s + d.requestsYTD, 0)
@@ -225,6 +240,41 @@ function LeaveTypesPanel() {
         }
         updateMutation.mutate({ id: t.id, payload })
     }
+
+    // One card, wherever it lands. Shared by both sections so the two groups stay
+    // two headings over one card, rather than two cards that can drift apart.
+    const renderCard = (d: DerivedType) => (
+        <LeaveTypeCard
+            key={d.type.id}
+            derived={d}
+            onEdit={() => setEditType(d.type)}
+            onToggle={() => toggleActive(d.type)}
+            onDelete={async () => {
+                // The card hides the delete button for these, so this is a backstop
+                // rather than the usual path. The server refuses it regardless
+                // (DeleteLeaveType).
+                if (d.type.isSystem) {
+                    await SweetAlert.fire({
+                        title: 'Built-in leave type',
+                        text: `${d.type.name} is built in and cannot be deleted. You can disable it instead if you don't offer it.`,
+                        icon: 'info',
+                    })
+                    return
+                }
+                const result = await SweetAlert.fire({
+                    title: `Delete "${d.type.name}"?`,
+                    text: 'This will fail if leave requests use it.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, delete',
+                    cancelButtonText: 'Cancel',
+                    confirmButtonColor: '#EF4444',
+                    reverseButtons: true,
+                })
+                if (result.isConfirmed) deleteMutation.mutate(d.type.id)
+            }}
+        />
+    )
 
     if (isLoading) {
         return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress size={28} /></Box>
@@ -328,7 +378,7 @@ function LeaveTypesPanel() {
                 </Box>
             </Box>
 
-            {/* Cards grid */}
+            {/* Cards, grouped: the built-in types first, then the ones an admin made */}
             {filtered.length === 0 ? (
                 <Box sx={{
                     bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: '10px',
@@ -337,44 +387,32 @@ function LeaveTypesPanel() {
                     No leave types match the current filters.
                 </Box>
             ) : (
-                <Box sx={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-                    gap: '14px',
-                }}>
-                    {filtered.map((d) => (
-                        <LeaveTypeCard
-                            key={d.type.id}
-                            derived={d}
-                            onEdit={() => setEditType(d.type)}
-                            onToggle={() => toggleActive(d.type)}
-                            onDelete={async () => {
-                                // The card hides the delete button for these, so this
-                                // is a backstop rather than the usual path. The server
-                                // refuses it regardless (DeleteLeaveType).
-                                if (d.type.isSystem) {
-                                    await SweetAlert.fire({
-                                        title: 'Built-in leave type',
-                                        text: `${d.type.name} is built in and cannot be deleted. You can disable it instead if you don't offer it.`,
-                                        icon: 'info',
-                                    })
-                                    return
-                                }
-                                const result = await SweetAlert.fire({
-                                    title: `Delete "${d.type.name}"?`,
-                                    text: 'This will fail if leave requests use it.',
-                                    icon: 'warning',
-                                    showCancelButton: true,
-                                    confirmButtonText: 'Yes, delete',
-                                    cancelButtonText: 'Cancel',
-                                    confirmButtonColor: '#EF4444',
-                                    reverseButtons: true,
-                                })
-                                if (result.isConfirmed) deleteMutation.mutate(d.type.id)
-                            }}
-                        />
-                    ))}
-                    <AddCard onClick={() => setCreateOpen(true)} />
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    {/*
+                     * Rendered only when the filters left something in it: a heading
+                     * over an empty grid reads as a group that lost its cards rather
+                     * than one the search excluded.
+                     */}
+                    {builtIn.length > 0 && (
+                        <LeaveTypeSection
+                            label="Built-in leave types"
+                            count={builtIn.length}
+                            subtitle="Provided by the app. Reconfigure or disable them freely — they cannot be renamed or deleted."
+                        >
+                            {builtIn.map(renderCard)}
+                        </LeaveTypeSection>
+                    )}
+                    {/*
+                     * The custom section carries the create card, since a built-in
+                     * type cannot be created, and so renders even with nothing in it
+                     * — an org with no custom types yet is exactly when that card is
+                     * worth having. (Unreachable with both groups empty: this whole
+                     * branch is the non-empty one.)
+                     */}
+                    <LeaveTypeSection label="Custom leave types" count={custom.length}>
+                        {custom.map(renderCard)}
+                        <AddCard onClick={() => setCreateOpen(true)} />
+                    </LeaveTypeSection>
                 </Box>
             )}
 
@@ -672,6 +710,43 @@ function HeaderIconBtn({ title, onClick, children }: {
             }}
         >
             {children}
+        </Box>
+    )
+}
+
+/**
+ * A labelled group of leave-type cards. The label doubles as the section's
+ * accessible name, so "which group is this card in" is a question the DOM can
+ * answer rather than one you settle by counting siblings.
+ */
+function LeaveTypeSection({ label, count, subtitle, children }: {
+    label: string
+    count: number
+    subtitle?: string
+    children: React.ReactNode
+}) {
+    return (
+        <Box component="section" aria-label={label}>
+            <Box sx={{ mb: '12px' }}>
+                <Box sx={{
+                    fontSize: 11, fontWeight: 700, letterSpacing: '0.07em',
+                    textTransform: 'uppercase', color: 'text.secondary',
+                }}>
+                    {label} · {count}
+                </Box>
+                {subtitle && (
+                    <Box sx={{ fontSize: 12, color: 'text.secondary', mt: '4px', maxWidth: 620 }}>
+                        {subtitle}
+                    </Box>
+                )}
+            </Box>
+            <Box sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+                gap: '14px',
+            }}>
+                {children}
+            </Box>
         </Box>
     )
 }
