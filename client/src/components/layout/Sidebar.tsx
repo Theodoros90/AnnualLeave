@@ -96,6 +96,13 @@ const Sidebar = observer(function Sidebar() {
     const isAdminUser = authStore.user?.roles?.includes('Admin') ?? false
     const isManagerUser = authStore.user?.roles?.includes('Manager') ?? false
     const shouldShowDepartment = !isAdminUser
+    /* Same reasoning one step further down the dialog: the children question and
+       the list behind it exist to decide who is offered Maternity and Paternity
+       Leave. An Admin is offered neither — the role's navigation below carries no
+       "Request Leave" and no "My Leave" — so on their own profile the block asked
+       about their family and then fed nothing. They still maintain *employees'*
+       children on Users → Edit User → Profile, which is a different surface. */
+    const shouldShowChildren = !isAdminUser
 
     const displayName = authStore.user?.displayName ?? authStore.user?.userName ?? 'User'
     const initials = displayName
@@ -494,11 +501,16 @@ const Sidebar = observer(function Sidebar() {
                             fullWidth
                         />
 
-                        <ChildrenSection
-                            hasChildren={hasChildren}
-                            onHasChildrenChange={setHasChildren}
-                            disabled={updateProfileMutation.isPending}
-                        />
+                        {/* `hasChildren` is still seeded on open and still submitted
+                            unchanged while this is hidden: a dialog that stops showing a
+                            field must not silently clear the answer stored behind it. */}
+                        {shouldShowChildren && (
+                            <ChildrenSection
+                                hasChildren={hasChildren}
+                                onHasChildrenChange={setHasChildren}
+                                disabled={updateProfileMutation.isPending}
+                            />
+                        )}
 
                         {shouldShowDepartment && (
                             <TextField

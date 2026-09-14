@@ -48,6 +48,20 @@ public class AnnualLeave : IAuditable
 
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
+
+    /// <summary>
+    /// Whether this request covers whole days or half of one, and which half.
+    ///
+    /// <see cref="LeaveDuration.Full"/> is 0, so rows predating the column — every
+    /// request filed while half days were a pair of buttons that posted nothing —
+    /// read as full days, which is what they were charged as.
+    ///
+    /// A half day is always a single date: <c>HalfDayRule</c> refuses anything
+    /// wider, and refuses a half day on a type whose
+    /// <see cref="LeaveType.HalfDayAllowed"/> is off.
+    /// </summary>
+    public LeaveDuration Duration { get; set; } = LeaveDuration.Full;
+
     public string Reason { get; set; } = string.Empty;
     public string? EvidenceUrl { get; set; }
     public AnnualLeaveStatus Status { get; set; }
@@ -55,11 +69,15 @@ public class AnnualLeave : IAuditable
     public DateTime? ApprovedAt { get; set; }
 
     /// <summary>
-    /// Weekend-aware business-day count for this leave request, ignoring public
+    /// Weekend-aware chargeable-day count for this leave request, ignoring public
     /// holidays. Holiday-aware calculations require external input and should be
-    /// done via <see cref="LeaveCalculationService.CalculateBusinessDays"/> directly.
+    /// done via <see cref="LeaveCalculationService.CalculateChargeableDays"/> directly.
+    ///
+    /// Decimal because a half day is 0.5 of one. Whole for every full-day request,
+    /// which is all of them before <see cref="Duration"/> existed.
     /// </summary>
-    public int TotalDays => LeaveCalculationService.CalculateBusinessDays(StartDate, EndDate);
+    public decimal TotalDays =>
+        LeaveCalculationService.CalculateChargeableDays(StartDate, EndDate, Duration);
     public ICollection<LeaveStatusHistory> StatusHistory { get; set; } = new List<LeaveStatusHistory>();
 
     /// <summary>

@@ -10,7 +10,7 @@ namespace WorkTrack.Tests;
 /// </summary>
 public class AnnualLeaveTotalDaysTests
 {
-    private static int TotalDays(string start, string end) =>
+    private static decimal TotalDays(string start, string end) =>
         new AnnualLeave { StartDate = DateTime.Parse(start), EndDate = DateTime.Parse(end) }.TotalDays;
 
     [Theory]

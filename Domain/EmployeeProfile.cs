@@ -24,8 +24,22 @@ public class EmployeeProfile : ISoftDeletable, IAuditable
     public ICollection<AnnualLeave> AnnualLeaves { get; set; } = new List<AnnualLeave>();
     public ICollection<Timesheet> Timesheets { get; set; } = new List<Timesheet>();
 
+    /// <summary>
+    /// Whole days, always: an entitlement is stamped from
+    /// <see cref="LeaveType.DefaultAllowance"/>, which is an int, and is never
+    /// edited per person. Never write a 0 — <c>CheckSufficientBalanceAsync</c>
+    /// reads it as "no balance check at all", not as "no allowance".
+    /// </summary>
     public int AnnualLeaveEntitlement { get; set; }
-    public int LeaveBalance { get; set; }
+
+    /// <summary>
+    /// What is left of the entitlement, and decimal because a half day costs 0.5.
+    /// An entitlement of 23 days with one half day taken sits at 22.5.
+    ///
+    /// Derived, never edited per person: only the three writers named in CLAUDE.md
+    /// set it, all of them from the allowance.
+    /// </summary>
+    public decimal LeaveBalance { get; set; }
 
     /// <summary>
     /// Whether this employee has declared having children — a genuine tri-state:

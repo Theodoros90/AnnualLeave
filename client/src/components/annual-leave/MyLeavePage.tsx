@@ -154,20 +154,32 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
     const currentYear = new Date().getFullYear()
     const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
 
-    // Days used this calendar year (approved leaves with balance-affecting types)
     const approvedThisYear = useMemo(
         () => myLeaves.filter((l) => l.status === 'Approved' && new Date(l.startDate).getFullYear() === currentYear),
         [myLeaves, currentYear]
     )
 
-    const daysUsedThisYear = useMemo(() => {
+    /* Two figures, not one. "Days remaining" is annual leave, so it deducts only
+       what comes out of the pooled budget the API enforces — a sick day is not an
+       annual-leave day. The tile beside it says "across all types" and so counts
+       all of them: sick days, personal days and paternity leave are days the
+       employee was away, however they are budgeted. Sharing the first figure made
+       the second quietly under-report every absence of a type that is tracked
+       separately. A leave whose type no longer resolves counts towards both, which
+       is the safer way for it to be wrong. */
+    const daysUsedAgainstBalance = useMemo(() => {
         return approvedThisYear.reduce((sum, l) => {
             const lt = l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined
             return sum + (lt?.affectsBalance === false ? 0 : l.totalDays)
         }, 0)
     }, [approvedThisYear, leaveTypeById])
 
-    const remainingAnnual = Math.max(0, entitlement - daysUsedThisYear)
+    const daysTakenThisYear = useMemo(
+        () => approvedThisYear.reduce((sum, l) => sum + l.totalDays, 0),
+        [approvedThisYear]
+    )
+
+    const remainingAnnual = Math.max(0, entitlement - daysUsedAgainstBalance)
 
     // Days until year-end (based on configured leave year start month if any)
     const yearEndDays = useMemo(() => {
@@ -298,7 +310,7 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
                           sub={`of ${entitlement} annual leave`} />
                 <MiniStat label="⏳ Pending" value={String(tabCounts.Pending)} valueColor="#F59E0B"
                           sub={`request${tabCounts.Pending === 1 ? '' : 's'} awaiting approval`} />
-                <MiniStat label={`✓ Taken in ${currentYear}`} value={String(daysUsedThisYear)} valueColor="#22C47A"
+                <MiniStat label={`✓ Taken in ${currentYear}`} value={String(daysTakenThisYear)} valueColor="#22C47A"
                           sub="days · across all types" />
                 <MiniStat label="📅 Until year-end" value={String(yearEndDays)}
                           sub="days left to book" />

@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoreProvider } from '../../lib/mobx'
-import type { ChildLeaveEntitlement, ChildLeaveEntitlementSummary, EmployeeProfile, UserInfo } from '../../lib/types'
+import type { AnnualLeave, ChildLeaveEntitlement, ChildLeaveEntitlementSummary, EmployeeProfile, UserInfo } from '../../lib/types'
 import MyLeavePage from './MyLeavePage'
 
 /**
@@ -287,5 +287,53 @@ describe('MyLeavePage per-child card', () => {
         } finally {
             process.env.TZ = tz
         }
+    })
+})
+
+/**
+ * The four tiles across the top of the page. Two of them were one figure wearing
+ * two labels: "Days remaining" is annual leave, so it must deduct only the type
+ * the pooled balance is a budget for, while "Taken in {year} · days · across all
+ * types" says what it counts and has to count it. Sharing the first figure made
+ * the second under-report every sick day, personal day and day of paternity leave
+ * the employee had actually taken.
+ */
+describe('MyLeavePage year tiles', () => {
+    const year = new Date().getFullYear()
+
+    function aLeave(over: Partial<AnnualLeave> & { leaveTypeId: number; totalDays: number }): AnnualLeave {
+        return {
+            id: `leave-${over.leaveTypeId}-${over.totalDays}`, employeeId: USER.id,
+            startDate: `${year}-03-02T00:00:00`, endDate: `${year}-03-04T00:00:00`,
+            reason: '', evidenceUrl: null, delegateId: null, delegateName: '',
+            status: 'Approved', duration: 'Full', createdAt: `${year}-02-01T00:00:00`, approvedAt: `${year}-02-02T00:00:00`,
+            employeeName: USER.displayName, departmentName: 'Delivery', childId: null, childName: '',
+            ...over,
+        }
+    }
+
+    /** A tile, reached by its label — the value and subtitle are its siblings. */
+    function tile(label: string) {
+        return screen.getByText(label).parentElement as HTMLElement
+    }
+
+    beforeEach(() => {
+        api.getAnnualLeaves.mockResolvedValue([
+            aLeave({ leaveTypeId: ANNUAL_LEAVE_TYPE.id, totalDays: 3 }),
+            aLeave({ leaveTypeId: SICK_LEAVE_TYPE.id, totalDays: 2 }),
+        ])
+    })
+
+    it('deducts only the pooled type from the days remaining', async () => {
+        await renderPage()
+
+        await waitFor(() => expect(tile('🌴 Days remaining').textContent).toContain('20'))
+        expect(tile('🌴 Days remaining').textContent).toContain('of 23 annual leave')
+    })
+
+    it('counts every type towards the days taken, as the tile says it does', async () => {
+        await renderPage()
+
+        await waitFor(() => expect(tile(`✓ Taken in ${year}`).textContent).toContain('5'))
     })
 })

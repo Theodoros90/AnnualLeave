@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { StoreProvider } from '../../lib/mobx'
@@ -341,4 +341,90 @@ it('does not write the stale allowance back when a parental type is toggled', as
 
     await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledTimes(1))
     expect(api.updateLeaveType.mock.calls[0][1]).toMatchObject({ defaultAllowance: 0 })
+})
+
+/*
+ * The three built-in types (Domain/SystemLeaveTypes.cs) may be reconfigured and
+ * disabled freely but never renamed or deleted. Until now that only surfaced once
+ * you opened the edit dialog and found the name greyed out, or pressed a delete
+ * button that was not there. Grouping them says it on the page instead.
+ */
+it('groups the built-in leave types apart from the custom ones', async () => {
+    api.getLeaveTypes.mockResolvedValue([
+        leaveType({ id: 1, name: 'Annual Leave' }),
+        leaveType({ id: 2, name: 'Sick Leave', perChildEntitlement: false }),
+    ])
+    await renderPanel()
+
+    const builtIn = within(screen.getByRole('region', { name: 'Built-in leave types' }))
+    const custom = within(screen.getByRole('region', { name: 'Custom leave types' }))
+
+    expect(builtIn.getByText('Annual Leave')).toBeInTheDocument()
+    expect(builtIn.queryByText('Sick Leave')).not.toBeInTheDocument()
+    expect(custom.getByText('Sick Leave')).toBeInTheDocument()
+    expect(custom.queryByText('Annual Leave')).not.toBeInTheDocument()
+})
+
+// A heading over an empty grid reads as a group that lost its cards rather than
+// one the filter excluded, so a section with nothing in it is not rendered.
+it('drops a section a filter has emptied rather than heading an empty grid', async () => {
+    api.getLeaveTypes.mockResolvedValue([
+        leaveType({ id: 1, name: 'Annual Leave' }),
+        leaveType({ id: 2, name: 'Sick Leave', perChildEntitlement: false }),
+    ])
+    await renderPanel()
+
+    fireEvent.change(screen.getByPlaceholderText('Search leave types…'), { target: { value: 'sick' } })
+
+    await waitFor(() =>
+        expect(screen.queryByRole('region', { name: 'Built-in leave types' })).not.toBeInTheDocument())
+    expect(screen.getByRole('region', { name: 'Custom leave types' })).toBeInTheDocument()
+})
+
+/*
+ * A built-in type cannot be created, so the create card belongs with the custom
+ * ones -- and stays there when an org has none yet, which is the moment it is
+ * most needed.
+ */
+it('keeps the create card with the custom types, even when there are none yet', async () => {
+    api.getLeaveTypes.mockResolvedValue([leaveType({ id: 1, name: 'Annual Leave' })])
+    await renderPanel()
+
+    const custom = within(screen.getByRole('region', { name: 'Custom leave types' }))
+    expect(custom.getByText('Create a new leave type')).toBeInTheDocument()
+
+    const builtIn = within(screen.getByRole('region', { name: 'Built-in leave types' }))
+    expect(builtIn.queryByText('Create a new leave type')).not.toBeInTheDocument()
+})
+
+/*
+ * Military Leave is seeded with colorKey 'military'. The palette is a closed list
+ * -- COLOR_KEYS drives the dropdown and HEADER_GRADIENTS the card -- so a key the
+ * palette does not carry is a key an admin cannot pick and a card that silently
+ * falls back to the neutral grey. These two hold the pair together.
+ */
+it('offers the military colour in the palette dropdown', async () => {
+    await renderPanel()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+    fireEvent.mouseDown(screen.getByLabelText('Color theme'))
+
+    expect(within(screen.getByRole('listbox')).getByText('military')).toBeInTheDocument()
+})
+
+it('gives a military card its own header rather than the neutral fallback', async () => {
+    api.getLeaveTypes.mockResolvedValue([
+        leaveType({ id: 1, name: 'Military Leave', icon: '🎖️', colorKey: 'military', perChildEntitlement: false }),
+        leaveType({ id: 2, name: 'Sabbatical', icon: '🎓', colorKey: 'default', perChildEntitlement: false }),
+    ])
+    await renderPanel()
+
+    // icon box -> the min-width box -> the flex row -> the header that carries the gradient
+    const headerOf = (icon: string) =>
+        screen.getByText(icon).parentElement!.parentElement!.parentElement!
+    const military = getComputedStyle(headerOf('🎖️')).background
+    const fallback = getComputedStyle(headerOf('🎓')).background
+
+    expect(military).toContain('gradient')
+    expect(military).not.toBe(fallback)
 })

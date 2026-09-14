@@ -9,6 +9,8 @@ import CircularProgress from '@mui/material/CircularProgress'
 import { createAnnualLeave, getAnnualLeaves, getChildLeaveEntitlements, getEmployeeProfiles, getHolidays, getLeaveTypes, getTeammates, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered, isParentalLeaveType } from '../../lib/parental-leave'
 import { attachmentRequirement, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
+import { earliestStartDate, maxConsecutiveError, noticeError } from '../../lib/leave-limits'
+import { chargeableDays, collapseToHalfDay, durationLabel, isHalfDay, isHalfDayOffered, type LeaveDurationValue } from '../../lib/half-day'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
 import { AppDialog, AppDialogActions, AppDialogContent, AppDialogTitle, cancelBtnSx } from '../ui'
@@ -33,7 +35,10 @@ function buildApplyLeaveSchema(perChildLeaveTypeIds: number[]) {
     return z
         .object({
             leaveTypeId: z.number().int().positive('Choose a leave type to continue.'),
-            duration: z.enum(['full', 'half-am', 'half-pm']),
+            // The server's own member names, so the value goes into the payload
+            // untranslated. They used to be 'full' | 'half-am' | 'half-pm', which
+            // was free to drift because nothing ever sent them anywhere.
+            duration: z.enum(['Full', 'HalfDayMorning', 'HalfDayAfternoon']),
             startDate: z.string().min(1, 'Pick a start date on the calendar.'),
             endDate: z.string().min(1, 'Pick an end date on the calendar.'),
             reason: z.string().max(500, 'Reason must be 500 characters or fewer.').optional(),
@@ -235,7 +240,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         mode: 'onChange',
         defaultValues: {
             leaveTypeId: 0,
-            duration: 'full',
+            duration: 'Full',
             startDate: '',
             endDate: '',
             reason: '',
@@ -331,11 +336,22 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
 
     const currentBalance = Math.max(0, entitlement - usedDays)
     const workingDays = workingDaysBetween(startDate, endDate, holidaySet)
-    const daysDeducted = duration === 'full' ? workingDays : workingDays > 0 ? workingDays * 0.5 : 0
+    const daysDeducted = chargeableDays(workingDays, duration)
     const balanceAfter = selectedAffectsBalance ? currentBalance - daysDeducted : currentBalance
     const balancePct = entitlement > 0 ? Math.min(100, ((usedDays + (selectedAffectsBalance ? daysDeducted : 0)) / entitlement) * 100) : 0
     const notice = daysNotice(startDate)
-    const isShortNotice = !!startDate && notice >= 0 && notice < 7
+
+    /* The type's own two limits, replacing a pair of guesses. "Short notice" used
+       to mean "fewer than seven days" for every type alike, advisory and hardcoded,
+       while `maxConsecutiveDays` was not consulted at all — so a type asking for 30
+       days notice said nothing, and a request twice as long as its type allows
+       submitted happily. `leave-limits.ts` mirrors the server rules; these two
+       block submit, and the advisory below survives for a request that clears the
+       limit but is still soon. */
+    const earliestStart = earliestStartDate(selectedType)
+    const noticeBreach = noticeError(selectedType, startDate)
+    const lengthBreach = maxConsecutiveError(selectedType, workingDays)
+    const isShortNotice = !noticeBreach && !!startDate && notice >= 0 && notice < 7
     const isInsufficient = selectedAffectsBalance && balanceAfter < 0
 
     /* The second ledger. Everything above describes the pooled balance, and
@@ -497,6 +513,10 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     // outright — so this disables submit rather than letting it fail on the round trip.
     const attachmentMissing = isAttachmentMissing(selectedType, !!attachment)
 
+    // Mirrors HalfDayRule.Check, which refuses a half day on a type that offers
+    // none — so the buttons go rather than failing on the round trip.
+    const halfDayOffered = isHalfDayOffered(selectedType)
+
     const canSubmit = !!startDate && !!endDate && leaveTypeId > 0 && !isInsufficient
         // A per-child type with no child, a picker that has nothing to offer, or
         // more days than the chosen child has left: all requests the server will
@@ -504,6 +524,10 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         && (!requiresChild || (!!childId && !childPickerBlocked))
         && !isOverPerChildCap
         && !attachmentMissing
+        // The leave type's own limits on when a request may start and how long it
+        // may run. Both are refusals the server will certainly make.
+        && !noticeBreach
+        && !lengthBreach
 
     const uploadMutation = useMutation({
         mutationFn: (file: File) => uploadLeaveEvidence(file),
@@ -521,6 +545,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                 leaveTypeId: values.leaveTypeId,
                 startDate: values.startDate,
                 endDate: values.endDate,
+                duration: values.duration,
                 reason: (values.reason ?? '').trim() || '—',
                 evidenceUrl,
                 delegateId: values.delegateId?.trim() || undefined,
@@ -560,6 +585,16 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [attachmentOffered])
 
+    /* The same trap one control over: switching to a type that offers no half days
+       takes the toggle off screen, and a half day left selected behind it would
+       post a duration the server refuses with nothing visible to explain why. */
+    useEffect(() => {
+        // Guarded on the type being resolved: until the type list lands every type
+        // reads as "no half days", and an unguarded reset would fight a choice made
+        // while a refetch was in flight.
+        if (selectedType && !halfDayOffered) setValue('duration', 'Full', { shouldValidate: true })
+    }, [selectedType, halfDayOffered, setValue])
+
     function acceptFiles(fileList: FileList | null) {
         if (!fileList || fileList.length === 0) return
         const file = fileList[0] // backend stores a single evidence URL
@@ -594,6 +629,18 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
 
     function pickDate(iso: string) {
         const opts = { shouldValidate: true, shouldDirty: true } as const
+
+        /* A half day covers exactly one date, so one click is the whole answer.
+           Falling through to the range logic below is what made the feature look
+           broken: the first click set the start and cleared the end, leaving the
+           form on "End date —, Working days 0" with submit disabled, and the only
+           way forward was to click the same cell a second time. */
+        if (isHalfDay(duration)) {
+            setValue('startDate', iso, opts)
+            setValue('endDate', iso, opts)
+            return
+        }
+
         if (!startDate || (startDate && endDate)) {
             setValue('startDate', iso, opts)
             setValue('endDate', '', opts)
@@ -603,6 +650,17 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         } else {
             setValue('endDate', iso, opts)
         }
+    }
+
+    /* Switching to a half day after a range has been picked. Without this the form
+       would post a week calling itself a half day, which HalfDayRule refuses — and
+       the summary panel would quote 0.5 days for it on the way. */
+    function chooseDuration(next: LeaveDurationValue) {
+        const opts = { shouldValidate: true, shouldDirty: true } as const
+        setValue('duration', next, opts)
+
+        const collapsed = collapseToHalfDay(startDate, endDate, next)
+        if (collapsed.endDate !== endDate) setValue('endDate', collapsed.endDate, opts)
     }
 
     function navMonth(delta: number) {
@@ -701,12 +759,23 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                         Click a start date, then an end date. Weekends are excluded automatically.
                     </Box>
 
-                    {/* Duration toggle */}
-                    <Box sx={{ display: 'flex', gap: '4px', p: '3px', bgcolor: 'action.hover', borderRadius: '8px', width: 'fit-content', mb: '14px' }}>
-                        <DurationButton active={duration === 'full'} onClick={() => setValue('duration', 'full', { shouldDirty: true })}>Full day(s)</DurationButton>
-                        <DurationButton active={duration === 'half-am'} onClick={() => setValue('duration', 'half-am', { shouldDirty: true })}>Half day (AM)</DurationButton>
-                        <DurationButton active={duration === 'half-pm'} onClick={() => setValue('duration', 'half-pm', { shouldDirty: true })}>Half day (PM)</DurationButton>
-                    </Box>
+                    {/* Duration toggle. Absent entirely for a type the admin has
+                        switched half days off for: a toggle offering one option is
+                        noise, and offering all three was worse — it promised a
+                        choice the server had no way to honour. */}
+                    {halfDayOffered && (
+                        <Box sx={{ display: 'flex', gap: '4px', p: '3px', bgcolor: 'action.hover', borderRadius: '8px', width: 'fit-content', mb: '14px' }}>
+                            {(['Full', 'HalfDayMorning', 'HalfDayAfternoon'] as const).map((option) => (
+                                <DurationButton
+                                    key={option}
+                                    active={duration === option}
+                                    onClick={() => chooseDuration(option)}
+                                >
+                                    {durationLabel(option)}
+                                </DurationButton>
+                            ))}
+                        </Box>
+                    )}
 
                     {/* Mini calendar */}
                     <Box sx={{ bgcolor: 'action.hover', border: '1px solid', borderColor: 'divider', borderRadius: '8px', p: '12px 14px' }}>
@@ -741,12 +810,25 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                 const isStart = iso === startDate
                                 const isEnd = iso === endDate
                                 const inRange = !!startDate && !!endDate && iso > startDate && iso < endDate
-                                const clickable = !isWeekend && !isHoliday
+                                /* Inside the type's notice period. Dimming these
+                                   rather than only refusing on submit means the
+                                   limit reads as part of the calendar, the way
+                                   weekends and public holidays already do.
+
+                                   Gated on the type actually asking for notice: a
+                                   type asking for none puts `earliestStart` at
+                                   today, and dimming everything before that would
+                                   quietly ban backdating — a separate rule nobody
+                                   asked for, and not one the server enforces. */
+                                const isTooSoon = (selectedType?.minNoticeDays ?? 0) > 0 && iso < earliestStart
+                                const clickable = !isWeekend && !isHoliday && !isTooSoon
                                 const tooltip = isHoliday
                                     ? `🎉 ${holidayName}`
-                                    : teammates
-                                        ? `${teammates.join(', ')} on leave`
-                                        : ''
+                                    : isTooSoon
+                                        ? `${selectedType?.name ?? 'This leave type'} needs ${selectedType?.minNoticeDays ?? 0} days notice`
+                                        : teammates
+                                            ? `${teammates.join(', ')} on leave`
+                                            : ''
                                 return (
                                     <Box
                                         key={iso}
@@ -755,6 +837,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                         sx={calCellSx({
                                             weekend: isWeekend,
                                             holiday: isHoliday,
+                                            tooSoon: isTooSoon,
                                             teammate: !!teammates,
                                             today: isToday,
                                             rangeStart: isStart,
@@ -1179,13 +1262,23 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                             {conflictNames.length === 1 ? 'is' : 'are'} also off during these dates. Coverage may be tight.
                         </Warning>
                     )}
+                    {noticeBreach && (
+                        <Warning tone="error">
+                            <strong>Too soon.</strong> {noticeBreach}
+                        </Warning>
+                    )}
+                    {lengthBreach && (
+                        <Warning tone="error">
+                            <strong>Too long.</strong> {lengthBreach}
+                        </Warning>
+                    )}
                     {isShortNotice && (
                         <Warning tone="info">
                             <strong>Short notice.</strong>{' '}
                             {notice === 0 ? 'Today' : notice === 1 ? 'Tomorrow' : `${notice} days from now`} — approval may take longer than usual.
                         </Warning>
                     )}
-                    {workingDays > 0 && conflictNames.length === 0 && !isInsufficient && !isOverPerChildCap && !isShortNotice && (
+                    {workingDays > 0 && conflictNames.length === 0 && !isInsufficient && !isOverPerChildCap && !isShortNotice && !noticeBreach && !lengthBreach && (
                         <Warning tone="good">All clear — no conflicts, good notice, plenty of balance.</Warning>
                     )}
 
@@ -1221,16 +1314,23 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                         // "Pick dates" is the wrong instruction once
                                         // the dates are picked and it is the child
                                         // that is missing.
+                                        // The leave type's own two limits, named
+                                        // rather than answered with "Pick dates",
+                                        // which the dates already are.
+                                        : lengthBreach
+                                            ? 'Shorten the request to continue'
+                                        : noticeBreach
+                                            ? 'Start later to continue'
                                         : isOverPerChildCap
                                             ? 'Shorten the request to continue'
-                                            : requiresChild && !!startDate && !!endDate && !childId
-                                                ? 'Select a child to continue'
-                                                // Same shape as the child clause: only
-                                                // once the dates are in is the missing
-                                                // document the thing standing in the way.
-                                                : attachmentMissing && !!startDate && !!endDate
-                                                    ? 'Attach a document to continue'
-                                                    : 'Pick dates to continue'}
+                                        : requiresChild && !!startDate && !!endDate && !childId
+                                            ? 'Select a child to continue'
+                                        // Same shape as the child clause: only once
+                                        // the dates are in is the missing document
+                                        // the thing standing in the way.
+                                        : attachmentMissing && !!startDate && !!endDate
+                                            ? 'Attach a document to continue'
+                                        : 'Pick dates to continue'}
                         </Box>
                         <Box
                             component="button"
@@ -1579,16 +1679,18 @@ const sectionSubSx = {
     pl: '30px',
 } as const
 
-function calCellSx({ weekend, holiday, teammate, today, rangeStart, rangeEnd, inRange, otherMonth }: {
+function calCellSx({ weekend, holiday, teammate, today, rangeStart, rangeEnd, inRange, otherMonth, tooSoon }: {
     weekend?: boolean; holiday?: boolean; teammate?: boolean; today?: boolean
     rangeStart?: boolean; rangeEnd?: boolean; inRange?: boolean; otherMonth?: boolean
+    /** Inside the leave type's notice period — see `earliestStartDate`. */
+    tooSoon?: boolean
 }) {
     const isEdge = rangeStart || rangeEnd
     let bg: SxColor | undefined
     let color: SxColor = 'text.primary'
     let borderRadius = '6px'
     if (otherMonth) color = 'divider'
-    else if (weekend) color = 'text.disabled'
+    else if (weekend || tooSoon) color = 'text.disabled'
     if (holiday && !isEdge) {
         bg = softBg('warning')
         color = 'warning.dark'
@@ -1604,7 +1706,7 @@ function calCellSx({ weekend, holiday, teammate, today, rangeStart, rangeEnd, in
         borderRadius = '0'
     }
 
-    const disabled = weekend || holiday || otherMonth
+    const disabled = weekend || holiday || otherMonth || tooSoon
     return {
         aspectRatio: '1',
         display: 'flex',

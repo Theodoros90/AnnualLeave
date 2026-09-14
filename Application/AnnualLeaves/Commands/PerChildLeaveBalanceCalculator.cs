@@ -79,8 +79,8 @@ internal static class PerChildLeaveBalanceCalculator
         var requestHolidays = await LeaveYearQueries.GetHolidaySetAsync(
             context, annualLeave.StartDate, annualLeave.EndDate, cancellationToken);
 
-        var requestedDays = LeaveCalculationService.CalculateBusinessDays(
-            annualLeave.StartDate, annualLeave.EndDate, requestHolidays);
+        var requestedDays = LeaveCalculationService.CalculateChargeableDays(
+            annualLeave.StartDate, annualLeave.EndDate, annualLeave.Duration, requestHolidays);
 
         // A range made entirely of weekends and holidays charges nothing, so there
         // is no cap left to break.
@@ -91,7 +91,7 @@ internal static class PerChildLeaveBalanceCalculator
 
         // ── Lifetime cap ───────────────────────────────────────────────────────
         var totalDays = PerChildLeaveCalculationService.WeeksToBusinessDays(leaveType.PerChildTotalWeeks);
-        var usedDays = await UsedBusinessDaysAsync(context, approved, cancellationToken);
+        var usedDays = await UsedChargeableDaysAsync(context, approved, cancellationToken);
         var remainingDays = PerChildLeaveCalculationService.RemainingDays(totalDays, usedDays);
 
         if (remainingDays < requestedDays)
@@ -109,16 +109,17 @@ internal static class PerChildLeaveBalanceCalculator
         foreach (var leaveYearKey in LeaveCalculationService.GetCoveredLeaveYears(
                      annualLeave.StartDate, annualLeave.EndDate, startMonth))
         {
-            var requestedInYear = LeaveCalculationService.CalculateBusinessDaysInLeaveYear(
-                annualLeave.StartDate, annualLeave.EndDate, leaveYearKey, startMonth, requestHolidays);
+            var requestedInYear = LeaveCalculationService.CalculateChargeableDaysInLeaveYear(
+                annualLeave.StartDate, annualLeave.EndDate, annualLeave.Duration,
+                leaveYearKey, startMonth, requestHolidays);
             if (requestedInYear <= 0)
                 continue;
 
             var (lyStart, lyEnd) = LeaveCalculationService.GetLeaveYearBounds(leaveYearKey, startMonth);
             var yearHolidays = await LeaveYearQueries.GetHolidaySetAsync(context, lyStart, lyEnd, cancellationToken);
 
-            var usedInYear = approved.Sum(leave => LeaveCalculationService.CalculateBusinessDaysInLeaveYear(
-                leave.StartDate, leave.EndDate, leaveYearKey, startMonth, yearHolidays));
+            var usedInYear = approved.Sum(leave => LeaveCalculationService.CalculateChargeableDaysInLeaveYear(
+                leave.StartDate, leave.EndDate, leave.Duration, leaveYearKey, startMonth, yearHolidays));
 
             var remainingInYear = PerChildLeaveCalculationService.RemainingDays(yearCapDays, usedInYear);
             if (remainingInYear < requestedInYear)
@@ -158,23 +159,25 @@ internal static class PerChildLeaveBalanceCalculator
             .ToListAsync(cancellationToken);
 
     /// <summary>
-    /// Business days across every approved leave, holiday-aware. One holiday query
-    /// spanning the whole set rather than one per row: the set is small and the
-    /// dates are sparse, so the range read costs less than N round trips.
+    /// Chargeable days across every approved leave, holiday-aware — so a half day
+    /// taken against a child consumes 0.5 of that child's ledger, matching what the
+    /// pooled balance does with one. One holiday query spanning the whole set rather
+    /// than one per row: the set is small and the dates are sparse, so the range
+    /// read costs less than N round trips.
     /// </summary>
-    internal static async Task<int> UsedBusinessDaysAsync(
+    internal static async Task<decimal> UsedChargeableDaysAsync(
         AppDbContext context,
         List<AnnualLeave> approved,
         CancellationToken cancellationToken)
     {
         if (approved.Count == 0)
-            return 0;
+            return 0m;
 
         var rangeStart = approved.Min(leave => leave.StartDate);
         var rangeEnd = approved.Max(leave => leave.EndDate);
         var holidays = await LeaveYearQueries.GetHolidaySetAsync(context, rangeStart, rangeEnd, cancellationToken);
 
-        return approved.Sum(leave => LeaveCalculationService.CalculateBusinessDays(
-            leave.StartDate, leave.EndDate, holidays));
+        return approved.Sum(leave => LeaveCalculationService.CalculateChargeableDays(
+            leave.StartDate, leave.EndDate, leave.Duration, holidays));
     }
 }

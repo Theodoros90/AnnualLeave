@@ -98,6 +98,7 @@ that means when adding code:
 | `User` | Extends `IdentityUser`; has `DisplayName`, `ImageUrl`, `IsActive` (may this account sign in — a leaver is switched off rather than deleted, since `DeleteAdminUser` nulls out every approval they gave). `DateOfBirth` and `Gender` are recorded HR data an admin maintains on the Users panel. **`Gender` decides who is offered Maternity and Paternity Leave** — see [Who is offered parental leave](#domain-model-summary) below the table. It is nullable and `null` means "not specified", which the dialog offers explicitly so a value set by mistake can be taken back — see **Full-replace update DTOs** under [Backend Patterns](#backend-patterns) — and a `null` is offered **both** parental types rather than neither |
 | `AnnualLeave` | `EmployeeId`, `StartDate/EndDate`, `Status` (enum), `TotalDays` (computed, no weekends). `ChildId` is nullable — required on a request against a `PerChildEntitlement` type, `null` on every row predating the feature (and on any request against a type that isn't per-child), and a `null` `ChildId` counts against no per-child ledger |
 | `LeaveType` | `Name`, `IsActive`, `AffectsBalance` (is it deducted from the enforced pool), `DefaultAllowance` and `MaxCarryoverDays` — the allowance and the year-end cap that bounds it (and which it in turn bounds: a cap may not exceed the allowance, and is nullable, `null` meaning no cap at all), both per type and both edited **only** on Leave Types. See [Leave is configured once](#domain-model-summary). `PerChildEntitlement` plus its three numbers (`PerChildTotalWeeks`, `PerChildWeeksPerYear`, `ChildEligibleUntilAge`) configure the second, per-child ledger — see [the two leave ledgers](#domain-model-summary) below the table. `AttachmentPolicy` decides whether a request needs a supporting document, and is enforced on create and edit — see [the attachment policy](#domain-model-summary) below the table. Annual, Maternity and Paternity Leave are **built-in** (`Domain/SystemLeaveTypes.cs`): they cannot be renamed or deleted, though every other setting on them stays editable. Keyed by name, which is sound only because the name is frozen and already unique case-insensitively; `LeaveTypeDto.IsSystem` derives the flag so the client keeps no copy of the list. Annual leave additionally cannot be **disabled** — it is the type the enforced pool is a budget for — but Maternity and Paternity can be, for an organisation that does not offer them |
+| `AnnualLeave` (cont.) | `Duration` (`Full`/`HalfDayMorning`/`HalfDayAfternoon`) decides whether the request costs whole days or 0.5 of one, and `TotalDays` is **decimal** because of it. `Full` is 0, so every row predating the column reads as the full day it was charged as. A half day covers exactly one date and is refused on a type whose `HalfDayAllowed` is off — see [A half day is stored and charged](#domain-model-summary) below the table |
 | `Timesheet` | `EmployeeId`, `PeriodStart/End`, `TotalHours`, `Status` (Draft→Submitted→Approved/Rejected), `DepartmentId` (nullable — the department it was filed under, kept for history so it outlives its author's move; null when the author has none, i.e. an Admin, matching `AnnualLeave.DepartmentId`) |
 | `TimesheetEntry` | `TimesheetId`, `ProjectId`, `Date`, `HoursWorked` (decimal 4,2), optional `ActivityTypeId`, `ProjectTypeId` and `ProjectComponentId`. One entry per project **+ type + component** per date |
 | `Project` | `Name` (unique), `Code` (unique), `IsActive`; belongs to many `Department` via `ProjectDepartment` (which departments can see it), narrows activities via `ProjectActivityAssignment`, components via `ProjectComponentAssignment`, and its kinds of engagement via `ProjectTypeAssignment` |
@@ -294,6 +295,101 @@ Four things about it that are deliberate:
   oversight.
 - **Whitespace is not an attachment.** `AnnualLeave.EvidenceUrl` is free text, so
   the check trims before believing it.
+
+**A half day is stored and charged, not just offered.** `AnnualLeave.Duration`
+(`Full`/`HalfDayMorning`/`HalfDayAfternoon`) is what makes the apply page's
+"Half day (AM)" and "Half day (PM)" buttons mean anything.
+`Application/AnnualLeaves/Commands/HalfDayRule.cs` is the rule, called from
+`CreateAnnualLeave` and `EditAnnualLeave`; `client/src/lib/half-day.ts` mirrors it
+so neither form offers a submit the API is certain to refuse. Keep the two in step,
+the same way `AttachmentPolicyRule` and `attachment-policy.ts` are kept in step.
+
+It was display-only before. The buttons showed for every type regardless of
+`LeaveType.HalfDayAllowed`, the payload carried no duration at all, and the summary
+panel's "Days deducted 0.5" was a number the server never charged — a half day was
+stored and deducted as a whole one. `LeaveCalculationService.CalculateChargeableDays`
+and the `LeaveDuration` enum were written for this and had no callers.
+
+Six things about it that are deliberate:
+
+- **A half day covers exactly one date**, and `HalfDayRule` refuses anything wider.
+  This is where the bug was most visible: the calendar's first click sets the start
+  and clears the end, which is right for a range and wrong for a half day — the form
+  sat at "End date —, Working days 0" with submit disabled and no way forward but
+  clicking the same cell twice. `collapseToHalfDay` in `half-day.ts` is the one place
+  that correction lives, and both forms run it.
+- **The charge is a flat 0.5, not `businessDays * 0.5`.** A half day is half a day,
+  not half of however many days the range covers; the old expression would have
+  billed 2.5 days for a week-long request calling itself a half day.
+- **A half day on a weekend or public holiday charges 0 and is *not* refused**,
+  matching a full-day request over the same dates, which counts 0 rather than being
+  refused. A stricter rule for half days alone would be a surprise with nothing
+  behind it.
+- **`EmployeeProfile.LeaveBalance` is `decimal(5,2)`; `AnnualLeaveEntitlement` stays
+  `int`** (migration `AddLeaveDurationAndFractionalBalance`). An allowance is stamped
+  from `LeaveType.DefaultAllowance` and is always whole days — only what is left of
+  one can be a fraction. `AnnualLeaveDto.TotalDays` is decimal for the same reason,
+  and lost the `[Range(1, int.MaxValue)]` that would now reject 0.5.
+- **Both ledgers charge 0.5, not just the pooled one.** `PerChildLeaveBalanceCalculator`
+  counts chargeable days too, so a half day taken against a child consumes 0.5 of
+  that child's ledger. Paternity Leave is seeded `HalfDayAllowed = false`, but an
+  admin can turn it on, and a ledger that disagreed with the request would be worse
+  than the restriction.
+- **`AnnualLeaveForm` needs its own duration control because it is a full replace.**
+  It posts every field it holds, so a field it does not hold is a field it silently
+  resets — without the control, an admin fixing a typo in the reason would promote a
+  half day to a full one and take another half day off the balance. Its reset effect
+  is guarded on the leave type having *resolved*, not just on `halfDayOffered`: the
+  type list lands a tick after the dialog opens, and until it does every type reads
+  as "no half days", which would wipe the duration before anyone touched anything.
+
+**The two limits on the leave type are enforced, in different units.**
+`LeaveType.MinNoticeDays` bounds how soon a request may start and
+`LeaveType.MaxConsecutiveDays` how long it may run.
+`Application/AnnualLeaves/Commands/NoticePeriodRule.cs` and `MaxConsecutiveRule.cs`
+are the rules, called from `CreateAnnualLeave` and `EditAnnualLeave`;
+`client/src/lib/leave-limits.ts` mirrors both. Keep them in step, the same way
+`AttachmentPolicyRule` and `attachment-policy.ts` are kept in step.
+
+Both were display-only before. The admin dialog saved them and the type's card
+rendered "Minimum 7 days notice required" and "Max 15 consecutive days per
+request", while `ApplyLeavePage` warned "Short notice" below a hardcoded seven
+days for every type alike and never mentioned length at all — the same shape of
+guess as the old `name.includes('sick')` attachment sniff. A type asking 30 days
+notice changed nothing an employee could see.
+
+Five things about them that are deliberate:
+
+- **Notice is counted in calendar days; the maximum in business days.** "30 days
+  notice" is how an HR policy states it, and the card says "days notice" plainly.
+  The maximum instead counts what `AnnualLeave.TotalDays` holds, so "17
+  consecutive days" and "17 days deducted" are the same 17 — which is what the
+  seeded data already assumed: Paternity Leave's 25 is exactly its
+  `PerChildWeeksPerYear` of 5 at `BusinessDaysPerWeek`, and Maternity Leave's 90
+  matches its own 90-day allowance.
+- **A 0 in either is "no limit", not "nothing allowed"** — the opposite reading of
+  a 0 `DefaultAllowance`, and the same trap `MaxCarryoverDays` documents.
+- **Notice is re-checked on an edit only when the start date moves.** It is the
+  one limit with a clock in it: a request filed properly in advance drifts towards
+  its own start date every day it sits there, so checking it on every edit would
+  strand it — the reason could not be corrected the morning before a trip. The
+  maximum has no clock and is checked on every edit. Neither is re-checked in
+  `UpdateLeaveStatus`: re-testing notice at approval would refuse leave purely
+  because the manager was slow.
+- **No exemption for an admin**, matching `AttachmentPolicyRule`. Note this bites
+  on real data: Maternity is seeded at 30 days notice and Sabbatical at 60, and
+  nothing enforced them before, so requests that were accepted yesterday are
+  refused now.
+- **`AnnualLeaveForm` blocks on notice but only *warns* on length.** Its
+  `requestedDays` excludes weekends but not public holidays — that dialog has no
+  holiday list — so the figure only ever errs high, and blocking on it would
+  refuse requests `MaxConsecutiveRule` allows. `ApplyLeavePage` has the holiday
+  set and blocks on both. A mirror may under-refuse; it must never over-refuse.
+
+`ApplyLeavePage` also dims calendar days inside the notice period, so the limit
+reads like the weekends and public holidays beside it — but only for a type that
+actually asks for notice, since a 0 would otherwise put the earliest start at
+today and quietly ban backdating, which no rule here does.
 
 **Coverage is announced, not just recorded.** `AnnualLeave.DelegateId` — the
 colleague nominated on step 3 of the apply form — used to be a private note: stored,

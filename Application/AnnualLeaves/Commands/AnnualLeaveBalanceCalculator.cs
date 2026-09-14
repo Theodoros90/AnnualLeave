@@ -57,8 +57,9 @@ internal static class AnnualLeaveBalanceCalculator
         foreach (var leaveYearKey in LeaveCalculationService.GetCoveredLeaveYears(
                      annualLeave.StartDate, annualLeave.EndDate, startMonth))
         {
-            var requestedDays = LeaveCalculationService.CalculateBusinessDaysInLeaveYear(
-                annualLeave.StartDate, annualLeave.EndDate, leaveYearKey, startMonth, holidays);
+            var requestedDays = LeaveCalculationService.CalculateChargeableDaysInLeaveYear(
+                annualLeave.StartDate, annualLeave.EndDate, annualLeave.Duration,
+                leaveYearKey, startMonth, holidays);
             if (requestedDays <= 0)
                 continue;
 
@@ -106,7 +107,7 @@ internal static class AnnualLeaveBalanceCalculator
             .AnyAsync(lt => lt.Id == leaveTypeId.Value && lt.AffectsBalance, cancellationToken);
     }
 
-    private static async Task<int> GetApprovedDaysForLeaveYearAsync(
+    private static async Task<decimal> GetApprovedDaysForLeaveYearAsync(
         AppDbContext context,
         string employeeId,
         int leaveYearKey,
@@ -140,7 +141,7 @@ internal static class AnnualLeaveBalanceCalculator
         if (approvedLeaves.Count == 0) return 0;
 
         var holidays = await LeaveYearQueries.GetHolidaySetAsync(context, lyStart, lyEnd, cancellationToken);
-        return approvedLeaves.Sum(l => LeaveCalculationService.CalculateBusinessDaysInLeaveYear(
-            l.StartDate, l.EndDate, leaveYearKey, startMonth, holidays));
+        return approvedLeaves.Sum(l => LeaveCalculationService.CalculateChargeableDaysInLeaveYear(
+            l.StartDate, l.EndDate, l.Duration, leaveYearKey, startMonth, holidays));
     }
 }

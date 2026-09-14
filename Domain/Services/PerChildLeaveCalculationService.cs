@@ -27,11 +27,14 @@ public static class PerChildLeaveCalculationService
     /// <summary>
     /// Days read back as weeks, for display only. One decimal place: a 6-day
     /// request is "1.2 weeks", which is honest, where rounding to 1 would not be.
+    ///
+    /// Takes a decimal because a half day costs 0.5 of this ledger too, the same as
+    /// it costs 0.5 of the pooled one.
     /// </summary>
-    public static decimal BusinessDaysToWeeks(int businessDays)
+    public static decimal BusinessDaysToWeeks(decimal businessDays)
         => businessDays <= 0
             ? 0m
-            : Math.Round(businessDays / (decimal)BusinessDaysPerWeek, 1, MidpointRounding.AwayFromZero);
+            : Math.Round(businessDays / BusinessDaysPerWeek, 1, MidpointRounding.AwayFromZero);
 
     /// <summary>
     /// Whole years completed on <paramref name="onDate"/>. Zero before birth.
@@ -58,10 +61,12 @@ public static class PerChildLeaveCalculationService
 
     /// <summary>
     /// Floored at zero, mirroring
-    /// <see cref="LeaveCalculationService.CalculateRemainingBalance"/>.
+    /// <see cref="LeaveCalculationService.CalculateRemainingBalance"/> — including
+    /// its decimal, so a half day taken against a child leaves that child's ledger
+    /// on a half.
     /// </summary>
-    public static int RemainingDays(int totalDays, int usedDays)
-        => Math.Max(0, totalDays - usedDays);
+    public static decimal RemainingDays(decimal totalDays, decimal usedDays)
+        => Math.Max(0m, totalDays - usedDays);
 
     /// <summary>
     /// A 29 February birthday falls on 1 March in a common year: the child

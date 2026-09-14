@@ -8,7 +8,9 @@ public class EmployeeProfileDto
     public int? DepartmentId { get; set; }
     public string? ManagerId { get; set; }
     public int AnnualLeaveEntitlement { get; set; }
-    public int LeaveBalance { get; set; }
+
+    /// <summary>Decimal because a half day costs 0.5 of it. 22.5 of 23 is a balance.</summary>
+    public decimal LeaveBalance { get; set; }
     public string? JobTitle { get; set; }
     public DateTime CreatedAt { get; set; }
 }
