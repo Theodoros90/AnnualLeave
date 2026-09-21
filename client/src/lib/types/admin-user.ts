@@ -44,7 +44,8 @@ export interface AdminCreateUserRequest {
     departmentId: number | null
     phoneNumber?: string | null
     dateOfBirth?: string | null
-    gender?: Gender | null
+    /** Required — the API refuses a null. See `genderError` in `lib/validation/person.ts`. */
+    gender: Gender
     managerId?: string | null
     jobTitle?: string | null
     /**
@@ -65,7 +66,11 @@ export interface AdminUpdateUserRequest {
     displayName: string
     phoneNumber?: string | null
     dateOfBirth?: string | null
-    gender?: Gender | null
+    /**
+     * Required — the API refuses a null, so an account that predates the field
+     * has to be given one the next time it is saved, as with the date of birth.
+     */
+    gender: Gender
 }
 
 export interface AdminSetUserRolesRequest {

@@ -25,6 +25,11 @@ public class AdminUpdateUserDto
 
     public DateOnly? DateOfBirth { get; set; }
 
-    /// <summary>Null clears it — the admin dialog's "Not specified" option.</summary>
+    /// <summary>
+    /// Required — <c>UpdateAdminUserValidator</c> refuses a null, so an account
+    /// that predates the column has to be given one the next time it is saved,
+    /// as with <see cref="DateOfBirth"/>. Nullable only so the binder can report
+    /// "missing" rather than defaulting a real person to <c>Male</c>.
+    /// </summary>
     public Gender? Gender { get; set; }
 }

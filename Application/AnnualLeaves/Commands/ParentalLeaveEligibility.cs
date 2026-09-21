@@ -39,7 +39,10 @@ namespace Application.AnnualLeaves.Commands;
 /// state of every account created before the column existed — so reading it as a
 /// mismatch would take parental leave away from the whole company until an
 /// administrator filled the field in one person at a time. The check narrows only
-/// on a gender somebody actually recorded.
+/// on a gender somebody actually recorded. Note that a null can no longer be
+/// <i>chosen</i>: the admin dialogs offer Male or Female only and both admin
+/// validators refuse a save without one, so the nulls this tolerates are legacy
+/// rows on their way out, not a standing "offer me everything" option.
 /// </description></item>
 /// <item><description>
 /// The eligible-child rule is skipped for a type that keeps its own per-child

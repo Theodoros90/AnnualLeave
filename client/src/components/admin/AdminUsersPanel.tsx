@@ -32,7 +32,7 @@ import {
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import {
     dateOfBirthError, earliestAllowedStartDate, emailError, employmentStartDateError,
-    latestAllowedDateOfBirth, phoneNumberError,
+    GENDER_REQUIRED_MESSAGE, genderError, latestAllowedDateOfBirth, phoneNumberError,
 } from '../../lib/validation/person'
 import ChildrenSection from '../layout/ChildrenSection'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
@@ -45,21 +45,28 @@ const PROTECTED_ADMIN_EMAIL = 'admin@annualleave.com'
 const ALL_ROLES: UserRole[] = ['Admin', 'Manager', 'Employee']
 
 /**
- * Male / Female / Not specified, styled as radios to match the Role row it sits
- * above. This field decides who is offered Maternity and Paternity Leave —
- * see `lib/parental-leave.ts` and the server rule it mirrors — so the hint says
- * so rather than, as it once did, saying the opposite.
+ * Male / Female, styled as radios to match the Role row it sits above. This
+ * field decides who is offered Maternity and Paternity Leave, and any other type
+ * an admin restricted through "Available to" — see `lib/parental-leave.ts` and
+ * the server rule it mirrors — so the hint says so rather than, as it once did,
+ * saying the opposite.
  *
- * The explicit "Not specified" option is load-bearing rather than decorative:
- * both admin DTOs are full-replace, so a null genuinely clears the column, and
- * without a way to select it an admin who set a value by mistake could never
- * take it back. It is also a real answer here, not an absence — an employee whose
- * gender is unspecified is offered both parental types, never neither.
+ * Required, and there is deliberately no "Not specified" any more. There used to
+ * be one, and both DTOs being full-replace it sent a genuine null — but the
+ * eligibility rule reads a stored null as "offer every type" (so that accounts
+ * predating the column keep their parental leave), which made a leave type
+ * restricted to one gender reachable by anyone an admin left unspecified. The
+ * restriction looked like a rule and behaved like none. Both admin validators
+ * now refuse a save without a gender (`Gender is required.`), and this control
+ * mirrors that: a stored null shows as neither radio checked, with the error
+ * beside it, and Save stays disabled until one is picked.
  */
 function GenderRadioGroup(props: {
     name: string
     value: Gender | null
-    onChange: (value: Gender | null) => void
+    onChange: (value: Gender) => void
+    /** Whether a blank is *shown* as an error — see `showGenderError` in the caller. */
+    error: boolean
 }) {
     return (
         <Box>
@@ -67,19 +74,26 @@ function GenderRadioGroup(props: {
                 label, and styling it like a heading made it read as a section of its
                 own sitting immediately above Role — which is exactly the reading the
                 hint below then has to undo. */}
-            <Typography variant="body2" color="text.secondary">Gender</Typography>
+            <Typography variant="body2" color={props.error ? 'error' : 'text.secondary'}>
+                Gender <Box component="span" aria-hidden sx={{ color: 'error.main' }}>*</Box>
+            </Typography>
             <RadioGroup
                 row
                 name={props.name}
                 value={props.value ?? ''}
-                onChange={(e) => props.onChange((e.target.value || null) as Gender | null)}
+                onChange={(e) => props.onChange(e.target.value as Gender)}
             >
-                <FormControlLabel value="Male" control={<Radio />} label="Male" />
-                <FormControlLabel value="Female" control={<Radio />} label="Female" />
-                <FormControlLabel value="" control={<Radio />} label="Not specified" />
+                <FormControlLabel value="Male" control={<Radio required />} label="Male" />
+                <FormControlLabel value="Female" control={<Radio required />} label="Female" />
             </RadioGroup>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                Decides who is offered Maternity and Paternity Leave. Not specified offers both.
+            <Typography
+                variant="caption"
+                color={props.error ? 'error' : 'text.secondary'}
+                sx={{ display: 'block' }}
+            >
+                {props.error
+                    ? GENDER_REQUIRED_MESSAGE
+                    : 'Decides who is offered Maternity and Paternity Leave, and any leave type restricted to one gender.'}
             </Typography>
         </Box>
     )
@@ -163,7 +177,7 @@ interface PersonalDetails {
  * Gender stays last in the group, immediately above Role — its hint is about
  * what the employee is offered, so it belongs beside what else they are granted.
  */
-function PersonalDetailsFields({ idPrefix, values, onChange, flag, emailHelperText, announceMissingDateOfBirth }: {
+function PersonalDetailsFields({ idPrefix, values, onChange, flag, emailHelperText, announceMissing }: {
     /** Namespaces the gender radios, which are two `name`d groups in one app. */
     idPrefix: string
     values: PersonalDetails
@@ -174,10 +188,10 @@ function PersonalDetailsFields({ idPrefix, values, onChange, flag, emailHelperTe
     /** The one line that genuinely differs: Create emails a welcome link, Edit does not. */
     emailHelperText: string
     /**
-     * Whether a *blank* date of birth says so on open, rather than waiting for
-     * `flag`. Edit passes true, Create false — see the note below.
+     * Whether a *blank* date of birth or gender says so on open, rather than
+     * waiting for `flag`. Edit passes true, Create false — see the note below.
      */
-    announceMissingDateOfBirth: boolean
+    announceMissing: boolean
 }) {
     const emailMissing = !values.email.trim()
     const displayNameMissing = !values.displayName.trim()
@@ -193,18 +207,22 @@ function PersonalDetailsFields({ idPrefix, values, onChange, flag, emailHelperTe
        reports itself — but only once the form has been started, or the dialog
        would greet the admin with a list of what they have not typed yet.
 
-       Edit is the exception for the date of birth, hence the prop: every account
-       predating the field has a null one, and on those the dialog opens with
-       Save already disabled. There, "Date of birth is required." is the whole
-       explanation for why, so it is shown straight away rather than withheld
-       until the admin touches an unrelated field. */
+       Edit is the exception for the date of birth and the gender, hence the prop:
+       every account predating either field has a null one, and on those the
+       dialog opens with Save already disabled. There, "Date of birth is
+       required." is the whole explanation for why, so it is shown straight away
+       rather than withheld until the admin touches an unrelated field. */
     const phoneError = phoneNumberError(values.phoneNumber)
     const emailFormatError = values.email.trim() ? emailError(values.email) : undefined
 
     const dobError = dateOfBirthError(values.dateOfBirth)
     const dobMissing = !values.dateOfBirth
     const showDobError = !!dobError
-        && (!dobMissing || announceMissingDateOfBirth || flag(dobMissing))
+        && (!dobMissing || announceMissing || flag(dobMissing))
+
+    // A gender can only be missing, never wrong — the radios offer two answers.
+    const genderMissing = !!genderError(values.gender)
+    const showGenderError = genderMissing && (announceMissing || flag(genderMissing))
 
     return (
         <>
@@ -263,6 +281,7 @@ function PersonalDetailsFields({ idPrefix, values, onChange, flag, emailHelperTe
                 name={`${idPrefix}-gender`}
                 value={values.gender}
                 onChange={(gender) => onChange({ gender })}
+                error={showGenderError}
             />
         </>
     )
@@ -505,7 +524,7 @@ function AdminUsersPanel() {
             managerId: string | null
             phoneNumber: string | null
             dateOfBirth: string | null
-            gender: Gender | null
+            gender: Gender
             employmentStartDate: string | null
         }) => {
             await updateAdminUser(payload.userId, { email: payload.email, displayName: payload.displayName, phoneNumber: payload.phoneNumber, dateOfBirth: payload.dateOfBirth, gender: payload.gender })
@@ -1485,7 +1504,7 @@ function EditUserDialog(props: {
         managerId: string | null
         phoneNumber: string | null
         dateOfBirth: string | null
-        gender: Gender | null
+        gender: Gender
         employmentStartDate: string | null
     }) => void
 }) {
@@ -1634,7 +1653,7 @@ function EditUserDialog(props: {
                                is blank for a reason that has nothing to do with the
                                record — announcing it there is the red flash on a
                                perfectly valid record that `dirty` exists to prevent. */
-                            announceMissingDateOfBirth={!!user && hydratedFor === user.id}
+                            announceMissing={!!user && hydratedFor === user.id}
                         />
 
                         {/* Maternity and Paternity Leave are granted per child, so a
@@ -1760,12 +1779,14 @@ function EditUserDialog(props: {
                 <Button variant="outlined" onClick={props.onClose} disabled={props.isPending} sx={cancelBtnSx}>Cancel</Button>
                 <Button
                     variant="contained"
-                    disabled={props.isPending || !user || departmentMissing || displayNameMissing || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth)}
+                    disabled={props.isPending || !user || departmentMissing || displayNameMissing || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth) || !!genderError(gender)}
                     onClick={() =>
                         /* No override means the leave type's own allowance, not 0: a stored 0
                            switches the approval-time balance check off outright (see
-                           Application/AnnualLeaves/Commands/AnnualLeaveBalanceCalculator.cs). */
-                        user && props.onSubmit({ userId: user.id, email, displayName, roles: [role], profile, departmentId: effectiveDepartmentId, jobTitle, managerId: showManagerField ? departmentManager?.profileId ?? null : profile?.managerId ?? null, phoneNumber: phoneNumber.trim() || null, dateOfBirth: dateOfBirth || null, gender, employmentStartDate: effectiveEmploymentStartDate })
+                           Application/AnnualLeaves/Commands/AnnualLeaveBalanceCalculator.cs).
+                           `gender` is checked here as well as in `disabled` only to narrow
+                           the type — the button cannot be pressed while it is null. */
+                        user && gender && props.onSubmit({ userId: user.id, email, displayName, roles: [role], profile, departmentId: effectiveDepartmentId, jobTitle, managerId: showManagerField ? departmentManager?.profileId ?? null : profile?.managerId ?? null, phoneNumber: phoneNumber.trim() || null, dateOfBirth: dateOfBirth || null, gender, employmentStartDate: effectiveEmploymentStartDate })
                     }
                     sx={saveBtnSx}
                 >
@@ -1790,7 +1811,7 @@ function CreateUserDialog(props: {
         jobTitle: string | null
         phoneNumber: string | null
         dateOfBirth: string | null
-        gender: Gender | null
+        gender: Gender
         employmentStartDate: string | null
         /** Written after the account exists — see the create mutation. */
         children: UpsertChildRequest[]
@@ -1896,7 +1917,7 @@ function CreateUserDialog(props: {
                             onChange={onPersonalDetailsChange}
                             flag={flag}
                             emailHelperText="Where the welcome link and all notifications are sent."
-                            announceMissingDateOfBirth={false}
+                            announceMissing={false}
                         />
 
                         {/* Beside Gender rather than under Profile — see EditUserDialog
@@ -2000,8 +2021,9 @@ function CreateUserDialog(props: {
                 <Button variant="outlined" onClick={close} disabled={props.isPending} sx={cancelBtnSx}>Cancel</Button>
                 <Button
                     variant="contained"
-                    disabled={props.isPending || !displayName.trim() || effectiveDepartmentId === 0 || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth)}
-                    onClick={() => props.onSubmit({
+                    disabled={props.isPending || !displayName.trim() || effectiveDepartmentId === 0 || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth) || !!genderError(gender)}
+                    // `gender &&` narrows the type only — the button is disabled while it is null.
+                    onClick={() => gender && props.onSubmit({
                         email: email.trim(),
                         displayName: displayName.trim(),
                         roles: [role],

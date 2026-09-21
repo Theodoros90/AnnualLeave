@@ -42,6 +42,11 @@ public class UpdateAdminUserValidator : AbstractValidator<UpdateAdminUser.Comman
 
             RuleFor(x => x.User.PhoneNumber).MaximumLength(PersonFieldRules.PhoneNumberMaxLength).ValidPhoneNumber();
             RuleFor(x => x.User.DateOfBirth).ValidDateOfBirth();
+            RuleFor(x => x.User.Gender)
+                .NotNull()
+                .WithMessage(PersonFieldRules.GenderRequiredMessage)
+                .IsInEnum()
+                .WithMessage(PersonFieldRules.GenderRequiredMessage);
         });
     }
 }

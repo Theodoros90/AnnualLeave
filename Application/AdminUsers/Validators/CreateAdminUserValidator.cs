@@ -44,6 +44,11 @@ public class CreateAdminUserValidator : AbstractValidator<CreateAdminUser.Comman
 
             RuleFor(x => x.User.PhoneNumber).MaximumLength(PersonFieldRules.PhoneNumberMaxLength).ValidPhoneNumber();
             RuleFor(x => x.User.DateOfBirth).ValidDateOfBirth();
+            RuleFor(x => x.User.Gender)
+                .NotNull()
+                .WithMessage(PersonFieldRules.GenderRequiredMessage)
+                .IsInEnum()
+                .WithMessage(PersonFieldRules.GenderRequiredMessage);
             RuleFor(x => x.User.JobTitle).MaximumLength(150);
 
             RuleFor(x => x.User.AnnualLeaveEntitlement)

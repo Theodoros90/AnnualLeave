@@ -1,5 +1,6 @@
 using Application.AdminUsers.Commands;
 using Application.AdminUsers.DTOs;
+using Application.AdminUsers.Validators;
 using Application.Core;
 using Domain;
 using Domain.Interfaces;
@@ -15,15 +16,19 @@ using Xunit;
 namespace WorkTrack.Tests;
 
 /// <summary>
-/// Gender is recorded HR data an administrator maintains, and nothing consults it —
-/// so what there is to cover is the plumbing: that it survives a create, survives
-/// an edit, and can be taken back off again.
+/// Gender is recorded HR data an administrator maintains, and it decides who is
+/// offered a leave type restricted through <c>LeaveType.AvailableTo</c> — see
+/// <see cref="ParentalLeaveEligibilityTests"/> for that rule. What this file covers
+/// is the plumbing around the column: it survives a create and an edit, and it is
+/// <b>required</b> on both.
 ///
-/// The clearing case is the one worth having. <see cref="AdminUpdateUserDto"/> is a
-/// full-replace DTO, so a null in the request must genuinely null the column. Had
-/// gender followed the "null leaves the stored answer alone" convention used by
-/// <c>HasChildrenDeclaration</c>, the dialog's "Not specified" option would have
-/// looked like it worked and silently done nothing.
+/// The requirement is the load-bearing part. The dialog used to offer an explicit
+/// "Not specified", and the eligibility rule reads a stored null as "offer
+/// everything" (so that accounts predating the column keep their parental leave).
+/// Together those meant a type restricted to Male was still offered to anyone an
+/// admin had left unspecified — the restriction looked like a rule and behaved
+/// like none. Both admin validators now refuse a null, so a null can only be a
+/// legacy row, and it goes away the next time that account is saved.
 /// </summary>
 public class UserGenderTests : IDisposable
 {
@@ -123,23 +128,87 @@ public class UserGenderTests : IDisposable
         Assert.Equal(gender, await StoredGenderAsync(result.Value!.Id));
     }
 
-    /// <summary>
-    /// Every account predating the column has no value, and the create dialog's
-    /// "Not specified" is the same thing — so an omitted gender must stay unset
-    /// rather than defaulting to either answer on the person's behalf.
-    /// </summary>
-    [Fact]
-    public async Task An_omitted_gender_stays_unset()
+    private static AdminCreateUserDto CreatePayload(Gender? gender) => new()
+    {
+        Email = "newjoiner@test.local",
+        DisplayName = "New Joiner",
+        DepartmentId = 1,
+        Roles = [AppRoles.Employee],
+        DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-30),
+        EmploymentStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-2),
+        Gender = gender,
+    };
+
+    private static AdminUpdateUserDto UpdatePayload(Gender? gender) => new()
+    {
+        Email = "newjoiner@test.local",
+        DisplayName = "New Joiner",
+        DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-30),
+        Gender = gender,
+    };
+
+    private async Task<FluentValidation.Results.ValidationResult> ValidateCreateAsync(Gender? gender)
     {
         await SeedAsync();
-
-        var result = await Create(null);
-
-        Assert.True(result.IsSuccess, result.Error);
-        Assert.Null(result.Value!.Gender);
-        Assert.Null(await StoredGenderAsync(result.Value!.Id));
+        return await new CreateAdminUserValidator(Db, Roles)
+            .ValidateAsync(new CreateAdminUser.Command { User = CreatePayload(gender) });
     }
 
+    private static FluentValidation.Results.ValidationResult ValidateUpdate(Gender? gender) =>
+        new UpdateAdminUserValidator()
+            .Validate(new UpdateAdminUser.Command { Id = "u-1", User = UpdatePayload(gender) });
+
+    private static void AssertGenderRefused(FluentValidation.Results.ValidationResult result)
+    {
+        Assert.False(result.IsValid, "Expected Gender to be refused.");
+        var error = Assert.Single(result.Errors, e => e.PropertyName.EndsWith("Gender", StringComparison.Ordinal));
+        Assert.Equal(PersonFieldRules.GenderRequiredMessage, error.ErrorMessage);
+    }
+
+    private static void AssertGenderAccepted(FluentValidation.Results.ValidationResult result) =>
+        Assert.DoesNotContain(result.Errors, e => e.PropertyName.EndsWith("Gender", StringComparison.Ordinal));
+
+    /// <summary>
+    /// The rule this file exists for. Without it "no gender" was a third answer
+    /// the dialog offered, and the eligibility rule reads a null as "offer every
+    /// type" — so restricting a type to one gender changed nothing for anyone an
+    /// admin had left unspecified.
+    /// </summary>
+    [Fact]
+    public async Task Create_refuses_no_gender_at_all() =>
+        AssertGenderRefused(await ValidateCreateAsync(null));
+
+    [Fact]
+    public void Update_refuses_no_gender_at_all() =>
+        AssertGenderRefused(ValidateUpdate(null));
+
+    /// <summary>
+    /// The DTO is nullable so the binder can say "missing" rather than defaulting
+    /// to the enum's 0 — but a number outside the enum is not an answer either.
+    /// </summary>
+    [Fact]
+    public void Update_refuses_a_gender_outside_the_enum() =>
+        AssertGenderRefused(ValidateUpdate((Gender)7));
+
+    [Theory]
+    [InlineData(Gender.Male)]
+    [InlineData(Gender.Female)]
+    public async Task Create_accepts_either_gender(Gender gender) =>
+        AssertGenderAccepted(await ValidateCreateAsync(gender));
+
+    [Theory]
+    [InlineData(Gender.Male)]
+    [InlineData(Gender.Female)]
+    public void Update_accepts_either_gender(Gender gender) =>
+        AssertGenderAccepted(ValidateUpdate(gender));
+
+    /// <summary>
+    /// The backfill path. An account created before the column has a null the
+    /// validator would now refuse to *write* — the handler still has to be able to
+    /// replace it with a real answer, or those accounts could never be saved again.
+    /// <c>Create(null)</c> goes straight to the handler, bypassing the validator,
+    /// to stand in for such a row.
+    /// </summary>
     [Fact]
     public async Task An_edit_can_set_a_gender_that_was_never_specified()
     {
@@ -165,21 +234,4 @@ public class UserGenderTests : IDisposable
         Assert.Equal(Gender.Female, await StoredGenderAsync(id));
     }
 
-    /// <summary>
-    /// The one that matters: "Not specified" has to be able to undo a value set by
-    /// mistake. A patch-style handler would have left the old answer in place.
-    /// </summary>
-    [Fact]
-    public async Task An_edit_with_no_gender_clears_the_stored_one()
-    {
-        await SeedAsync();
-        var id = (await Create(Gender.Male)).Value!.Id;
-        Assert.Equal(Gender.Male, await StoredGenderAsync(id));
-
-        var result = await Update(id, null);
-
-        Assert.True(result.IsSuccess, result.Error);
-        Assert.Null(result.Value!.Gender);
-        Assert.Null(await StoredGenderAsync(id));
-    }
 }
