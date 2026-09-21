@@ -165,7 +165,7 @@ function EmployeeDashboard({ user }: { user: UserInfo }) {
        applies, shared so the two cards cannot disagree. Listing every active type
        against the pooled entitlement offered a woman paternity leave and reported
        a per-child type as 0. */
-    const { offeredLeaveTypes, ledgerByTypeId } = useOfferedLeaveTypes(leaveTypes, user.gender)
+    const { offeredLeaveTypes, ledgerByTypeId } = useOfferedLeaveTypes(leaveTypes, user.gender, user.employmentStartDate)
     const balanceRows = useMemo(
         () => buildLeaveBalanceRows({
             leaveTypes: offeredLeaveTypes,

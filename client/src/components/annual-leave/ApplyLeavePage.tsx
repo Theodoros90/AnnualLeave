@@ -226,8 +226,9 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
             lt,
             user.gender,
             (entitlementsByTypeId.get(lt.id)?.eligibleChildCount ?? 0) > 0,
+            user.employmentStartDate,
         )),
-        [activeLeaveTypes, user.gender, entitlementsByTypeId],
+        [activeLeaveTypes, user.gender, entitlementsByTypeId, user.employmentStartDate],
     )
 
     const {

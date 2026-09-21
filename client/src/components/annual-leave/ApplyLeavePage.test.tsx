@@ -585,3 +585,58 @@ describe('ApplyLeavePage — the summary quotes the ledger the request draws on'
         await waitFor(() => expect(row.nextElementSibling?.textContent).toBe('23 / 25'))
     })
 })
+
+/**
+ * The minimum-service half of the same filter the parental tests above pin. A
+ * type wanting N months of service is hidden from an employee whose start date is
+ * less than N months ago, and appears once they have served them. The server
+ * refuses the request either way (`MinimumServiceRule`); this is what makes the
+ * card the employee sees agree with it.
+ */
+describe('ApplyLeavePage minimum service', () => {
+    const UNPAID_LEAVE_TYPE = {
+        ...ANNUAL_LEAVE_TYPE, id: 5, name: 'Unpaid Leave', colorKey: 'unpaid', minServiceMonths: 12,
+    } as const
+
+    function monthsAgo(months: number): string {
+        const date = new Date()
+        date.setDate(1)
+        date.setMonth(date.getMonth() - months)
+        return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-01`
+    }
+
+    const unpaidCard = () => screen.queryByRole('button', { name: /unpaid leave/i })
+
+    async function renderStarted(employmentStartDate: string | null) {
+        api.getLeaveTypes.mockResolvedValue([ANNUAL_LEAVE_TYPE, UNPAID_LEAVE_TYPE] as never)
+
+        const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        render(
+            <StoreProvider>
+                <QueryClientProvider client={queryClient}>
+                    <ApplyLeavePage user={{ ...USER, employmentStartDate }} />
+                </QueryClientProvider>
+            </StoreProvider>,
+        )
+        await screen.findByRole('button', { name: /annual leave/i })
+    }
+
+    it('hides a type wanting more service than the employee has', async () => {
+        await renderStarted(monthsAgo(2))
+
+        expect(unpaidCard()).not.toBeInTheDocument()
+    })
+
+    it('offers it once the employee has served the months', async () => {
+        await renderStarted(monthsAgo(18))
+
+        expect(unpaidCard()).toBeInTheDocument()
+    })
+
+    // Nobody recorded it — the same reading the server gives: not "started today".
+    it('offers it to an employee with no recorded start date', async () => {
+        await renderStarted(null)
+
+        expect(unpaidCard()).toBeInTheDocument()
+    })
+})

@@ -25,6 +25,8 @@ export interface UpsertLeaveTypeRequest {
     eligibilityNotes: string
     eligibilityScope: EligibilityScope
     availableTo: GenderAvailability
+    /** Months of service before the type is offered; 0 is no minimum. */
+    minServiceMonths: number
 }
 
 export async function getLeaveTypes() {

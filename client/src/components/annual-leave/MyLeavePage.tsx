@@ -114,7 +114,9 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
     /* Which types this employee is offered, and the per-child ledger behind the
        two that keep one — the same hook the employee dashboard's balance card
        uses, so the two panels cannot disagree. */
-    const { offeredLeaveTypes, ledgerByTypeId, perChildLedgers } = useOfferedLeaveTypes(leaveTypes, user.gender)
+    const { offeredLeaveTypes, ledgerByTypeId, perChildLedgers } = useOfferedLeaveTypes(
+        leaveTypes, user.gender, user.employmentStartDate,
+    )
 
     const latestStatusComment = useMemo(() => {
         const map = new Map<string, LeaveStatusHistory>()

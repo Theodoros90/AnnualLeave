@@ -31,4 +31,12 @@ export interface UserInfo {
     departmentName?: string | null
     roles: UserRole[]
     hasChildren?: boolean | null
+    /**
+     * When the employee started, ISO date "yyyy-MM-dd". Decides whether a leave
+     * type wanting a minimum length of service is offered on the leave forms
+     * (`minServiceError` in `lib/leave-limits.ts`). Null for an Admin, who has no
+     * employee profile, and for an account predating the field — either reads as
+     * "not recorded" and passes, as it does on the server.
+     */
+    employmentStartDate?: string | null
 }

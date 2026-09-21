@@ -48,6 +48,7 @@ export interface OfferedLeaveTypes {
 export function useOfferedLeaveTypes(
     leaveTypes: LeaveType[],
     gender: Gender | null | undefined,
+    employmentStartDate?: string | null,
 ): OfferedLeaveTypes {
     const activeLeaveTypes = useMemo(() => leaveTypes.filter((lt) => lt.isActive), [leaveTypes])
 
@@ -84,8 +85,9 @@ export function useOfferedLeaveTypes(
             lt,
             gender,
             (ledgerByTypeId.get(lt.id)?.eligibleChildCount ?? 0) > 0,
+            employmentStartDate,
         )),
-        [activeLeaveTypes, gender, ledgerByTypeId],
+        [activeLeaveTypes, gender, ledgerByTypeId, employmentStartDate],
     )
 
     const perChildLedgers = useMemo(

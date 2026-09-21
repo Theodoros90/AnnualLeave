@@ -78,9 +78,13 @@ public class EmployeeProfile : ISoftDeletable, IAuditable
     /// date for a real person is not ours to invent. Nothing backfills it: the rule
     /// is what makes it mandatory, so an older account has to be given one the next
     /// time it is saved — the same trade <c>PersonFieldRules.ValidDateOfBirth</c>
-    /// documents. Nothing reads it yet; in particular it does **not** pro-rate
-    /// <see cref="AnnualLeaveEntitlement"/>, which is stamped from the leave type's
-    /// allowance and never set per person.
+    /// documents.
+    ///
+    /// One thing reads it: <c>MinimumServiceRule</c>, which measures it against
+    /// <c>LeaveType.MinServiceMonths</c> to decide whether a type is offered yet. A
+    /// null passes there, for the reason above — nobody entered it, which is not
+    /// "started today". It does **not** pro-rate <see cref="AnnualLeaveEntitlement"/>,
+    /// which is stamped from the leave type's allowance and never set per person.
     /// </summary>
     public DateOnly? EmploymentStartDate { get; set; }
 

@@ -42,7 +42,14 @@ public class GetLeaveTypeList
                     MaxConsecutiveDays = lt.MaxConsecutiveDays,
                     HalfDayAllowed = lt.HalfDayAllowed,
                     EligibilityNotes = lt.EligibilityNotes,
-                    EligibilityScope = lt.EligibilityScope
+                    EligibilityScope = lt.EligibilityScope,
+                    /* Projected by hand, so every column has to be named here or it
+                       saves with a 200 and reads back at its default. AvailableTo was
+                       missing: a custom type restricted to one gender listed as Both,
+                       and the card's Enabled toggle — a full replace — would have sent
+                       that Both back and quietly reopened it. */
+                    AvailableTo = lt.AvailableTo,
+                    MinServiceMonths = lt.MinServiceMonths,
                 })
                 .ToListAsync(cancellationToken);
         }

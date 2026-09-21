@@ -70,6 +70,16 @@ public class CreateAnnualLeave
             if (maxConsecutiveError is not null)
                 return Result<string>.Failure(maxConsecutiveError);
 
+            /* How long the employee has to have worked here before this type is
+               offered to them, measured to today. The client hides the card until
+               then; this is what makes hiding it mean something. No exemption for an
+               admin filing on somebody's behalf — the rule is about the employee,
+               not about who is typing. */
+            var serviceError = MinimumServiceRule.Check(
+                leaveType, employeeProfile.EmploymentStartDate, DateOnly.FromDateTime(DateTime.UtcNow.Date));
+            if (serviceError is not null)
+                return Result<string>.Failure(serviceError);
+
             /* Maternity and Paternity Leave are offered on the employee's recorded
                gender and their having a child young enough to qualify. The client
                hides the cards; this is what makes hiding them mean something. Runs

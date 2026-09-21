@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { earliestStartDate, maxConsecutiveError, noticeError } from './leave-limits'
+import { earliestStartDate, maxConsecutiveError, minServiceError, noticeError } from './leave-limits'
 import type { LeaveType } from './types'
 
 function type(overrides: Partial<LeaveType> = {}): LeaveType {
@@ -43,6 +43,50 @@ describe('noticeError', () => {
     it('says nothing without a type or without a date', () => {
         expect(noticeError(undefined, '2026-06-02', today)).toBeNull()
         expect(noticeError(type({ minNoticeDays: 2 }), '', today)).toBeNull()
+    })
+})
+
+// Mirrors MinimumServiceRule.cs: months of service measured from the employee's
+// start date to today, not to the leave's start date, so the type is hidden until
+// the months are served and then appears.
+describe('minServiceError', () => {
+    const today2 = new Date('2026-09-21T00:00:00')
+
+    it('refuses an employee who has not served the months, naming the date they will have', () => {
+        expect(minServiceError(type({ name: 'Unpaid Leave', minServiceMonths: 2 }), '2026-08-01', today2)).toBe(
+            'Unpaid Leave is available after 2 months of service. You can request it from Thursday, 1 October 2026.',
+        )
+    })
+
+    it('reads one month in the singular', () => {
+        expect(minServiceError(type({ name: 'Unpaid Leave', minServiceMonths: 1 }), '2026-09-01', today2)).toBe(
+            'Unpaid Leave is available after 1 month of service. You can request it from Thursday, 1 October 2026.',
+        )
+    })
+
+    it('allows an employee exactly on the boundary', () => {
+        expect(minServiceError(type({ minServiceMonths: 2 }), '2026-07-21', today2)).toBeNull()
+    })
+
+    it('allows anything when the type asks for no service', () => {
+        expect(minServiceError(type({ minServiceMonths: 0 }), '2026-09-21', today2)).toBeNull()
+    })
+
+    // Nobody recorded it — an Admin, or an account predating the field. The same
+    // reading the server gives a null gender: not "started today".
+    it('passes an unrecorded start date', () => {
+        expect(minServiceError(type({ minServiceMonths: 24 }), null, today2)).toBeNull()
+        expect(minServiceError(type({ minServiceMonths: 24 }), undefined, today2)).toBeNull()
+    })
+
+    // A response from an API built before the column carries no minServiceMonths
+    // at all; that has to read as "no minimum", not as a broken form.
+    it('passes a type carrying no minimum at all', () => {
+        expect(minServiceError(type({ minServiceMonths: undefined }), '2026-09-01', today2)).toBeNull()
+    })
+
+    it('says nothing without a type', () => {
+        expect(minServiceError(undefined, '2026-09-01', today2)).toBeNull()
     })
 })
 

@@ -160,6 +160,22 @@ describe('MyLeavePage balance panel', () => {
         expect(within(balancePanel()).getByText('Sick Leave')).toBeTruthy()
     })
 
+    // The minimum-service half of the same filter, through the shared hook: a type
+    // wanting a year of service is not listed for somebody two months in.
+    it('withholds a type wanting more service than the employee has', async () => {
+        const twoMonthsAgo = new Date()
+        twoMonthsAgo.setDate(1)
+        twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2)
+        const started = `${twoMonthsAgo.getFullYear()}-${`${twoMonthsAgo.getMonth() + 1}`.padStart(2, '0')}-01`
+
+        api.getLeaveTypes.mockResolvedValue([
+            ANNUAL_LEAVE_TYPE, { ...SICK_LEAVE_TYPE, minServiceMonths: 12 },
+        ] as never)
+        await renderPage({ ...USER, employmentStartDate: started })
+
+        expect(within(balancePanel()).queryByText('Sick Leave')).toBeNull()
+    })
+
     it('describes the per-child card with the type the employee is offered', async () => {
         const father: UserInfo = { ...USER, displayName: 'Andreas Georgiou', gender: 'Male' }
         await renderPage(father)

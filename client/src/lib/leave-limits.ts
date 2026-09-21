@@ -87,6 +87,58 @@ export function noticeError(
 }
 
 /**
+ * `date` plus `months`, clamping the day the way .NET's `DateOnly.AddMonths` does:
+ * 31 January plus one month is 28 February, not 3 March. The JS `Date` overflows
+ * instead, which would put a month-end hire's eligibility a few days later than
+ * the server puts it.
+ */
+function addMonthsClamped(date: Date, months: number): Date {
+    const firstOfTarget = new Date(date.getFullYear(), date.getMonth() + months, 1)
+    const daysInTarget = new Date(firstOfTarget.getFullYear(), firstOfTarget.getMonth() + 1, 0).getDate()
+    return new Date(
+        firstOfTarget.getFullYear(),
+        firstOfTarget.getMonth(),
+        Math.min(date.getDate(), daysInTarget),
+    )
+}
+
+/**
+ * Why the employee has not served long enough for `type`, or `null` when they
+ * have — or when nothing says otherwise.
+ *
+ * Mirrors `MinimumServiceRule.Check`: months of service measured from the
+ * employee's start date to **today**, not to the leave's start date, so the type
+ * is hidden until the months are served and then appears. A start date nobody
+ * recorded (`null`/`undefined`) passes, as it does on the server: an Admin never
+ * has one, and an account predating the field has none until next saved. A type
+ * carrying no `minServiceMonths` at all — an API built before the column — reads
+ * as 0, no minimum.
+ */
+export function minServiceError(
+    type: Pick<LeaveType, 'name' | 'minServiceMonths'> | undefined,
+    employmentStartDate: string | null | undefined,
+    today: Date = new Date(),
+): string | null {
+    if (!type) return null
+    const months = type.minServiceMonths ?? 0
+    if (months <= 0) return null
+    if (!employmentStartDate) return null
+
+    const started = startOfDay(new Date(`${employmentStartDate}T00:00:00`))
+    const eligibleFrom = addMonthsClamped(started, months)
+    if (startOfDay(today).getTime() >= eligibleFrom.getTime()) return null
+
+    const unit = months === 1 ? 'month' : 'months'
+    const day = eligibleFrom.toLocaleDateString('en-GB', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+    })
+    return `${type.name} is available after ${months} ${unit} of service. You can request it from ${day}.`
+}
+
+/**
  * Why the request is too long, or `null` when it is fine. `workingDays` is the
  * business-day count the forms already compute for the summary panel, which is
  * what keeps this in step with the server — that count applies the same weekend
