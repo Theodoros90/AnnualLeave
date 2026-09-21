@@ -86,6 +86,18 @@ public static partial class PersonFieldRules
                     : DateOfBirthTooYoungMessage;
             });
 
+    /// <summary>
+    /// Gender is required on both admin DTOs. It decides who is offered a leave
+    /// type restricted through <c>LeaveType.AvailableTo</c>, and the dialog used to
+    /// offer an explicit "Not specified" that the rule then read as "offer
+    /// everything" — so a type restricted to one gender was still shown to anyone
+    /// an admin had left unspecified. The column stays nullable for the accounts
+    /// created before it existed; this rule is what fills them in, one save at a
+    /// time, the same way <see cref="ValidDateOfBirth{T}"/> does for the date of
+    /// birth.
+    /// </summary>
+    public const string GenderRequiredMessage = "Gender is required.";
+
     public const string EmploymentStartDateRequiredMessage = "Employment start date is required.";
 
     public const string EmploymentStartDateNotForAdminMessage =

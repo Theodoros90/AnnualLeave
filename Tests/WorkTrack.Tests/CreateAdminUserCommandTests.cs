@@ -107,6 +107,8 @@ public class CreateAdminUserCommandTests : IDisposable
         DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-30),
         // Likewise, for an Employee or a Manager — see EmploymentStartDateTests.
         EmploymentStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-2),
+        // Likewise — see UserGenderTests.
+        Gender = Gender.Female,
     };
 
     private Task<Result<AdminUserDto>> Handle(AdminCreateUserDto payload, FakeAccountEmailSender mail) =>

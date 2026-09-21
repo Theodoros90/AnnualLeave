@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { Gender } from '../types/user'
 
 /**
  * The rules for the identity fields collected about a person, shared by every
@@ -89,6 +90,22 @@ export function dateOfBirthError(value: string, asOf: string = today()): string 
     if (!value) return DOB_REQUIRED_MESSAGE
     if (value > asOf) return DOB_FUTURE_MESSAGE
     return value > latestAllowedDateOfBirth(asOf) ? DOB_TOO_YOUNG_MESSAGE : undefined
+}
+
+export const GENDER_REQUIRED_MESSAGE = 'Gender is required.'
+
+/**
+ * Mirrors the `Gender` rule on both admin validators
+ * (`PersonFieldRules.GenderRequiredMessage`). Required, with no "not specified"
+ * answer: gender decides who is offered a leave type restricted through
+ * "Available to", and the server reads a stored null as "offer everything" so
+ * that accounts predating the field keep their parental leave. Letting an admin
+ * *choose* that null made a type restricted to one gender reachable by anyone
+ * left unspecified. The only thing that can be wrong with the value is its
+ * absence — the radios offer two answers and nothing else.
+ */
+export function genderError(value: Gender | null | undefined): string | undefined {
+    return value ? undefined : GENDER_REQUIRED_MESSAGE
 }
 
 export const START_DATE_REQUIRED_MESSAGE = 'Employment start date is required.'

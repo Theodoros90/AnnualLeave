@@ -70,11 +70,13 @@ function offeredTo(type: Pick<LeaveType, 'name' | 'availableTo'>): Gender | unde
 /**
  * Whether to offer `type` to an employee.
  *
- * `gender` null or undefined means "not specified" — the state of every account
- * created before the field existed — and passes the gender half of the rule. The
- * server reads it the same way. Failing closed instead would take parental leave
- * away from the whole company until an administrator filled the field in one
- * person at a time.
+ * `gender` null or undefined means "nobody has entered it" — the state of every
+ * account created before the field existed — and passes the gender half of the
+ * rule. The server reads it the same way. Failing closed instead would take
+ * parental leave away from the whole company until an administrator filled the
+ * field in one person at a time. Note that a null can no longer be *chosen*: the
+ * admin dialogs offer Male or Female only and the API refuses a save without one,
+ * so the nulls this tolerates are legacy rows on their way out.
  *
  * `hasEligibleChild` is consulted only for Maternity and Paternity Leave, and
  * still applies when the gender is unspecified: it is a fact about the employee's

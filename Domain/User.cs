@@ -25,12 +25,16 @@ public class User : IdentityUser
     /// decorative. Both have changed; the notes now describe a rule that runs.
     ///
     /// Nullable because every account predating the column has no value, and a
-    /// default would assert a fact about a real person that nobody entered.
-    /// <c>null</c> means "not specified", which an admin can also choose
-    /// explicitly to clear a value set by mistake. **A null is offered both
-    /// parental types, not neither**: reading "nobody entered it" as a mismatch
-    /// would take parental leave away from every account created before the
-    /// column existed.
+    /// default would assert a fact about a real person that nobody entered. But
+    /// <c>null</c> is a gap, not an answer: both admin validators refuse saving
+    /// an account without one (<c>PersonFieldRules.GenderRequiredMessage</c>),
+    /// so the nulls disappear one save at a time, as the date of birth's did.
+    /// The dialog used to offer an explicit "Not specified" — dropped, because
+    /// the rule reads a null as "offer everything", which made a type restricted
+    /// to one gender reachable by anyone an admin left unspecified.
+    /// **A stored null is still offered both parental types, not neither**:
+    /// reading "nobody entered it" as a mismatch would take parental leave away
+    /// from every account created before the column existed.
     /// </summary>
     public Gender? Gender { get; set; }
 

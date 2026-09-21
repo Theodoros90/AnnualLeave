@@ -101,6 +101,8 @@ public class PersonFieldValidationTests : IDisposable
             Roles = [AppRoles.Employee],
             PhoneNumber = phoneNumber,
             DateOfBirth = dateOfBirth,
+            // Required — see UserGenderTests.
+            Gender = Gender.Female,
         };
 
         return await new CreateAdminUserValidator(Db, Roles)
@@ -118,6 +120,8 @@ public class PersonFieldValidationTests : IDisposable
                 DisplayName = "Theodoros Iona",
                 PhoneNumber = phoneNumber,
                 DateOfBirth = dateOfBirth,
+                // Required — see UserGenderTests.
+                Gender = Gender.Female,
             },
         });
 
