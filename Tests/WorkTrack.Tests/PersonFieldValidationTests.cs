@@ -109,9 +109,14 @@ public class PersonFieldValidationTests : IDisposable
             .ValidateAsync(new CreateAdminUser.Command { User = payload });
     }
 
-    private static FluentValidation.Results.ValidationResult ValidateUpdate(
+    /// <summary>
+    /// No stored user behind "u-1": the validator holds an unknown id to the
+    /// non-Admin rule, so the gender below is required and satisfied, and these
+    /// tests stay about the phone number and the date of birth.
+    /// </summary>
+    private Task<FluentValidation.Results.ValidationResult> ValidateUpdate(
         string? phoneNumber = null, DateOnly? dateOfBirth = null) =>
-        new UpdateAdminUserValidator().Validate(new UpdateAdminUser.Command
+        new UpdateAdminUserValidator(Db).ValidateAsync(new UpdateAdminUser.Command
         {
             Id = "u-1",
             User = new AdminUpdateUserDto
@@ -120,7 +125,7 @@ public class PersonFieldValidationTests : IDisposable
                 DisplayName = "Theodoros Iona",
                 PhoneNumber = phoneNumber,
                 DateOfBirth = dateOfBirth,
-                // Required — see UserGenderTests.
+                // Required for a non-Admin — see UserGenderTests.
                 Gender = Gender.Female,
             },
         });
@@ -153,8 +158,8 @@ public class PersonFieldValidationTests : IDisposable
     [Theory]
     [InlineData("cvbcvb")]
     [InlineData("99123456 ext 4")]
-    public void Update_refuses_a_phone_number_containing_letters(string phoneNumber) =>
-        AssertRefused(ValidateUpdate(phoneNumber: phoneNumber), "PhoneNumber");
+    public async Task Update_refuses_a_phone_number_containing_letters(string phoneNumber) =>
+        AssertRefused(await ValidateUpdate(phoneNumber: phoneNumber), "PhoneNumber");
 
     [Theory]
     [InlineData("99123456")]
@@ -162,8 +167,8 @@ public class PersonFieldValidationTests : IDisposable
     [InlineData("(00357) 22-123456")]
     [InlineData("")]
     [InlineData(null)]
-    public void Update_accepts_a_number_however_it_is_written(string? phoneNumber) =>
-        AssertAccepted(ValidateUpdate(phoneNumber: phoneNumber), "PhoneNumber");
+    public async Task Update_accepts_a_number_however_it_is_written(string? phoneNumber) =>
+        AssertAccepted(await ValidateUpdate(phoneNumber: phoneNumber), "PhoneNumber");
 
     /// <summary>Somebody who turned the minimum age today, who is old enough.</summary>
     private static DateOnly ExactlyMinimumAge => Today.AddYears(-PersonFieldRules.MinimumAgeYears);
@@ -191,18 +196,18 @@ public class PersonFieldValidationTests : IDisposable
         AssertRefused(await ValidateCreateAsync(dateOfBirth: null), nameof(AdminCreateUserDto.DateOfBirth));
 
     [Fact]
-    public void Update_refuses_a_date_of_birth_under_the_minimum_age() =>
+    public async Task Update_refuses_a_date_of_birth_under_the_minimum_age() =>
         AssertRefused(
-            ValidateUpdate(dateOfBirth: ExactlyMinimumAge.AddDays(1)),
+            await ValidateUpdate(dateOfBirth: ExactlyMinimumAge.AddDays(1)),
             nameof(AdminUpdateUserDto.DateOfBirth));
 
     [Fact]
-    public void Update_accepts_somebody_comfortably_over_the_minimum_age() =>
-        AssertAccepted(ValidateUpdate(dateOfBirth: new DateOnly(1990, 3, 4)), nameof(AdminUpdateUserDto.DateOfBirth));
+    public async Task Update_accepts_somebody_comfortably_over_the_minimum_age() =>
+        AssertAccepted(await ValidateUpdate(dateOfBirth: new DateOnly(1990, 3, 4)), nameof(AdminUpdateUserDto.DateOfBirth));
 
     [Fact]
-    public void Update_refuses_no_date_of_birth_at_all() =>
-        AssertRefused(ValidateUpdate(dateOfBirth: null), nameof(AdminUpdateUserDto.DateOfBirth));
+    public async Task Update_refuses_no_date_of_birth_at_all() =>
+        AssertRefused(await ValidateUpdate(dateOfBirth: null), nameof(AdminUpdateUserDto.DateOfBirth));
 
     /* The employee's own profile update is a plain DTO bound by MVC rather than a
        MediatR command, so its rules are DataAnnotations. It already carried

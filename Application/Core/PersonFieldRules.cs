@@ -87,16 +87,28 @@ public static partial class PersonFieldRules
             });
 
     /// <summary>
-    /// Gender is required on both admin DTOs. It decides who is offered a leave
-    /// type restricted through <c>LeaveType.AvailableTo</c>, and the dialog used to
-    /// offer an explicit "Not specified" that the rule then read as "offer
-    /// everything" — so a type restricted to one gender was still shown to anyone
-    /// an admin had left unspecified. The column stays nullable for the accounts
-    /// created before it existed; this rule is what fills them in, one save at a
-    /// time, the same way <see cref="ValidDateOfBirth{T}"/> does for the date of
-    /// birth.
+    /// Gender is required on both admin DTOs for an Employee and a Manager. It
+    /// decides who is offered a leave type restricted through
+    /// <c>LeaveType.AvailableTo</c>, and the dialog used to offer an explicit
+    /// "Not specified" that the rule then read as "offer everything" — so a type
+    /// restricted to one gender was still shown to anyone an admin had left
+    /// unspecified. The column stays nullable for the accounts created before it
+    /// existed; this rule is what fills them in, one save at a time, the same way
+    /// <see cref="ValidDateOfBirth{T}"/> does for the date of birth.
     /// </summary>
     public const string GenderRequiredMessage = "Gender is required.";
+
+    /// <summary>
+    /// And an Admin is never asked. The field exists to route leave that is
+    /// offered by gender, and an Admin sits outside every leave rule the
+    /// department structure applies — so the dialogs hide it for them, exactly as
+    /// they hide the department and the start date, and a payload that carries
+    /// one for an Admin was built against a shape the dialog does not have.
+    /// Refused rather than ignored for the same reason those two are: a promotion
+    /// to Admin then <i>clears</i> the stored answer instead of stranding a value
+    /// the Admin's own dialog can no longer show or take back.
+    /// </summary>
+    public const string GenderNotForAdminMessage = "An Admin has no recorded gender.";
 
     public const string EmploymentStartDateRequiredMessage = "Employment start date is required.";
 

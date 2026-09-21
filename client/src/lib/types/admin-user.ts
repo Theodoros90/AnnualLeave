@@ -44,8 +44,12 @@ export interface AdminCreateUserRequest {
     departmentId: number | null
     phoneNumber?: string | null
     dateOfBirth?: string | null
-    /** Required — the API refuses a null. See `genderError` in `lib/validation/person.ts`. */
-    gender: Gender
+    /**
+     * Required for an Employee or a Manager, and null for an Admin — the same
+     * role-dependent rule as `departmentId`; the API refuses either the other
+     * way round. See `genderError` in `lib/validation/person.ts`.
+     */
+    gender: Gender | null
     managerId?: string | null
     jobTitle?: string | null
     /**
@@ -67,10 +71,13 @@ export interface AdminUpdateUserRequest {
     phoneNumber?: string | null
     dateOfBirth?: string | null
     /**
-     * Required — the API refuses a null, so an account that predates the field
-     * has to be given one the next time it is saved, as with the date of birth.
+     * Required for an Employee or a Manager — the API refuses a null, so an
+     * account that predates the field has to be given one the next time it is
+     * saved, as with the date of birth — and null for an Admin, for whom the API
+     * refuses a value. The server reads the *stored* role to tell which, so the
+     * roles call has to land before this one on a role change.
      */
-    gender: Gender
+    gender: Gender | null
 }
 
 export interface AdminSetUserRolesRequest {

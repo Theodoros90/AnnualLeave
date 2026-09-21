@@ -176,8 +176,15 @@ interface PersonalDetails {
  * address, which is the one thing about a new hire an admin is least sure of.
  * Gender stays last in the group, immediately above Role — its hint is about
  * what the employee is offered, so it belongs beside what else they are granted.
+ *
+ * Gender is also the one field here that follows the role: it exists to decide
+ * who is offered gender-restricted leave, and an Admin sits outside every leave
+ * rule the department structure applies, so it is hidden for them the way the
+ * whole Profile section is — and the API refuses one for an Admin outright, the
+ * same as the department and the start date. The callers pass `showGender` off
+ * their live role radio, and send null in its place.
  */
-function PersonalDetailsFields({ idPrefix, values, onChange, flag, emailHelperText, announceMissing }: {
+function PersonalDetailsFields({ idPrefix, values, onChange, flag, emailHelperText, announceMissing, showGender }: {
     /** Namespaces the gender radios, which are two `name`d groups in one app. */
     idPrefix: string
     values: PersonalDetails
@@ -192,6 +199,8 @@ function PersonalDetailsFields({ idPrefix, values, onChange, flag, emailHelperTe
      * waiting for `flag`. Edit passes true, Create false — see the note below.
      */
     announceMissing: boolean
+    /** False for an Admin, for whom the field is neither asked nor accepted. */
+    showGender: boolean
 }) {
     const emailMissing = !values.email.trim()
     const displayNameMissing = !values.displayName.trim()
@@ -277,12 +286,14 @@ function PersonalDetailsFields({ idPrefix, values, onChange, flag, emailHelperTe
                 />
             </FieldRow>
 
-            <GenderRadioGroup
-                name={`${idPrefix}-gender`}
-                value={values.gender}
-                onChange={(gender) => onChange({ gender })}
-                error={showGenderError}
-            />
+            {showGender && (
+                <GenderRadioGroup
+                    name={`${idPrefix}-gender`}
+                    value={values.gender}
+                    onChange={(gender) => onChange({ gender })}
+                    error={showGenderError}
+                />
+            )}
         </>
     )
 }
@@ -524,15 +535,21 @@ function AdminUsersPanel() {
             managerId: string | null
             phoneNumber: string | null
             dateOfBirth: string | null
-            gender: Gender
+            /** Null for an Admin — the API refuses one for that role. */
+            gender: Gender | null
             employmentStartDate: string | null
         }) => {
-            await updateAdminUser(payload.userId, { email: payload.email, displayName: payload.displayName, phoneNumber: payload.phoneNumber, dateOfBirth: payload.dateOfBirth, gender: payload.gender })
+            // The order of these three is load-bearing. Roles go first: the user
+            // validator reads the *stored* role to decide whether a gender is
+            // required or refused, so a promotion to Admin (sent with a null gender)
+            // and a demotion out of it (sent with one) both have to land after the
+            // role they were built for, or every role change 400s on a field the
+            // admin cannot see. The user then goes before the profile: the profile
+            // validator checks the start date against the *stored* date of birth,
+            // so the one just typed has to be in the database by the time it lands.
             await setAdminUserRoles(payload.userId, { roles: payload.roles })
+            await updateAdminUser(payload.userId, { email: payload.email, displayName: payload.displayName, phoneNumber: payload.phoneNumber, dateOfBirth: payload.dateOfBirth, gender: payload.gender })
             if (payload.profile) {
-                // The user is saved first on purpose: the profile validator checks the
-                // start date against the *stored* date of birth, so the one just typed
-                // has to be in the database by the time this lands.
                 await updateEmployeeProfile({
                     id: payload.profile.id,
                     departmentId: payload.departmentId,
@@ -1156,11 +1173,12 @@ function UserRow({
                         <ExpandRow label="Joined" value={fmtJoined(derived.profile?.createdAt)} />
                         <ExpandRow label="Phone" value={u.phoneNumber || '—'} />
                         <ExpandRow label="Date of birth" value={u.dateOfBirth ? new Date(u.dateOfBirth).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
-                        <ExpandRow label="Gender" value={u.gender ?? '—'} />
                         {/* Admins sit outside the department structure, so none of
-                            these rows apply to them. */}
+                            these rows apply to them — including Gender, which is
+                            only recorded to route leave the structure offers. */}
                         {role !== 'Admin' && (
                             <>
+                                <ExpandRow label="Gender" value={u.gender ?? '—'} />
                                 <ExpandRow label="Department" value={derived.departmentName ?? '—'} />
                                 <ExpandRow label="Job title" value={derived.profile?.jobTitle || '—'} />
                                 <ExpandRow
@@ -1504,7 +1522,8 @@ function EditUserDialog(props: {
         managerId: string | null
         phoneNumber: string | null
         dateOfBirth: string | null
-        gender: Gender
+        /** Null for an Admin — the API refuses one for that role. */
+        gender: Gender | null
         employmentStartDate: string | null
     }) => void
 }) {
@@ -1594,6 +1613,15 @@ function EditUserDialog(props: {
        given. Same treatment, and same hydration guard, as the date of birth. */
     const showStartDateError = !!startDateError && (dirty || (!!user && hydratedFor === user.id))
 
+    /* Gender follows the role too, though it sits in Personal details rather than
+       Profile: it is recorded to route gender-restricted leave, which an Admin is
+       outside of, and the API refuses one for them. So the radios hide for an
+       Admin and a promotion sends null — clearing the stored answer, this being a
+       full replace, rather than stranding one the dialog can no longer show. A
+       demotion has to pick one before it can be saved. */
+    const effectiveGender = isAdmin ? null : gender
+    const genderMissing = !isAdmin && !!genderError(gender)
+
     /* Whether a gap is *shown* as an error, as opposed to whether it blocks Save.
        The two differ only on a form the admin has not started. */
     const flag = (missing: boolean) => dirty && missing
@@ -1654,6 +1682,7 @@ function EditUserDialog(props: {
                                record — announcing it there is the red flash on a
                                perfectly valid record that `dirty` exists to prevent. */
                             announceMissing={!!user && hydratedFor === user.id}
+                            showGender={!isAdmin}
                         />
 
                         {/* Maternity and Paternity Leave are granted per child, so a
@@ -1779,14 +1808,12 @@ function EditUserDialog(props: {
                 <Button variant="outlined" onClick={props.onClose} disabled={props.isPending} sx={cancelBtnSx}>Cancel</Button>
                 <Button
                     variant="contained"
-                    disabled={props.isPending || !user || departmentMissing || displayNameMissing || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth) || !!genderError(gender)}
+                    disabled={props.isPending || !user || departmentMissing || displayNameMissing || genderMissing || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth)}
                     onClick={() =>
                         /* No override means the leave type's own allowance, not 0: a stored 0
                            switches the approval-time balance check off outright (see
-                           Application/AnnualLeaves/Commands/AnnualLeaveBalanceCalculator.cs).
-                           `gender` is checked here as well as in `disabled` only to narrow
-                           the type — the button cannot be pressed while it is null. */
-                        user && gender && props.onSubmit({ userId: user.id, email, displayName, roles: [role], profile, departmentId: effectiveDepartmentId, jobTitle, managerId: showManagerField ? departmentManager?.profileId ?? null : profile?.managerId ?? null, phoneNumber: phoneNumber.trim() || null, dateOfBirth: dateOfBirth || null, gender, employmentStartDate: effectiveEmploymentStartDate })
+                           Application/AnnualLeaves/Commands/AnnualLeaveBalanceCalculator.cs). */
+                        user && props.onSubmit({ userId: user.id, email, displayName, roles: [role], profile, departmentId: effectiveDepartmentId, jobTitle, managerId: showManagerField ? departmentManager?.profileId ?? null : profile?.managerId ?? null, phoneNumber: phoneNumber.trim() || null, dateOfBirth: dateOfBirth || null, gender: effectiveGender, employmentStartDate: effectiveEmploymentStartDate })
                     }
                     sx={saveBtnSx}
                 >
@@ -1811,7 +1838,8 @@ function CreateUserDialog(props: {
         jobTitle: string | null
         phoneNumber: string | null
         dateOfBirth: string | null
-        gender: Gender
+        /** Null for an Admin — the API refuses one for that role. */
+        gender: Gender | null
         employmentStartDate: string | null
         /** Written after the account exists — see the create mutation. */
         children: UpsertChildRequest[]
@@ -1878,6 +1906,11 @@ function CreateUserDialog(props: {
         : employmentStartDateError(employmentStartDate, dateOfBirth || null)
     const showStartDateError = dirty && !!startDateError
 
+    /* And the gender, for the same reason — see EditUserDialog's copy. Anything
+       picked before the role was switched to Admin is not sent. */
+    const effectiveGender = isAdmin ? null : gender
+    const genderMissing = !isAdmin && !!genderError(gender)
+
     const close = () => {
         setEmail('')
         setDisplayName('')
@@ -1918,6 +1951,7 @@ function CreateUserDialog(props: {
                             flag={flag}
                             emailHelperText="Where the welcome link and all notifications are sent."
                             announceMissing={false}
+                            showGender={!isAdmin}
                         />
 
                         {/* Beside Gender rather than under Profile — see EditUserDialog
@@ -2021,9 +2055,8 @@ function CreateUserDialog(props: {
                 <Button variant="outlined" onClick={close} disabled={props.isPending} sx={cancelBtnSx}>Cancel</Button>
                 <Button
                     variant="contained"
-                    disabled={props.isPending || !displayName.trim() || effectiveDepartmentId === 0 || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth) || !!genderError(gender)}
-                    // `gender &&` narrows the type only — the button is disabled while it is null.
-                    onClick={() => gender && props.onSubmit({
+                    disabled={props.isPending || !displayName.trim() || effectiveDepartmentId === 0 || genderMissing || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth)}
+                    onClick={() => props.onSubmit({
                         email: email.trim(),
                         displayName: displayName.trim(),
                         roles: [role],
@@ -2032,7 +2065,8 @@ function CreateUserDialog(props: {
                         jobTitle: isAdmin ? null : jobTitle.trim() || null,
                         phoneNumber: phoneNumber.trim() || null,
                         dateOfBirth: dateOfBirth || null,
-                        gender,
+                        // Null for an Admin, same rule as the start date below: the API refuses one for that role.
+                        gender: effectiveGender,
                         // Null for an Admin, same rule as jobTitle and the department:
                         // the API refuses one outright for that role.
                         employmentStartDate: effectiveEmploymentStartDate,

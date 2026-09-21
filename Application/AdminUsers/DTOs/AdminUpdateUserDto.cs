@@ -26,10 +26,13 @@ public class AdminUpdateUserDto
     public DateOnly? DateOfBirth { get; set; }
 
     /// <summary>
-    /// Required — <c>UpdateAdminUserValidator</c> refuses a null, so an account
-    /// that predates the column has to be given one the next time it is saved,
-    /// as with <see cref="DateOfBirth"/>. Nullable only so the binder can report
-    /// "missing" rather than defaulting a real person to <c>Male</c>.
+    /// Required for an Employee or a Manager and refused for an Admin —
+    /// <c>UpdateAdminUserValidator</c> reads the stored role to decide which. So
+    /// an account that predates the column has to be given one the next time it
+    /// is saved, as with <see cref="DateOfBirth"/>, and a promotion to Admin sends
+    /// a null that, this being a full replace, clears the stored answer. Nullable
+    /// so the binder can report "missing" rather than defaulting a real person to
+    /// <c>Male</c>, and so an Admin has something to send.
     /// </summary>
     public Gender? Gender { get; set; }
 }

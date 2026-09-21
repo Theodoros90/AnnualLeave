@@ -26,15 +26,24 @@ public class User : IdentityUser
     ///
     /// Nullable because every account predating the column has no value, and a
     /// default would assert a fact about a real person that nobody entered. But
-    /// <c>null</c> is a gap, not an answer: both admin validators refuse saving
-    /// an account without one (<c>PersonFieldRules.GenderRequiredMessage</c>),
-    /// so the nulls disappear one save at a time, as the date of birth's did.
-    /// The dialog used to offer an explicit "Not specified" — dropped, because
-    /// the rule reads a null as "offer everything", which made a type restricted
-    /// to one gender reachable by anyone an admin left unspecified.
+    /// for an Employee or a Manager <c>null</c> is a gap, not an answer: both
+    /// admin validators refuse saving one without it
+    /// (<c>PersonFieldRules.GenderRequiredMessage</c>), so those nulls disappear
+    /// one save at a time, as the date of birth's did. The dialog used to offer
+    /// an explicit "Not specified" — dropped, because the rule reads a null as
+    /// "offer everything", which made a type restricted to one gender reachable
+    /// by anyone an admin left unspecified.
+    ///
+    /// An <b>Admin</b> is the exception: the dialogs never ask, and both
+    /// validators refuse a value for one
+    /// (<c>PersonFieldRules.GenderNotForAdminMessage</c>), so an Admin's null is
+    /// the standing answer rather than a legacy gap — the same role scoping
+    /// <c>EmployeeProfile.DepartmentId</c> and <c>EmploymentStartDate</c> carry.
     /// **A stored null is still offered both parental types, not neither**:
     /// reading "nobody entered it" as a mismatch would take parental leave away
-    /// from every account created before the column existed.
+    /// from every account created before the column existed. That covers an
+    /// Admin filing their own leave too, which is accepted as the price of not
+    /// asking them.
     /// </summary>
     public Gender? Gender { get; set; }
 
