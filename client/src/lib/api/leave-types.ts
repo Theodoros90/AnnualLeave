@@ -1,5 +1,5 @@
 import apiClient from './client'
-import type { AttachmentPolicy, EligibilityScope, LeaveType } from '../types'
+import type { AttachmentPolicy, EligibilityScope, GenderAvailability, LeaveType } from '../types'
 
 export interface UpsertLeaveTypeRequest {
     name: string
@@ -24,6 +24,7 @@ export interface UpsertLeaveTypeRequest {
     halfDayAllowed: boolean
     eligibilityNotes: string
     eligibilityScope: EligibilityScope
+    availableTo: GenderAvailability
 }
 
 export async function getLeaveTypes() {

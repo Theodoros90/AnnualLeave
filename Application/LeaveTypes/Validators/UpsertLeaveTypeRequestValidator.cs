@@ -46,6 +46,20 @@ public class UpsertLeaveTypeRequestValidator : AbstractValidator<UpsertLeaveType
         RuleFor(x => x.MinNoticeDays).InclusiveBetween(0, 365);
         RuleFor(x => x.MaxConsecutiveDays).InclusiveBetween(0, 365);
 
+        /* Who a built-in type is offered to is what the type is, not a setting on it:
+           Annual Leave is the pool everyone's balance budgets, Maternity Leave is for
+           women and Paternity Leave for men. The dialog shows the radios read-only
+           for these three; this is the server's half, so a caller going around the
+           UI is told rather than quietly ignored. Every other type is free to choose. */
+        RuleFor(x => x.AvailableTo)
+            .Must((request, availableTo) =>
+            {
+                var fixedAvailability = SystemLeaveTypes.FixedAvailability(request.Name);
+                return fixedAvailability is null || fixedAvailability == availableTo;
+            })
+            .WithMessage(request =>
+                $"{request.Name} is a built-in leave type — who it is available to cannot be changed.");
+
         /* A per-child ledger belongs to Maternity and Paternity Leave and to nothing
            else. It is keyed by AnnualLeave.ChildId and a request against such a type
            must name a child, which only makes sense for the leave a birth grants —

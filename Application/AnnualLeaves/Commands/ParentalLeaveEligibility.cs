@@ -7,11 +7,25 @@ using Persistence;
 namespace Application.AnnualLeaves.Commands;
 
 /// <summary>
-/// Who may file Maternity and Paternity Leave: an employee whose recorded
-/// <see cref="Gender"/> matches the type, and who has a child young enough to
-/// qualify. Returns the refusal message, or <c>null</c> when the request may go
+/// Who may file a leave type that is not offered to everyone. Two rules, applied
+/// in order, returning the refusal message or <c>null</c> when the request may go
 /// ahead — the same shape as <see cref="PerChildLeaveBalanceCalculator"/>, which
 /// runs beside it.
+///
+/// <list type="number">
+/// <item><description>
+/// <b>Gender.</b> A type whose <see cref="LeaveType.AvailableTo"/> names one gender
+/// is refused for an employee whose recorded <see cref="Gender"/> is the other.
+/// This reads the column, not the name, so it reaches a type an admin restricted
+/// themselves as well as Maternity (women) and Paternity Leave (men), whose value
+/// is fixed by <see cref="SystemLeaveTypes.FixedAvailability"/>.
+/// </description></item>
+/// <item><description>
+/// <b>An eligible child.</b> Maternity and Paternity Leave additionally need a
+/// child young enough to qualify. This half stays keyed on the two frozen names:
+/// it is about the leave a birth grants, not about gender.
+/// </description></item>
+/// </list>
 ///
 /// This is the one place <see cref="User.Gender"/> is consulted. It was recorded
 /// HR data that gated nothing until this rule; the comment on the property says so
@@ -39,17 +53,24 @@ namespace Application.AnnualLeaves.Commands;
 public static class ParentalLeaveEligibility
 {
     /// <summary>
-    /// The gender a parental leave type is offered to, or <c>null</c> for a type
-    /// the rule does not reach. Keyed off <see cref="SystemLeaveTypes"/> rather
-    /// than a column, for the reason that class documents: these two names are
-    /// frozen, and a stored flag could drift from the name displayed beside it.
+    /// The gender this type is offered to, or <c>null</c> when it is offered to
+    /// everyone. Read from the column: for the built-in types the validator keeps
+    /// it at the value <see cref="SystemLeaveTypes.FixedAvailability"/> fixes, and
+    /// for anything else it is whatever the admin chose.
     /// </summary>
-    private static Gender? OfferedTo(string? leaveTypeName)
+    private static Gender? OfferedTo(LeaveType leaveType) => leaveType.AvailableTo switch
     {
-        if (SystemLeaveTypes.IsMaternity(leaveTypeName)) return Gender.Female;
-        if (SystemLeaveTypes.IsPaternity(leaveTypeName)) return Gender.Male;
-        return null;
-    }
+        GenderAvailability.Male => Gender.Male,
+        GenderAvailability.Female => Gender.Female,
+        _ => null,
+    };
+
+    /// <summary>
+    /// Whether the eligible-child half applies: only to the two parental types,
+    /// keyed by name as everything else about them is.
+    /// </summary>
+    private static bool NeedsEligibleChild(LeaveType leaveType) =>
+        SystemLeaveTypes.IsMaternity(leaveType.Name) || SystemLeaveTypes.IsPaternity(leaveType.Name);
 
     public static async Task<string?> CheckAsync(
         AppDbContext context,
@@ -58,18 +79,21 @@ public static class ParentalLeaveEligibility
         EmployeeProfile employeeProfile,
         CancellationToken cancellationToken)
     {
-        var offeredTo = OfferedTo(leaveType.Name);
-        if (offeredTo is null)
+        var offeredTo = OfferedTo(leaveType);
+        if (offeredTo is not null)
+        {
+            var gender = await context.Users
+                .AsNoTracking()
+                .Where(user => user.Id == employeeUserId)
+                .Select(user => user.Gender)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (gender.HasValue && gender.Value != offeredTo.Value)
+                return $"{leaveType.Name} is not available to you.";
+        }
+
+        if (!NeedsEligibleChild(leaveType))
             return null;
-
-        var gender = await context.Users
-            .AsNoTracking()
-            .Where(user => user.Id == employeeUserId)
-            .Select(user => user.Gender)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (gender.HasValue && gender.Value != offeredTo.Value)
-            return $"{leaveType.Name} is not available to you.";
 
         // Paternity Leave's per-child ledger enforces this far more precisely.
         if (leaveType.PerChildEntitlement)

@@ -36,12 +36,12 @@ const ANNUAL_LEAVE_TYPE = {
     defaultAllowance: 25, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0,
-    maxConsecutiveDays: 0, halfDayAllowed: false, eligibilityNotes: '', eligibilityScope: 'All',
+    maxConsecutiveDays: 0, halfDayAllowed: false, eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
 } as const
 
 /** As configured by migration: the budget is the per-child one, not `defaultAllowance`. */
 const PATERNITY_LEAVE_TYPE = {
-    ...ANNUAL_LEAVE_TYPE, id: 3, name: 'Paternity Leave', colorKey: 'paternity',
+    ...ANNUAL_LEAVE_TYPE, id: 3, name: 'Paternity Leave', availableTo: 'Male', colorKey: 'paternity',
     defaultAllowance: 0, affectsBalance: false,
     perChildEntitlement: true, perChildTotalWeeks: 18, perChildWeeksPerYear: 5, childEligibleUntilAge: 15,
 } as const
@@ -51,7 +51,7 @@ const PATERNITY_LEAVE_TYPE = {
  * why nothing else in the request path checks a child for it.
  */
 const MATERNITY_LEAVE_TYPE = {
-    ...ANNUAL_LEAVE_TYPE, id: 4, name: 'Maternity Leave', colorKey: 'maternity',
+    ...ANNUAL_LEAVE_TYPE, id: 4, name: 'Maternity Leave', availableTo: 'Female', colorKey: 'maternity',
     defaultAllowance: 90, allowanceUnit: 'days/event', affectsBalance: false,
 } as const
 

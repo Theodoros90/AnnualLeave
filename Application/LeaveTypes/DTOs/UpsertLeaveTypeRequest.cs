@@ -65,4 +65,10 @@ public class UpsertLeaveTypeRequest
     public string EligibilityNotes { get; set; } = "All employees";
 
     public EligibilityScope EligibilityScope { get; set; } = EligibilityScope.All;
+
+    /// <summary>
+    /// Who the type is offered to. Fixed on the three built-in types — the
+    /// validator refuses any value but theirs — and free on everything else.
+    /// </summary>
+    public GenderAvailability AvailableTo { get; set; } = GenderAvailability.Both;
 }

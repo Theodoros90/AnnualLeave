@@ -33,17 +33,17 @@ const ANNUAL_LEAVE_TYPE = {
     defaultAllowance: 23, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0,
-    maxConsecutiveDays: 0, halfDayAllowed: false, eligibilityNotes: '', eligibilityScope: 'All',
+    maxConsecutiveDays: 0, halfDayAllowed: false, eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
 } as const
 
 /** Configured per child: 4 weeks (20 business days) each, until age 4. */
 const MATERNITY_LEAVE_TYPE = {
-    ...ANNUAL_LEAVE_TYPE, id: 3, name: 'Maternity Leave', affectsBalance: false, defaultAllowance: 0,
+    ...ANNUAL_LEAVE_TYPE, id: 3, name: 'Maternity Leave', availableTo: 'Female', affectsBalance: false, defaultAllowance: 0,
     perChildEntitlement: true, perChildTotalWeeks: 4, perChildWeeksPerYear: 1, childEligibleUntilAge: 4,
 } as const
 
 const PATERNITY_LEAVE_TYPE = {
-    ...ANNUAL_LEAVE_TYPE, id: 4, name: 'Paternity Leave', affectsBalance: false, defaultAllowance: 0,
+    ...ANNUAL_LEAVE_TYPE, id: 4, name: 'Paternity Leave', availableTo: 'Male', affectsBalance: false, defaultAllowance: 0,
     perChildEntitlement: true, perChildTotalWeeks: 18, perChildWeeksPerYear: 5, childEligibleUntilAge: 15,
 } as const
 

@@ -45,7 +45,7 @@ function leaveType(overrides: Partial<LeaveType> = {}): LeaveType {
         maxConsecutiveDays: 0,
         halfDayAllowed: false,
         eligibilityNotes: 'All employees',
-        eligibilityScope: 'All',
+        eligibilityScope: 'All', availableTo: 'Both',
         ...overrides,
         // Both flags are server-derived from the name (Domain/SystemLeaveTypes.cs),
         // so a fixture must not be free to disagree with its own name — that is how
@@ -427,4 +427,118 @@ it('gives a military card its own header rather than the neutral fallback', asyn
 
     expect(military).toContain('gradient')
     expect(military).not.toBe(fallback)
+})
+
+/*
+ * Who a type is available to -- Both, Male or Female -- is a real setting on a
+ * custom type and a fixed fact on the three built-in ones: Annual Leave is for
+ * everyone, Maternity Leave for women, Paternity Leave for men. The dialog follows
+ * the server's `availabilityLocked` flag for the same reason it follows `isSystem`
+ * for the name, and the card's toggle has to send the value back unchanged or
+ * flipping Enabled would quietly reopen a men-only type to everyone.
+ */
+it('lets an admin choose who a custom type is available to, and sends the choice', async () => {
+    const study = leaveType({ id: 7, name: 'Study Leave', perChildEntitlement: false, availableTo: 'Both' })
+    api.getLeaveTypes.mockResolvedValue([study])
+    await renderPanel()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+
+    const group = screen.getByRole('radiogroup', { name: /available to/i })
+    expect(within(group).getByRole('radio', { name: 'Both' })).toBeChecked()
+    fireEvent.click(within(group).getByRole('radio', { name: 'Male' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledWith(7, expect.objectContaining({
+        availableTo: 'Male',
+    })))
+})
+
+it.each([
+    ['Annual Leave', 'Both'],
+    ['Maternity Leave', 'Female'],
+    ['Paternity Leave', 'Male'],
+] as const)('locks who %s is available to at %s, and says why', async (name, availableTo) => {
+    api.getLeaveTypes.mockResolvedValue([leaveType({ name, availableTo, availabilityLocked: true })])
+    await renderPanel()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+
+    const group = screen.getByRole('radiogroup', { name: /available to/i })
+    expect(within(group).getByRole('radio', { name: availableTo })).toBeChecked()
+    for (const radio of within(group).getAllByRole('radio')) expect(radio).toBeDisabled()
+    expect(screen.getByText('Built-in leave type — who it is available to cannot be changed.')).toBeInTheDocument()
+})
+
+it('leaves the choice open on a custom type', async () => {
+    api.getLeaveTypes.mockResolvedValue([leaveType({ name: 'Study Leave', availabilityLocked: false })])
+    await renderPanel()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+
+    const group = screen.getByRole('radiogroup', { name: /available to/i })
+    for (const radio of within(group).getAllByRole('radio')) expect(radio).not.toBeDisabled()
+})
+
+it('sends who a type is available to unchanged when toggling it from the card', async () => {
+    api.getLeaveTypes.mockResolvedValue([leaveType({ availableTo: 'Male' })])
+    await renderPanel()
+
+    fireEvent.click(screen.getAllByRole('switch')[0])
+
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledWith(PATERNITY.id, expect.objectContaining({
+        isActive: false,
+        availableTo: 'Male',
+    })))
+})
+
+it('says on the card when a type is for one gender only, and nothing when it is for everyone', async () => {
+    api.getLeaveTypes.mockResolvedValue([
+        leaveType({ id: 1, name: 'Paternity Leave', availableTo: 'Male' }),
+        leaveType({ id: 2, name: 'Menstrual Leave', perChildEntitlement: false, availableTo: 'Female' }),
+        leaveType({ id: 3, name: 'Study Leave', perChildEntitlement: false, availableTo: 'Both' }),
+    ])
+    await renderPanel()
+
+    expect(screen.getByText('Male only')).toBeInTheDocument()
+    expect(screen.getByText('Female only')).toBeInTheDocument()
+    expect(screen.queryByText(/Both only/)).not.toBeInTheDocument()
+})
+
+/*
+ * The lock must not depend on the server saying so. An API built before the column
+ * sends neither `availableTo` nor `availabilityLocked`, and the row for Maternity
+ * Leave reads Both until the migration runs -- the dialog still has to show Female,
+ * read-only, and send Female back, or the first save would try to open it to men.
+ */
+it.each([
+    ['Annual Leave', 'Both'],
+    ['Maternity Leave', 'Female'],
+    ['Paternity Leave', 'Male'],
+] as const)('fixes %s at %s by name even when the row says otherwise', async (name, fixed) => {
+    const stale = leaveType({ name, availableTo: 'Both', availabilityLocked: undefined, perChildEntitlement: false })
+    api.getLeaveTypes.mockResolvedValue([stale])
+    await renderPanel()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+
+    const group = screen.getByRole('radiogroup', { name: /available to/i })
+    expect(within(group).getByRole('radio', { name: fixed })).toBeChecked()
+    for (const radio of within(group).getAllByRole('radio')) expect(radio).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledWith(stale.id, expect.objectContaining({
+        availableTo: fixed,
+    })))
+})
+
+it('sends the fixed value from the card toggle too, whatever the row says', async () => {
+    api.getLeaveTypes.mockResolvedValue([leaveType({ name: 'Paternity Leave', availableTo: 'Both' })])
+    await renderPanel()
+
+    fireEvent.click(screen.getAllByRole('switch')[0])
+
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledWith(PATERNITY.id, expect.objectContaining({
+        availableTo: 'Male',
+    })))
 })

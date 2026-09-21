@@ -66,6 +66,23 @@ public static class SystemLeaveTypes
     /// <summary>Whether a type of this name is Paternity Leave.</summary>
     public static bool IsPaternity(string? name) => NameIs(name, PaternityLeave);
 
+    /// <summary>
+    /// Who a built-in type is offered to, or <c>null</c> for a type whose
+    /// <see cref="LeaveType.AvailableTo"/> an admin may set. Annual Leave is for
+    /// everyone — it is the pool every employee's balance is a budget for — while
+    /// Maternity Leave is for women and Paternity Leave for men, which is what the
+    /// two types are rather than a setting on them. The edit dialog shows these
+    /// three read-only and <c>UpsertLeaveTypeRequestValidator</c> refuses any other
+    /// value, so a caller going around the UI is told rather than ignored.
+    /// </summary>
+    public static GenderAvailability? FixedAvailability(string? name)
+    {
+        if (NameIs(name, AnnualLeave)) return GenderAvailability.Both;
+        if (IsMaternity(name)) return GenderAvailability.Female;
+        if (IsPaternity(name)) return GenderAvailability.Male;
+        return null;
+    }
+
     /// <summary>Trimmed and case-insensitive, matching how the rest of this class compares.</summary>
     private static bool NameIs(string? name, string systemName) =>
         !string.IsNullOrWhiteSpace(name)

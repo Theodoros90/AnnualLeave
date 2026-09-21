@@ -28,6 +28,17 @@ public class LeaveTypeDto
     public bool HalfDayAllowed { get; set; }
     public string EligibilityNotes { get; set; } = "All employees";
     public EligibilityScope EligibilityScope { get; set; }
+    public GenderAvailability AvailableTo { get; set; }
+
+    /// <summary>
+    /// Whether <see cref="AvailableTo"/> is fixed by what this type is — true for
+    /// the three built-in types (<see cref="SystemLeaveTypes.FixedAvailability"/>)
+    /// and nothing else. The dialog renders the radios read-only when it is set;
+    /// the validator is what actually refuses a change.
+    ///
+    /// Derived from the name for the same reason as <see cref="IsSystem"/>.
+    /// </summary>
+    public bool AvailabilityLocked => SystemLeaveTypes.FixedAvailability(Name) is not null;
 
     /// <summary>
     /// Whether this is one of the seeded types that cannot be renamed or deleted

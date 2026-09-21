@@ -83,6 +83,8 @@ public class PaternityLeaveTypeConfigTests : IDisposable
         RequiresApproval = true,
         IsActive = true,
         AffectsBalance = affectsBalance,
+        // Fixed for the built-in type; anything else is a second refusal.
+        AvailableTo = GenderAvailability.Male,
         PerChildEntitlement = true,
         PerChildTotalWeeks = totalWeeks,
         PerChildWeeksPerYear = weeksPerYear,
@@ -158,6 +160,7 @@ public class PaternityLeaveTypeConfigTests : IDisposable
     {
         var request = Paternity(totalWeeks: 0, weeksPerYear: 0, untilAge: 0);
         request.Name = "Annual Leave";
+        request.AvailableTo = GenderAvailability.Both;
         request.PerChildEntitlement = false;
         request.AffectsBalance = true;
         request.DefaultAllowance = 25;

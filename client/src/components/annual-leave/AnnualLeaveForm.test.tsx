@@ -38,16 +38,16 @@ const ANNUAL_LEAVE_TYPE = {
     defaultAllowance: 25, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0, maxConsecutiveDays: 0, halfDayAllowed: false,
-    eligibilityNotes: '', eligibilityScope: 'All',
+    eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
 } as const
 
 const MATERNITY_LEAVE_TYPE = {
-    ...ANNUAL_LEAVE_TYPE, id: 2, name: 'Maternity Leave', affectsBalance: false,
+    ...ANNUAL_LEAVE_TYPE, id: 2, name: 'Maternity Leave', availableTo: 'Female', affectsBalance: false,
     defaultAllowance: 90, allowanceUnit: 'days/event',
 } as const
 
 const PATERNITY_LEAVE_TYPE = {
-    ...ANNUAL_LEAVE_TYPE, id: 3, name: 'Paternity Leave', affectsBalance: false,
+    ...ANNUAL_LEAVE_TYPE, id: 3, name: 'Paternity Leave', availableTo: 'Male', affectsBalance: false,
     defaultAllowance: 0, allowanceUnit: 'weeks/child',
     perChildEntitlement: true, perChildTotalWeeks: 18, perChildWeeksPerYear: 5, childEligibleUntilAge: 15,
 } as const
