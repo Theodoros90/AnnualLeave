@@ -723,7 +723,6 @@ public class DbInitializer
                 DefaultAllowance = 25, AllowanceUnit = "days/year",
                 AccrualNotes = "Resets 1 Jan · No carryover",
                 MinNoticeDays = 7, MaxConsecutiveDays = 15, HalfDayAllowed = true,
-                EligibilityNotes = "All employees", EligibilityScope = EligibilityScope.All
             },
             new LeaveType
             {
@@ -734,7 +733,6 @@ public class DbInitializer
                 DefaultAllowance = 10, AllowanceUnit = "days/year",
                 AccrualNotes = "Resets 1 Jan · 5 days carryover allowed",
                 MinNoticeDays = 0, MaxConsecutiveDays = 30, HalfDayAllowed = true,
-                EligibilityNotes = "All employees", EligibilityScope = EligibilityScope.All
             },
             new LeaveType
             {
@@ -745,7 +743,6 @@ public class DbInitializer
                 DefaultAllowance = 3, AllowanceUnit = "days/year",
                 AccrualNotes = "Resets 1 Jan · No carryover",
                 MinNoticeDays = 1, MaxConsecutiveDays = 3, HalfDayAllowed = true,
-                EligibilityNotes = "All employees", EligibilityScope = EligibilityScope.All
             },
             new LeaveType
             {
@@ -756,7 +753,6 @@ public class DbInitializer
                 DefaultAllowance = 5, AllowanceUnit = "days/event",
                 AccrualNotes = "Granted per event · No annual limit",
                 MinNoticeDays = 0, MaxConsecutiveDays = 5, HalfDayAllowed = false,
-                EligibilityNotes = "All employees", EligibilityScope = EligibilityScope.All
             },
             new LeaveType
             {
@@ -767,7 +763,6 @@ public class DbInitializer
                 DefaultAllowance = 90, AllowanceUnit = "days/event",
                 AccrualNotes = "Granted per event · Once per pregnancy",
                 MinNoticeDays = 30, MaxConsecutiveDays = 90, HalfDayAllowed = false,
-                EligibilityNotes = "Female employees", EligibilityScope = EligibilityScope.Limited,
                 AvailableTo = GenderAvailability.Female
             },
             new LeaveType
@@ -784,7 +779,6 @@ public class DbInitializer
                 PerChildTotalWeeks = 18, PerChildWeeksPerYear = 5, ChildEligibleUntilAge = 15,
                 AccrualNotes = "18 weeks per child · Max 5 weeks per child per year · Until the child turns 15",
                 MinNoticeDays = 30, MaxConsecutiveDays = 25, HalfDayAllowed = false,
-                EligibilityNotes = "Employees with children under 15", EligibilityScope = EligibilityScope.Limited,
                 AvailableTo = GenderAvailability.Male
             },
             new LeaveType
@@ -796,10 +790,9 @@ public class DbInitializer
                 DefaultAllowance = 30, AllowanceUnit = "days/year",
                 AccrualNotes = "No annual limit · Manager + HR approval",
                 MinNoticeDays = 14, MaxConsecutiveDays = 30, HalfDayAllowed = false,
-                // The chip below promised this for as long as the type existed;
-                // MinimumServiceRule is what now makes it true.
+                // Promised in prose for as long as the type existed;
+                // MinimumServiceRule is what makes it true.
                 MinServiceMonths = 12,
-                EligibilityNotes = "Employees after 1yr", EligibilityScope = EligibilityScope.Limited
             },
             new LeaveType
             {
@@ -811,7 +804,6 @@ public class DbInitializer
                 AccrualNotes = "After 5 years of service · Once per period",
                 MinNoticeDays = 60, MaxConsecutiveDays = 90, HalfDayAllowed = false,
                 MinServiceMonths = 60,
-                EligibilityNotes = "Tenured employees (5+ years)", EligibilityScope = EligibilityScope.Limited
             },
             new LeaveType
             {
@@ -827,9 +819,10 @@ public class DbInitializer
                 // spend an annual allowance on time off the employee never asked for
                 // and cannot decline.
                 AffectsBalance = false, Paid = true,
-                // The call-up papers. Safe to require on a type with no requests yet:
-                // the retroactive bite AttachmentPolicyRule documents needs rows that
-                // predate the policy, and a new type has none.
+                // The call-up papers, which are dated the day of service — so
+                // AttachmentPolicyRule checks them at approval rather than filing:
+                // the employee requests first, attaches the document from My Leave,
+                // and only then can a manager approve.
                 AttachmentPolicy = AttachmentPolicy.Required,
                 DefaultAllowance = 30, AllowanceUnit = "days/year",
                 AccrualNotes = "Granted per call-up · Evidence required",
@@ -838,7 +831,6 @@ public class DbInitializer
                 // arrive when they arrive, so any figure here would refuse exactly
                 // the requests this type exists to record.
                 MinNoticeDays = 0, MaxConsecutiveDays = 30, HalfDayAllowed = false,
-                EligibilityNotes = "Employees called up for national service", EligibilityScope = EligibilityScope.Limited
             },
         };
 
@@ -851,15 +843,15 @@ public class DbInitializer
         // Enrich existing rows that pre-date the design-fields migration with realistic defaults.
         var defaults = new Dictionary<string, LeaveType>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Annual Leave"] = new() { Icon = "🌴", ColorKey = "annual", Description = "Vacation days, holidays, and personal time off.", Paid = true, AttachmentPolicy = AttachmentPolicy.None, DefaultAllowance = 25, AllowanceUnit = "days/year", AccrualNotes = "Resets 1 Jan · No carryover", MinNoticeDays = 7, MaxConsecutiveDays = 15, HalfDayAllowed = true, EligibilityNotes = "All employees", EligibilityScope = EligibilityScope.All },
-            ["Sick Leave"] = new() { Icon = "🤒", ColorKey = "sick", Description = "Time off due to illness or medical appointments.", Paid = true, AttachmentPolicy = AttachmentPolicy.Optional, DefaultAllowance = 10, AllowanceUnit = "days/year", AccrualNotes = "Resets 1 Jan · 5 days carryover allowed", MinNoticeDays = 0, MaxConsecutiveDays = 30, HalfDayAllowed = true, EligibilityNotes = "All employees", EligibilityScope = EligibilityScope.All },
-            ["Personal Days"] = new() { Icon = "🏠", ColorKey = "personal", Description = "Family matters, errands, or personal appointments.", Paid = true, AttachmentPolicy = AttachmentPolicy.None, DefaultAllowance = 3, AllowanceUnit = "days/year", AccrualNotes = "Resets 1 Jan · No carryover", MinNoticeDays = 1, MaxConsecutiveDays = 3, HalfDayAllowed = true, EligibilityNotes = "All employees", EligibilityScope = EligibilityScope.All },
-            ["Bereavement"] = new() { Icon = "🕊️", ColorKey = "bereavement", Description = "Time off following the loss of a loved one.", Paid = true, AttachmentPolicy = AttachmentPolicy.Optional, DefaultAllowance = 5, AllowanceUnit = "days/event", AccrualNotes = "Granted per event · No annual limit", MinNoticeDays = 0, MaxConsecutiveDays = 5, HalfDayAllowed = false, EligibilityNotes = "All employees", EligibilityScope = EligibilityScope.All },
-            ["Compassionate Leave"] = new() { Icon = "🕊️", ColorKey = "bereavement", Description = "Time off following the loss of a loved one.", Paid = true, AttachmentPolicy = AttachmentPolicy.Optional, DefaultAllowance = 5, AllowanceUnit = "days/event", AccrualNotes = "Granted per event · No annual limit", MinNoticeDays = 0, MaxConsecutiveDays = 5, HalfDayAllowed = false, EligibilityNotes = "All employees", EligibilityScope = EligibilityScope.All },
-            ["Maternity Leave"] = new() { Icon = "👶", ColorKey = "maternity", Description = "Time off for new mothers around the birth of a child.", Paid = true, AttachmentPolicy = AttachmentPolicy.Required, DefaultAllowance = 90, AllowanceUnit = "days/event", AccrualNotes = "Granted per event · Once per pregnancy", MinNoticeDays = 30, MaxConsecutiveDays = 90, HalfDayAllowed = false, EligibilityNotes = "Female employees", EligibilityScope = EligibilityScope.Limited, AvailableTo = GenderAvailability.Female },
-            ["Paternity Leave"] = new() { Icon = "👨‍👶", ColorKey = "paternity", Description = "Time off for a father around the birth of a child, and while that child is young.", Paid = true, AttachmentPolicy = AttachmentPolicy.Required, DefaultAllowance = 0, AllowanceUnit = "weeks/child", PerChildEntitlement = true, PerChildTotalWeeks = 18, PerChildWeeksPerYear = 5, ChildEligibleUntilAge = 15, AccrualNotes = "18 weeks per child · Max 5 weeks per child per year · Until the child turns 15", MinNoticeDays = 30, MaxConsecutiveDays = 25, HalfDayAllowed = false, EligibilityNotes = "Employees with children under 15", EligibilityScope = EligibilityScope.Limited, AvailableTo = GenderAvailability.Male },
-            ["Unpaid Leave"] = new() { Icon = "💼", ColorKey = "unpaid", Description = "Extended time off without pay or balance deduction.", Paid = false, AttachmentPolicy = AttachmentPolicy.None, DefaultAllowance = 30, AllowanceUnit = "days/year", AccrualNotes = "No annual limit · Manager + HR approval", MinNoticeDays = 14, MaxConsecutiveDays = 30, HalfDayAllowed = false, MinServiceMonths = 12, EligibilityNotes = "Employees after 1yr", EligibilityScope = EligibilityScope.Limited },
-            ["Sabbatical"] = new() { Icon = "🎓", ColorKey = "default", Description = "Extended career break for study, travel, or research.", Paid = false, AttachmentPolicy = AttachmentPolicy.None, DefaultAllowance = 90, AllowanceUnit = "days/5 years", AccrualNotes = "After 5 years of service · Once per period", MinNoticeDays = 60, MaxConsecutiveDays = 90, HalfDayAllowed = false, MinServiceMonths = 60, EligibilityNotes = "Tenured employees (5+ years)", EligibilityScope = EligibilityScope.Limited },
+            ["Annual Leave"] = new() { Icon = "🌴", ColorKey = "annual", Description = "Vacation days, holidays, and personal time off.", Paid = true, AttachmentPolicy = AttachmentPolicy.None, DefaultAllowance = 25, AllowanceUnit = "days/year", AccrualNotes = "Resets 1 Jan · No carryover", MinNoticeDays = 7, MaxConsecutiveDays = 15, HalfDayAllowed = true },
+            ["Sick Leave"] = new() { Icon = "🤒", ColorKey = "sick", Description = "Time off due to illness or medical appointments.", Paid = true, AttachmentPolicy = AttachmentPolicy.Optional, DefaultAllowance = 10, AllowanceUnit = "days/year", AccrualNotes = "Resets 1 Jan · 5 days carryover allowed", MinNoticeDays = 0, MaxConsecutiveDays = 30, HalfDayAllowed = true },
+            ["Personal Days"] = new() { Icon = "🏠", ColorKey = "personal", Description = "Family matters, errands, or personal appointments.", Paid = true, AttachmentPolicy = AttachmentPolicy.None, DefaultAllowance = 3, AllowanceUnit = "days/year", AccrualNotes = "Resets 1 Jan · No carryover", MinNoticeDays = 1, MaxConsecutiveDays = 3, HalfDayAllowed = true },
+            ["Bereavement"] = new() { Icon = "🕊️", ColorKey = "bereavement", Description = "Time off following the loss of a loved one.", Paid = true, AttachmentPolicy = AttachmentPolicy.Optional, DefaultAllowance = 5, AllowanceUnit = "days/event", AccrualNotes = "Granted per event · No annual limit", MinNoticeDays = 0, MaxConsecutiveDays = 5, HalfDayAllowed = false },
+            ["Compassionate Leave"] = new() { Icon = "🕊️", ColorKey = "bereavement", Description = "Time off following the loss of a loved one.", Paid = true, AttachmentPolicy = AttachmentPolicy.Optional, DefaultAllowance = 5, AllowanceUnit = "days/event", AccrualNotes = "Granted per event · No annual limit", MinNoticeDays = 0, MaxConsecutiveDays = 5, HalfDayAllowed = false },
+            ["Maternity Leave"] = new() { Icon = "👶", ColorKey = "maternity", Description = "Time off for new mothers around the birth of a child.", Paid = true, AttachmentPolicy = AttachmentPolicy.Required, DefaultAllowance = 90, AllowanceUnit = "days/event", AccrualNotes = "Granted per event · Once per pregnancy", MinNoticeDays = 30, MaxConsecutiveDays = 90, HalfDayAllowed = false, AvailableTo = GenderAvailability.Female },
+            ["Paternity Leave"] = new() { Icon = "👨‍👶", ColorKey = "paternity", Description = "Time off for a father around the birth of a child, and while that child is young.", Paid = true, AttachmentPolicy = AttachmentPolicy.Required, DefaultAllowance = 0, AllowanceUnit = "weeks/child", PerChildEntitlement = true, PerChildTotalWeeks = 18, PerChildWeeksPerYear = 5, ChildEligibleUntilAge = 15, AccrualNotes = "18 weeks per child · Max 5 weeks per child per year · Until the child turns 15", MinNoticeDays = 30, MaxConsecutiveDays = 25, HalfDayAllowed = false, AvailableTo = GenderAvailability.Male },
+            ["Unpaid Leave"] = new() { Icon = "💼", ColorKey = "unpaid", Description = "Extended time off without pay or balance deduction.", Paid = false, AttachmentPolicy = AttachmentPolicy.None, DefaultAllowance = 30, AllowanceUnit = "days/year", AccrualNotes = "No annual limit · Manager + HR approval", MinNoticeDays = 14, MaxConsecutiveDays = 30, HalfDayAllowed = false, MinServiceMonths = 12 },
+            ["Sabbatical"] = new() { Icon = "🎓", ColorKey = "default", Description = "Extended career break for study, travel, or research.", Paid = false, AttachmentPolicy = AttachmentPolicy.None, DefaultAllowance = 90, AllowanceUnit = "days/5 years", AccrualNotes = "After 5 years of service · Once per period", MinNoticeDays = 60, MaxConsecutiveDays = 90, HalfDayAllowed = false, MinServiceMonths = 60 },
         };
 
         var rows = await context.LeaveTypes.ToListAsync();
@@ -888,8 +880,6 @@ public class DbInitializer
             row.MinNoticeDays = preset.MinNoticeDays;
             row.MaxConsecutiveDays = preset.MaxConsecutiveDays;
             row.HalfDayAllowed = preset.HalfDayAllowed;
-            row.EligibilityNotes = preset.EligibilityNotes;
-            row.EligibilityScope = preset.EligibilityScope;
             row.AvailableTo = preset.AvailableTo;
             row.MinServiceMonths = preset.MinServiceMonths;
             changed = true;

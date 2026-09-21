@@ -24,7 +24,6 @@ public class UpsertLeaveTypeRequestValidator : AbstractValidator<UpsertLeaveType
         RuleFor(x => x.Description).MaximumLength(300);
         RuleFor(x => x.AllowanceUnit).MaximumLength(30);
         RuleFor(x => x.AccrualNotes).MaximumLength(250);
-        RuleFor(x => x.EligibilityNotes).MaximumLength(250);
 
         RuleFor(x => x.DefaultAllowance).InclusiveBetween(0, 365);
         /* A cap on unused days of *this* type cannot sensibly exceed this type's own

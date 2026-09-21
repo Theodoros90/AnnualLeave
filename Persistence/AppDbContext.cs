@@ -320,8 +320,6 @@ public class AppDbContext : IdentityDbContext<
             entity.Property(lt => lt.MinNoticeDays).HasDefaultValue(0);
             entity.Property(lt => lt.MaxConsecutiveDays).HasDefaultValue(0);
             entity.Property(lt => lt.HalfDayAllowed).HasDefaultValue(false);
-            entity.Property(lt => lt.EligibilityNotes).HasMaxLength(250).HasDefaultValue("All employees");
-            entity.Property(lt => lt.EligibilityScope).HasDefaultValue(EligibilityScope.All);
             entity.Property(lt => lt.AvailableTo).HasDefaultValue(GenderAvailability.Both);
             entity.Property(lt => lt.PerChildEntitlement).HasDefaultValue(false);
             entity.Property(lt => lt.PerChildTotalWeeks).HasDefaultValue(0);

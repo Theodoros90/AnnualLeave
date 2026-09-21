@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attachmentRequirement, isAttachmentMissing, isAttachmentOffered } from './attachment-policy'
+import { attachmentRequirement, isAttachmentBlockingSubmit, isAttachmentMissing, isAttachmentOffered, isAwaitingDocument } from './attachment-policy'
 import type { LeaveType } from './types'
 
 /**
@@ -35,8 +35,7 @@ function leaveType(overrides: Partial<LeaveType> = {}): LeaveType {
         minNoticeDays: 1,
         maxConsecutiveDays: 3,
         halfDayAllowed: false,
-        eligibilityNotes: 'All employees',
-        eligibilityScope: 'All', availableTo: 'Both',
+        availableTo: 'Both',
         ...overrides,
     }
 }
@@ -106,5 +105,52 @@ describe('isAttachmentOffered', () => {
      */
     it('keeps the section for evidence the request already carries', () => {
         expect(isAttachmentOffered(leaveType({ attachmentPolicy: 'None' }), true)).toBe(true)
+    })
+})
+
+/**
+ * The server gates *approval*, not filing (see AttachmentPolicyRule.cs): a
+ * document dated the day of service — call-up papers — cannot be attached to a
+ * request that had to go in beforehand. So a missing document only disables
+ * submit where submitting would approve, which is a type that auto-approves, or
+ * an edit of a request that is already approved.
+ */
+describe('isAttachmentBlockingSubmit', () => {
+    it('lets a required document wait when the request will sit pending', () => {
+        expect(isAttachmentBlockingSubmit(leaveType({ attachmentPolicy: 'Required' }), false, false)).toBe(false)
+    })
+
+    it('blocks when submitting would approve the request', () => {
+        expect(isAttachmentBlockingSubmit(leaveType({ attachmentPolicy: 'Required' }), false, true)).toBe(true)
+    })
+
+    it('never blocks once a file is staged, or for a policy that does not require one', () => {
+        expect(isAttachmentBlockingSubmit(leaveType({ attachmentPolicy: 'Required' }), true, true)).toBe(false)
+        expect(isAttachmentBlockingSubmit(leaveType({ attachmentPolicy: 'Optional' }), false, true)).toBe(false)
+        expect(isAttachmentBlockingSubmit(leaveType({ attachmentPolicy: 'None' }), false, true)).toBe(false)
+        expect(isAttachmentBlockingSubmit(undefined, false, true)).toBe(false)
+    })
+})
+
+/**
+ * What a manager's Approve button and an employee's pending row both read: is
+ * this request short a document its type insists on? Reads the stored
+ * `evidenceUrl`, trimming it the way the server does.
+ */
+describe('isAwaitingDocument', () => {
+    it('is true for a required policy with no evidence stored', () => {
+        expect(isAwaitingDocument(leaveType({ attachmentPolicy: 'Required' }), null)).toBe(true)
+        expect(isAwaitingDocument(leaveType({ attachmentPolicy: 'Required' }), '')).toBe(true)
+        expect(isAwaitingDocument(leaveType({ attachmentPolicy: 'Required' }), '   ')).toBe(true)
+    })
+
+    it('is false once evidence is stored', () => {
+        expect(isAwaitingDocument(leaveType({ attachmentPolicy: 'Required' }), '/api/files/abc')).toBe(false)
+    })
+
+    it('is false for a policy that does not require one, or an unknown type', () => {
+        expect(isAwaitingDocument(leaveType({ attachmentPolicy: 'Optional' }), null)).toBe(false)
+        expect(isAwaitingDocument(leaveType({ attachmentPolicy: 'None' }), null)).toBe(false)
+        expect(isAwaitingDocument(undefined, null)).toBe(false)
     })
 })

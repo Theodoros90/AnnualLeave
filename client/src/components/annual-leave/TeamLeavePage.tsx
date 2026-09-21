@@ -23,6 +23,7 @@ import TableRow from '@mui/material/TableRow'
 import Tabs from '@mui/material/Tabs'
 import Typography from '@mui/material/Typography'
 import { getAnnualLeaves, getLeaveStatusHistories, getLeaveTypes, updateLeaveStatus } from '../../lib/api'
+import { isAwaitingDocument } from '../../lib/attachment-policy'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import type { AnnualLeave, AnnualLeaveStatus, LeaveStatusHistory, UserInfo } from '../../lib/types'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
@@ -156,7 +157,7 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
     })
 
     const leaveTypeById = useMemo(
-        () => new Map(leaveTypes.map((lt) => [lt.id, lt.name])),
+        () => new Map(leaveTypes.map((lt) => [lt.id, lt])),
         [leaveTypes]
     )
 
@@ -358,9 +359,13 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                                 {filtered.map((leave) => {
                                     const isPending = leave.status === 'Pending'
                                     const isWorking = actionTarget === leave.id
-                                    const leaveTypeName = leave.leaveTypeId != null
-                                        ? (leaveTypeById.get(leave.leaveTypeId) ?? 'Annual Leave')
-                                        : 'Annual Leave'
+                                    const leaveType = leave.leaveTypeId != null ? leaveTypeById.get(leave.leaveTypeId) : undefined
+                                    const leaveTypeName = leaveType?.name ?? 'Annual Leave'
+                                    /* Mirrors AttachmentPolicyRule, which refuses the
+                                       approval outright: a Required type's document is
+                                       checked when the request is approved, not when it
+                                       is filed, so this row can be waiting on one. */
+                                    const awaitingDocument = isAwaitingDocument(leaveType, leave.evidenceUrl)
 
                                     return (
                                         <TableRow key={leave.id} sx={{ '&:last-child td': { borderBottom: 'none' }, '&:hover td': { bgcolor: 'action.hover' } }}>
@@ -426,7 +431,7 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                                                         <Button
                                                             size="small"
                                                             variant="contained"
-                                                            disabled={isWorking}
+                                                            disabled={isWorking || awaitingDocument}
                                                             onClick={() => {
                                                                 setActionTarget(leave.id)
                                                                 approveMutation.mutate(leave.id)
@@ -444,6 +449,14 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                                                         >
                                                             {isWorking && approveMutation.isPending ? '…' : 'Approve'}
                                                         </Button>
+                                                        {awaitingDocument && (
+                                                            <Typography
+                                                                variant="caption"
+                                                                sx={{ alignSelf: 'center', color: 'warning.dark', whiteSpace: 'nowrap' }}
+                                                            >
+                                                                📎 Awaiting document
+                                                            </Typography>
+                                                        )}
                                                         <Button
                                                             size="small"
                                                             variant="contained"
@@ -503,7 +516,7 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                             {isAdmin && <DetailRow label="Department" value={viewLeave.departmentName} />}
                             <DetailRow
                                 label="Leave Type"
-                                value={viewLeave.leaveTypeId != null ? (leaveTypeById.get(viewLeave.leaveTypeId) ?? 'Annual Leave') : 'Annual Leave'}
+                                value={viewLeave.leaveTypeId != null ? (leaveTypeById.get(viewLeave.leaveTypeId)?.name ?? 'Annual Leave') : 'Annual Leave'}
                             />
                             <Divider sx={{ my: 0.5 }} />
                             <DetailRow label="Start Date" value={formatDate(viewLeave.startDate)} />
@@ -628,7 +641,10 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                         <Button
                             size="small"
                             variant="contained"
-                            disabled={approveMutation.isPending}
+                            disabled={approveMutation.isPending || isAwaitingDocument(
+                                viewLeave.leaveTypeId != null ? leaveTypeById.get(viewLeave.leaveTypeId) : undefined,
+                                viewLeave.evidenceUrl,
+                            )}
                             onClick={() => {
                                 setActionTarget(viewLeave.id)
                                 approveMutation.mutate(viewLeave.id)

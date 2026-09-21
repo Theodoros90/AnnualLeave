@@ -25,8 +25,6 @@ function leaveType(name: string, availableTo: GenderAvailability = 'Both'): Leav
         minNoticeDays: 0,
         maxConsecutiveDays: 0,
         halfDayAllowed: false,
-        eligibilityNotes: '',
-        eligibilityScope: 'Limited',
         availableTo,
     }
 }

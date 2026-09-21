@@ -33,7 +33,7 @@ const ANNUAL_LEAVE_TYPE = {
     defaultAllowance: 23, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0,
-    maxConsecutiveDays: 0, halfDayAllowed: false, eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
+    maxConsecutiveDays: 0, halfDayAllowed: false, availableTo: 'Both',
 } as const
 
 /** Configured per child: 4 weeks (20 business days) each, until age 4. */

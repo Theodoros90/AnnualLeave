@@ -1,5 +1,4 @@
 export type AttachmentPolicy = 'None' | 'Optional' | 'Required'
-export type EligibilityScope = 'All' | 'Limited'
 /**
  * Who a leave type is offered to, by recorded gender. `'Both'` is everyone.
  * Enforced on the server (`ParentalLeaveEligibility`) and mirrored by
@@ -38,13 +37,9 @@ export interface LeaveType {
     minNoticeDays: number
     maxConsecutiveDays: number
     halfDayAllowed: boolean
-    eligibilityNotes: string
-    eligibilityScope: EligibilityScope
     /**
      * Who this type is offered to. Fixed on the three built-in types (see
-     * `availabilityLocked`) and an admin's choice on everything else. Distinct from
-     * `eligibilityScope`/`eligibilityNotes`, which are the free-text chip and gate
-     * nothing.
+     * `availabilityLocked`) and an admin's choice on everything else.
      */
     availableTo: GenderAvailability
     /**

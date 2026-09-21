@@ -15,8 +15,22 @@ namespace Application.AnnualLeaves.Commands;
 /// something; <c>client/src/lib/attachment-policy.ts</c> mirrors it so the form
 /// never offers a submit the API is certain to refuse.
 ///
-/// Synchronous, unlike the eligibility and per-child checks beside it: both call
-/// sites have already loaded the <see cref="LeaveType"/>, and the answer needs
+/// <para>
+/// <strong>It gates approval, not filing.</strong> The rule first ran on create and
+/// on every edit, and that refused exactly the request Military Leave exists for:
+/// call-up papers are dated the day of service, so the request has to go in before
+/// the document exists. The three callers are therefore the three ways a leave
+/// reaches <see cref="AnnualLeaveStatus.Approved"/> — <see cref="UpdateLeaveStatus"/>
+/// on the transition, <see cref="EditAnnualLeave"/> when the leave ends up approved
+/// after the edit (the admin's dialog, or an edit clearing the evidence on an
+/// already-approved row), and <see cref="CreateAnnualLeave"/> only in its
+/// auto-approving branch, where filing <em>is</em> approval. A request left
+/// Pending is never asked for one, which is what lets the employee attach it
+/// later from My Leave.
+/// </para>
+///
+/// Synchronous, unlike the eligibility and per-child checks beside it: every call
+/// site has already loaded the <see cref="LeaveType"/>, and the answer needs
 /// nothing else from the database.
 ///
 /// Only <see cref="AttachmentPolicy.Required"/> refuses anything.
@@ -37,6 +51,6 @@ public static class AttachmentPolicyRule
         if (!string.IsNullOrWhiteSpace(evidenceUrl))
             return null;
 
-        return $"{leaveType.Name} requires a supporting document. Attach one and submit again.";
+        return $"{leaveType.Name} requires a supporting document before it can be approved. Attach one first.";
     }
 }

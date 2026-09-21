@@ -26,8 +26,6 @@ public class LeaveTypeDto
     public int MinNoticeDays { get; set; }
     public int MaxConsecutiveDays { get; set; }
     public bool HalfDayAllowed { get; set; }
-    public string EligibilityNotes { get; set; } = "All employees";
-    public EligibilityScope EligibilityScope { get; set; }
     public GenderAvailability AvailableTo { get; set; }
     public int MinServiceMonths { get; set; }
 

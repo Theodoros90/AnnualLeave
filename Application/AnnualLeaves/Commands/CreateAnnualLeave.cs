@@ -39,16 +39,8 @@ public class CreateAnnualLeave
             if (leaveType is null)
                 return Result<string>.Failure("Selected leave type is not available.");
 
-            /* First of the three type-driven refusals, because it is the one the
-               employee can act on without leaving the form. The client disables
-               submit for it, so reaching this is a crafted request or a stale page. */
-            var attachmentError = AttachmentPolicyRule.Check(leaveType, annualLeave.EvidenceUrl);
-            if (attachmentError is not null)
-                return Result<string>.Failure(attachmentError);
-
-            /* Beside the attachment check and for the same reason: the employee can
-               act on it without leaving the form, and the client mirrors it so
-               reaching here means a crafted request or a stale page. */
+            /* The employee can act on this without leaving the form, and the client
+               mirrors it so reaching here means a crafted request or a stale page. */
             var halfDayError = HalfDayRule.Check(
                 leaveType, annualLeave.Duration, annualLeave.StartDate, annualLeave.EndDate);
             if (halfDayError is not null)
@@ -124,6 +116,15 @@ public class CreateAnnualLeave
             {
                 annualLeave.Status = AnnualLeaveStatus.Approved;
                 annualLeave.ApprovedAt = DateTime.UtcNow;
+
+                /* The attachment policy gates approval, and here filing is approval.
+                   A type that needs a manager's approval is deliberately not checked
+                   above: the document may not exist yet (call-up papers are dated
+                   the day of service), so the employee files now and attaches it
+                   from My Leave before anyone can approve. */
+                var attachmentError = AttachmentPolicyRule.Check(leaveType, annualLeave.EvidenceUrl);
+                if (attachmentError is not null)
+                    return Result<string>.Failure(attachmentError);
 
                 var balanceError = await AnnualLeaveBalanceCalculator.CheckSufficientBalanceAsync(
                     context,

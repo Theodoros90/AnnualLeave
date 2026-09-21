@@ -41,8 +41,6 @@ public class GetLeaveTypeList
                     MinNoticeDays = lt.MinNoticeDays,
                     MaxConsecutiveDays = lt.MaxConsecutiveDays,
                     HalfDayAllowed = lt.HalfDayAllowed,
-                    EligibilityNotes = lt.EligibilityNotes,
-                    EligibilityScope = lt.EligibilityScope,
                     /* Projected by hand, so every column has to be named here or it
                        saves with a 200 and reads back at its default. AvailableTo was
                        missing: a custom type restricted to one gender listed as Both,

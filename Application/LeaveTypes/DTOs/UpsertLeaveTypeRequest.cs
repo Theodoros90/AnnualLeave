@@ -61,11 +61,6 @@ public class UpsertLeaveTypeRequest
 
     public bool HalfDayAllowed { get; set; }
 
-    [StringLength(250)]
-    public string EligibilityNotes { get; set; } = "All employees";
-
-    public EligibilityScope EligibilityScope { get; set; } = EligibilityScope.All;
-
     /// <summary>
     /// Who the type is offered to. Fixed on the three built-in types — the
     /// validator refuses any value but theirs — and free on everything else.

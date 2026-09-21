@@ -8,7 +8,7 @@ import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import { createAnnualLeave, getAnnualLeaves, getChildLeaveEntitlements, getEmployeeProfiles, getHolidays, getLeaveTypes, getTeammates, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered, isParentalLeaveType } from '../../lib/parental-leave'
-import { attachmentRequirement, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
+import { attachmentRequirement, isAttachmentBlockingSubmit, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
 import { earliestStartDate, maxConsecutiveError, noticeError } from '../../lib/leave-limits'
 import { chargeableDays, collapseToHalfDay, durationLabel, isHalfDay, isHalfDayOffered, type LeaveDurationValue } from '../../lib/half-day'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
@@ -510,9 +510,15 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     // offering an upload under an "(optional)" label.
     const attachmentOffered = isAttachmentOffered(selectedType, false)
     const attachmentRecommended = attachmentRule === 'encouraged' && !attachment
-    // Mirrors AttachmentPolicyRule.Check on the server, which refuses the request
-    // outright — so this disables submit rather than letting it fail on the round trip.
+    // Short a document the type insists on. Not a blocker on its own: the server
+    // (AttachmentPolicyRule) gates *approval*, so a request that needs a manager's
+    // approval may be filed now and have the document attached from My Leave —
+    // call-up papers are dated the day of service. Submit is disabled only where
+    // submitting would approve, i.e. a type that approves itself.
     const attachmentMissing = isAttachmentMissing(selectedType, !!attachment)
+    const attachmentBlocking = isAttachmentBlockingSubmit(selectedType, !!attachment, selectedType?.requiresApproval === false)
+    // A required document the employee is allowed to bring later.
+    const attachmentDeferrable = attachmentRule === 'required' && !attachmentBlocking && attachmentMissing
 
     // Mirrors HalfDayRule.Check, which refuses a half day on a type that offers
     // none — so the buttons go rather than failing on the round trip.
@@ -524,7 +530,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         // certainly refuse.
         && (!requiresChild || (!!childId && !childPickerBlocked))
         && !isOverPerChildCap
-        && !attachmentMissing
+        && !attachmentBlocking
         // The leave type's own limits on when a request may start and how long it
         // may run. Both are refusals the server will certainly make.
         && !noticeBreach
@@ -992,7 +998,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                 }}
                             >
                                 {attachmentRule === 'required'
-                                    ? '(required)'
+                                    ? (selectedType?.requiresApproval === false ? '(required)' : '(required before approval)')
                                     : attachmentRule === 'encouraged' ? '(recommended)' : '(optional)'}
                             </Box>
                         </Box>
@@ -1005,9 +1011,17 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                 : isBereavement
                                     ? 'A death certificate or funeral notice helps approvals go through faster.'
                                     : attachmentRule === 'required'
-                                        ? `${selectedType?.name ?? 'This leave type'} cannot be submitted without a supporting document — only your manager and HR can see it.`
+                                        ? `${selectedType?.name ?? 'This leave type'} cannot be approved without a supporting document — only your manager and HR can see it.`
                                         : 'Anything that helps your manager approve: itinerary, booking confirmation, appointment letter.'}
                         </Box>
+                        {/* The document may not exist yet — call-up papers are dated
+                            the day of service — so say plainly that filing can go
+                            ahead and where the document is added afterwards. */}
+                        {attachmentDeferrable && (
+                            <Box sx={{ ...sectionSubSx, color: 'warning.dark', mt: '-6px' }}>
+                                Don't have it yet? Submit now and attach it later from My Leave — your manager can approve once it is there.
+                            </Box>
+                        )}
 
                         <input
                             ref={fileInputRef}
@@ -1031,16 +1045,16 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                     border: '2px dashed',
                                     borderColor: isDragOver
                                         ? 'primary.main'
-                                        : attachmentMissing
+                                        : attachmentBlocking
                                             ? 'error.main'
-                                            : attachmentRecommended
+                                            : attachmentDeferrable || attachmentRecommended
                                                 ? 'warning.main'
                                                 : 'divider',
                                     bgcolor: isDragOver
                                         ? softBg('primary')
-                                        : attachmentMissing
+                                        : attachmentBlocking
                                             ? softBg('error')
-                                            : attachmentRecommended
+                                            : attachmentDeferrable || attachmentRecommended
                                                 ? softBg('warning')
                                                 : 'action.hover',
                                     borderRadius: '10px',
@@ -1136,7 +1150,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                             </Box>
                         )}
 
-                        {attachmentMissing && (
+                        {attachmentBlocking && (
                             <Box sx={{
                                 mt: '10px', p: '8px 12px', bgcolor: softBg('error'),
                                 border: '1px solid', borderColor: 'error.main', borderRadius: '6px',
@@ -1204,9 +1218,9 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                         {attachmentOffered && (
                             <SummaryRow
                                 l="Attachments"
-                                r={attachment ? `📎 1 file` : attachmentMissing ? 'Required' : 'None'}
+                                r={attachment ? `📎 1 file` : attachmentBlocking ? 'Required' : attachmentDeferrable ? 'Add before approval' : 'None'}
                                 muted={!attachment && !attachmentMissing}
-                                tone={attachmentMissing ? 'error' : undefined}
+                                tone={attachmentBlocking ? 'error' : attachmentDeferrable ? 'warning' : undefined}
                             />
                         )}
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', py: '8px', fontSize: 12, mt: '6px', pt: '12px', borderTop: '2px solid', borderTopColor: 'divider' }}>
@@ -1329,7 +1343,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                         // Same shape as the child clause: only once
                                         // the dates are in is the missing document
                                         // the thing standing in the way.
-                                        : attachmentMissing && !!startDate && !!endDate
+                                        : attachmentBlocking && !!startDate && !!endDate
                                             ? 'Attach a document to continue'
                                         : 'Pick dates to continue'}
                         </Box>
@@ -1583,13 +1597,13 @@ function DelegateAvatar({ name }: { name: string }) {
 }
 
 /** `tone` marks a value that is standing in the way, not merely absent. */
-function SummaryRow({ l, r, muted, tone }: { l: string; r: string; muted?: boolean; tone?: 'error' }) {
+function SummaryRow({ l, r, muted, tone }: { l: string; r: string; muted?: boolean; tone?: 'error' | 'warning' }) {
     return (
         <Box sx={{ display: 'flex', justifyContent: 'space-between', py: '8px', fontSize: 12, borderBottom: '1px solid', borderBottomColor: 'divider' }}>
             <Box sx={{ color: 'text.secondary' }}>{l}</Box>
             <Box sx={{
                 fontWeight: muted ? 400 : 600,
-                color: tone === 'error' ? 'error.main' : muted ? 'text.disabled' : 'text.primary',
+                color: tone === 'error' ? 'error.main' : tone === 'warning' ? 'warning.dark' : muted ? 'text.disabled' : 'text.primary',
             }}>{r}</Box>
         </Box>
     )

@@ -15,10 +15,17 @@ namespace WorkTrack.Tests;
 /// <see cref="LeaveType.AttachmentPolicy"/> used to be display-only: the admin
 /// dialog saved it and the leave type's card rendered it, and nothing in the
 /// request path ever read it. These tests pin it as an enforced rule — a type set
-/// to <see cref="AttachmentPolicy.Required"/> refuses a request that carries no
-/// evidence, on create and on edit alike.
+/// to <see cref="AttachmentPolicy.Required"/> cannot be <em>approved</em> while
+/// the request carries no evidence.
 ///
-/// Three things the tests exist to hold still:
+/// Approval, not filing. The rule first refused at filing time, and that refused
+/// exactly the request Military Leave exists for: call-up papers are dated the day
+/// of service, so the request has to be made before the document exists. An
+/// employee now files without one, attaches it later from My Leave, and only then
+/// can a manager approve. The one place filing still refuses is a type that
+/// auto-approves, because there filing <em>is</em> approval.
+///
+/// Four things the tests exist to hold still:
 ///
 /// <list type="bullet">
 /// <item><description>
@@ -27,9 +34,17 @@ namespace WorkTrack.Tests;
 /// or an admin nudging a type towards documentation would lock employees out of it.
 /// </description></item>
 /// <item><description>
-/// There is no exemption. An admin filing on somebody's behalf, and an edit to a
-/// request filed before the policy was set, are both refused — the rule is about
-/// the leave type, not about who is typing.
+/// Every path into <c>Approved</c> is gated — the approve button
+/// (<see cref="UpdateLeaveStatus"/>), the admin's edit dialog
+/// (<see cref="EditAnnualLeave"/> with a status), and an auto-approving type's
+/// creation (<see cref="CreateAnnualLeave"/>). Leaving a request Pending, or
+/// moving it to Rejected, never asks for a document.
+/// </description></item>
+/// <item><description>
+/// There is no exemption at approval. An admin approving on somebody's behalf is
+/// refused like a manager — the rule is about the leave type, not about who is
+/// clicking. But an edit that keeps a request Pending is not an approval, so an
+/// admin fixing the reason on an undocumented request is no longer refused.
 /// </description></item>
 /// <item><description>
 /// Whitespace is not an attachment. <see cref="AnnualLeave.EvidenceUrl"/> is a
@@ -40,12 +55,17 @@ namespace WorkTrack.Tests;
 public class AttachmentPolicyEnforcementTests
 {
     private const string UserId = "employee-1";
+    private const string AdminId = "admin-1";
     private const string ProfileId = "profile-1";
     private const string EvidenceUrl = "/api/files/8f2c1b6e-0000-4000-8000-000000000001";
 
     private const int RequiredTypeId = 1;
     private const int OptionalTypeId = 2;
     private const int NoneTypeId = 3;
+    private const int AutoApprovedRequiredTypeId = 4;
+
+    private const string ApprovalRefusal =
+        "Evidence Leave requires a supporting document before it can be approved. Attach one first.";
 
     private static async Task<AppDbContext> WorldAsync()
     {
@@ -59,6 +79,14 @@ public class AttachmentPolicyEnforcementTests
             UserName = "employee-1@example.com",
             Email = "employee-1@example.com",
             DisplayName = "Andreas Georgiou",
+        });
+
+        db.Users.Add(new User
+        {
+            Id = AdminId,
+            UserName = "admin-1@example.com",
+            Email = "admin-1@example.com",
+            DisplayName = "Admin",
         });
 
         db.EmployeeProfiles.Add(new EmployeeProfile
@@ -105,6 +133,18 @@ public class AttachmentPolicyEnforcementTests
             DefaultAllowance = 25,
         });
 
+        // Filing is approval here, so filing is where the document is asked for.
+        db.LeaveTypes.Add(new LeaveType
+        {
+            Id = AutoApprovedRequiredTypeId,
+            Name = "Evidence Leave",
+            IsActive = true,
+            RequiresApproval = false,
+            AffectsBalance = false,
+            AttachmentPolicy = AttachmentPolicy.Required,
+            DefaultAllowance = 10,
+        });
+
         await db.SaveChangesAsync();
         return db;
     }
@@ -128,7 +168,8 @@ public class AttachmentPolicyEnforcementTests
             }, CancellationToken.None);
 
     /// <summary>Writes an existing request directly, bypassing the create path.</summary>
-    private static async Task SeedLeaveAsync(AppDbContext db, int leaveTypeId, string? evidenceUrl)
+    private static async Task SeedLeaveAsync(
+        AppDbContext db, int leaveTypeId, string? evidenceUrl, AnnualLeaveStatus status = AnnualLeaveStatus.Pending)
     {
         db.AnnualLeaves.Add(new AnnualLeave
         {
@@ -140,17 +181,18 @@ public class AttachmentPolicyEnforcementTests
             EndDate = new DateTime(2026, 6, 5),
             Reason = "Out of office",
             EvidenceUrl = evidenceUrl,
-            Status = AnnualLeaveStatus.Pending,
+            Status = status,
         });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
     }
 
-    private static Task<Result<Unit>> Edit(AppDbContext db, int leaveTypeId, string? evidenceUrl, bool isAdmin = false) =>
+    private static Task<Result<Unit>> Edit(
+        AppDbContext db, int leaveTypeId, string? evidenceUrl, bool isAdmin = false, AnnualLeaveStatus? status = null) =>
         new EditAnnualLeave.Handler(db, new FakeEmailService())
             .Handle(new EditAnnualLeave.Command
             {
-                ChangedByUserId = isAdmin ? "admin-1" : UserId,
+                ChangedByUserId = isAdmin ? AdminId : UserId,
                 IsAdmin = isAdmin,
                 AnnualLeave = new EditAnnualLeaveRequest
                 {
@@ -160,48 +202,69 @@ public class AttachmentPolicyEnforcementTests
                     EndDate = new DateTime(2026, 6, 12),
                     Reason = "Rebooked",
                     EvidenceUrl = evidenceUrl,
+                    Status = status,
                 },
             }, CancellationToken.None);
 
+    private static Task<Result<Unit>> SetStatus(AppDbContext db, AnnualLeaveStatus status) =>
+        new UpdateLeaveStatus.Handler(db, new FakeEmailService())
+            .Handle(new UpdateLeaveStatus.Command
+            {
+                LeaveId = "L1",
+                ChangedByUserId = AdminId,
+                IsAdmin = true,
+                Request = new UpdateLeaveStatusRequest { Status = status },
+            }, CancellationToken.None);
+
+    private static async Task<AnnualLeave> StoredLeaveAsync(AppDbContext db)
+    {
+        db.ChangeTracker.Clear();
+        return await db.AnnualLeaves.AsNoTracking().SingleAsync();
+    }
+
+    // ── Filing ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The Military Leave case: the document is dated the day of service, so the
+    /// request has to go in before it exists. Filing is allowed; approval waits.
+    /// </summary>
     [Fact]
-    public async Task A_type_that_requires_an_attachment_refuses_a_request_carrying_none()
+    public async Task A_type_needing_approval_accepts_filing_without_the_document_it_requires()
     {
         await using var db = await WorldAsync();
 
         var result = await Create(db, RequiredTypeId, evidenceUrl: null);
 
+        Assert.True(result.IsSuccess);
+        var leave = Assert.Single(await db.AnnualLeaves.ToListAsync());
+        Assert.Equal(AnnualLeaveStatus.Pending, leave.Status);
+        Assert.Null(leave.EvidenceUrl);
+    }
+
+    /// <summary>Filing is approval for an auto-approving type, so filing is gated.</summary>
+    [Fact]
+    public async Task An_auto_approving_type_refuses_filing_without_the_document_it_requires()
+    {
+        await using var db = await WorldAsync();
+
+        var result = await Create(db, AutoApprovedRequiredTypeId, evidenceUrl: null);
+
         Assert.False(result.IsSuccess);
-        Assert.Equal(
-            "Evidence Leave requires a supporting document. Attach one and submit again.",
-            result.Error);
+        Assert.Equal(ApprovalRefusal, result.Error);
         Assert.Empty(await db.AnnualLeaves.ToListAsync());
     }
 
     [Fact]
-    public async Task A_type_that_requires_an_attachment_accepts_a_request_carrying_one()
+    public async Task An_auto_approving_type_accepts_filing_with_the_document_it_requires()
     {
         await using var db = await WorldAsync();
 
-        var result = await Create(db, RequiredTypeId, EvidenceUrl);
+        var result = await Create(db, AutoApprovedRequiredTypeId, EvidenceUrl);
 
         Assert.True(result.IsSuccess);
         var leave = Assert.Single(await db.AnnualLeaves.ToListAsync());
+        Assert.Equal(AnnualLeaveStatus.Approved, leave.Status);
         Assert.Equal(EvidenceUrl, leave.EvidenceUrl);
-    }
-
-    /// <summary>
-    /// EvidenceUrl is free text, so a blank string would otherwise satisfy a
-    /// required policy while pointing at nothing.
-    /// </summary>
-    [Fact]
-    public async Task Whitespace_is_not_an_attachment()
-    {
-        await using var db = await WorldAsync();
-
-        var result = await Create(db, RequiredTypeId, "   ");
-
-        Assert.False(result.IsSuccess);
-        Assert.Empty(await db.AnnualLeaves.ToListAsync());
     }
 
     [Fact]
@@ -226,75 +289,158 @@ public class AttachmentPolicyEnforcementTests
         Assert.Single(await db.AnnualLeaves.ToListAsync());
     }
 
+    // ── The approve button ────────────────────────────────────────────────────
+
     [Fact]
-    public async Task An_edit_that_clears_the_evidence_is_refused()
+    public async Task Approval_is_refused_while_the_document_is_missing()
+    {
+        await using var db = await WorldAsync();
+        await SeedLeaveAsync(db, RequiredTypeId, evidenceUrl: null);
+
+        var result = await SetStatus(db, AnnualLeaveStatus.Approved);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ApprovalRefusal, result.Error);
+        var leave = await StoredLeaveAsync(db);
+        Assert.Equal(AnnualLeaveStatus.Pending, leave.Status);
+        Assert.Null(leave.ApprovedAt);
+    }
+
+    /// <summary>
+    /// EvidenceUrl is free text, so a blank string would otherwise satisfy a
+    /// required policy while pointing at nothing.
+    /// </summary>
+    [Fact]
+    public async Task Whitespace_is_not_an_attachment()
+    {
+        await using var db = await WorldAsync();
+        await SeedLeaveAsync(db, RequiredTypeId, "   ");
+
+        var result = await SetStatus(db, AnnualLeaveStatus.Approved);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(AnnualLeaveStatus.Pending, (await StoredLeaveAsync(db)).Status);
+    }
+
+    [Fact]
+    public async Task Approval_goes_through_once_the_document_is_attached()
     {
         await using var db = await WorldAsync();
         await SeedLeaveAsync(db, RequiredTypeId, EvidenceUrl);
 
-        var result = await Edit(db, RequiredTypeId, evidenceUrl: null);
+        var result = await SetStatus(db, AnnualLeaveStatus.Approved);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(
-            "Evidence Leave requires a supporting document. Attach one and submit again.",
-            result.Error);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AnnualLeaveStatus.Approved, (await StoredLeaveAsync(db)).Status);
+    }
 
-        db.ChangeTracker.Clear();
-        var leave = await db.AnnualLeaves.AsNoTracking().SingleAsync();
+    /// <summary>The rule is about approving; declining an undocumented request is fine.</summary>
+    [Fact]
+    public async Task Rejection_is_not_blocked_by_a_missing_document()
+    {
+        await using var db = await WorldAsync();
+        await SeedLeaveAsync(db, RequiredTypeId, evidenceUrl: null);
+
+        var result = await SetStatus(db, AnnualLeaveStatus.Rejected);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AnnualLeaveStatus.Rejected, (await StoredLeaveAsync(db)).Status);
+    }
+
+    // ── Editing ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The edit an employee makes to attach the document once it exists, and the
+    /// reason a pending request has to be editable at all.
+    /// </summary>
+    [Fact]
+    public async Task An_employee_can_attach_the_document_to_their_pending_request()
+    {
+        await using var db = await WorldAsync();
+        await SeedLeaveAsync(db, RequiredTypeId, evidenceUrl: null);
+
+        var result = await Edit(db, RequiredTypeId, EvidenceUrl);
+
+        Assert.True(result.IsSuccess);
+        var leave = await StoredLeaveAsync(db);
         Assert.Equal(EvidenceUrl, leave.EvidenceUrl);
-        Assert.Equal("Out of office", leave.Reason);
+        Assert.Equal(AnnualLeaveStatus.Pending, leave.Status);
     }
 
     /// <summary>
-    /// The no-exemption decision, and the one that will bite on real data: a
-    /// request filed before the policy was set to Required has no evidence, so an
-    /// admin cannot edit it — not even to fix the reason — without attaching one.
+    /// The old no-exemption rule refused this: a request predating the policy
+    /// carries no evidence, and an admin could not fix its reason without
+    /// attaching one. Keeping it Pending is not an approval, so it passes now.
     /// </summary>
     [Fact]
-    public async Task An_edit_of_a_request_predating_the_policy_is_refused_for_an_admin_too()
+    public async Task An_edit_that_keeps_an_undocumented_request_pending_is_accepted()
     {
         await using var db = await WorldAsync();
         await SeedLeaveAsync(db, RequiredTypeId, evidenceUrl: null);
 
         var result = await Edit(db, RequiredTypeId, evidenceUrl: null, isAdmin: true);
 
-        Assert.False(result.IsSuccess);
-        Assert.Equal(
-            "Evidence Leave requires a supporting document. Attach one and submit again.",
-            result.Error);
-    }
-
-    [Fact]
-    public async Task An_edit_that_keeps_the_evidence_is_accepted()
-    {
-        await using var db = await WorldAsync();
-        await SeedLeaveAsync(db, RequiredTypeId, EvidenceUrl);
-
-        var result = await Edit(db, RequiredTypeId, EvidenceUrl);
-
         Assert.True(result.IsSuccess);
-
-        db.ChangeTracker.Clear();
-        var leave = await db.AnnualLeaves.AsNoTracking().SingleAsync();
-        Assert.Equal("Rebooked", leave.Reason);
+        Assert.Equal("Rebooked", (await StoredLeaveAsync(db)).Reason);
     }
 
-    /// <summary>
-    /// An edit can move a request onto a type with a different policy, which is
-    /// the moment the requirement starts applying to it.
-    /// </summary>
+    /// <summary>An edit can move a pending request onto a type that requires evidence; it stays fileable.</summary>
     [Fact]
-    public async Task An_edit_onto_a_type_that_requires_an_attachment_is_refused_without_one()
+    public async Task An_edit_onto_a_type_that_requires_an_attachment_is_accepted_while_pending()
     {
         await using var db = await WorldAsync();
         await SeedLeaveAsync(db, NoneTypeId, evidenceUrl: null);
 
         var result = await Edit(db, RequiredTypeId, evidenceUrl: null);
 
-        Assert.False(result.IsSuccess);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(RequiredTypeId, (await StoredLeaveAsync(db)).LeaveTypeId);
+    }
 
-        db.ChangeTracker.Clear();
-        var leave = await db.AnnualLeaves.AsNoTracking().SingleAsync();
-        Assert.Equal(NoneTypeId, leave.LeaveTypeId);
+    /// <summary>The admin's edit dialog is the third way into Approved, and it is gated too.</summary>
+    [Fact]
+    public async Task Approving_through_the_edit_dialog_is_refused_while_the_document_is_missing()
+    {
+        await using var db = await WorldAsync();
+        await SeedLeaveAsync(db, RequiredTypeId, evidenceUrl: null);
+
+        var result = await Edit(db, RequiredTypeId, evidenceUrl: null, isAdmin: true, status: AnnualLeaveStatus.Approved);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ApprovalRefusal, result.Error);
+        var leave = await StoredLeaveAsync(db);
+        Assert.Equal(AnnualLeaveStatus.Pending, leave.Status);
+        Assert.Equal("Out of office", leave.Reason);
+    }
+
+    /// <summary>The rule reads the evidence as edited, so attaching and approving in one save is fine.</summary>
+    [Fact]
+    public async Task Approving_through_the_edit_dialog_with_the_document_attached_in_the_same_edit_is_accepted()
+    {
+        await using var db = await WorldAsync();
+        await SeedLeaveAsync(db, RequiredTypeId, evidenceUrl: null);
+
+        var result = await Edit(db, RequiredTypeId, EvidenceUrl, isAdmin: true, status: AnnualLeaveStatus.Approved);
+
+        Assert.True(result.IsSuccess);
+        var leave = await StoredLeaveAsync(db);
+        Assert.Equal(AnnualLeaveStatus.Approved, leave.Status);
+        Assert.Equal(EvidenceUrl, leave.EvidenceUrl);
+    }
+
+    /// <summary>An already-approved request must not be left approved and undocumented by an edit.</summary>
+    [Fact]
+    public async Task An_edit_that_clears_the_evidence_on_an_approved_request_is_refused()
+    {
+        await using var db = await WorldAsync();
+        await SeedLeaveAsync(db, RequiredTypeId, EvidenceUrl, AnnualLeaveStatus.Approved);
+
+        var result = await Edit(db, RequiredTypeId, evidenceUrl: null, isAdmin: true);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ApprovalRefusal, result.Error);
+        var leave = await StoredLeaveAsync(db);
+        Assert.Equal(EvidenceUrl, leave.EvidenceUrl);
+        Assert.Equal("Out of office", leave.Reason);
     }
 }

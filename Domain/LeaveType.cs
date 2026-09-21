@@ -7,12 +7,6 @@ public enum AttachmentPolicy
     Required = 2
 }
 
-public enum EligibilityScope
-{
-    All = 0,
-    Limited = 1
-}
-
 /// <summary>
 /// Who a leave type is offered to, by recorded <see cref="Gender"/>. <c>Both</c> is
 /// 0 so every row predating the column reads as offered to everyone, which is what
@@ -86,8 +80,6 @@ public class LeaveType
     public int MinNoticeDays { get; set; }
     public int MaxConsecutiveDays { get; set; }
     public bool HalfDayAllowed { get; set; }
-    public string EligibilityNotes { get; set; } = "All employees";
-    public EligibilityScope EligibilityScope { get; set; } = EligibilityScope.All;
 
     /* Which gender this type is offered to. Enforced, not advertised: a request
        against a type restricted to one gender is refused for an employee whose
@@ -96,9 +88,7 @@ public class LeaveType
 
        Fixed on the three built-in types (SystemLeaveTypes.FixedAvailability): Annual
        Leave is for everyone, Maternity Leave for women, Paternity Leave for men, and
-       the validator refuses any other value for them. Editable on everything else.
-       Distinct from EligibilityScope/EligibilityNotes, which are the free-text chip
-       on the card and gate nothing. */
+       the validator refuses any other value for them. Editable on everything else. */
     public GenderAvailability AvailableTo { get; set; } = GenderAvailability.Both;
 
     /* How long somebody has to have worked here before this type is offered to

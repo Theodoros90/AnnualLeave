@@ -8,6 +8,7 @@ import {
     getAnnualLeaves, getDepartments, getEmployeeProfiles, getHolidays,
     getLeaveStatusHistories, getLeaveTypes, updateLeaveStatus,
 } from '../../lib/api'
+import { isAwaitingDocument } from '../../lib/attachment-policy'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import {
@@ -369,8 +370,19 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
         })
     }
 
+    /** Mirrors AttachmentPolicyRule: a Required type's document is checked at approval. */
+    function awaitingDocument(l: AnnualLeave) {
+        return isAwaitingDocument(l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined, l.evidenceUrl)
+    }
+
     async function bulkApprove() {
-        for (const id of selected) await approveMut.mutateAsync(id).catch(() => {})
+        for (const id of selected) {
+            // Skipped rather than attempted: the server would refuse it, and one
+            // refusal among a sweep would read as the whole sweep failing.
+            const target = leaves.find((l) => l.id === id)
+            if (target && awaitingDocument(target)) continue
+            await approveMut.mutateAsync(id).catch(() => {})
+        }
         setSelected(new Set())
     }
 
@@ -786,6 +798,10 @@ function LeaveRow({
     const typeName = leaveType?.name ?? (leave.leaveTypeId != null ? undefined : 'Annual')
     const typeKey = leaveTypeKey(typeName)
     const isPending = leave.status === 'Pending'
+    /* Mirrors AttachmentPolicyRule, which refuses the approval outright: a Required
+       type's document is checked when the request is approved, not when it is
+       filed, so a pending row can be waiting on one. Reject stays available. */
+    const awaitingDocument = isPending && isAwaitingDocument(leaveType, leave.evidenceUrl)
     const hasConflict = !!conflicts && conflicts.length > 0
 
     // Nominated cover, shown in whichever coverage block renders below.
@@ -997,7 +1013,14 @@ function LeaveRow({
                 >
                     {isPending ? (
                         <>
-                            <ActionBtn variant="success" onClick={onApprove} disabled={disabled}>Approve</ActionBtn>
+                            {awaitingDocument && (
+                                <Box component="span" sx={{
+                                    alignSelf: 'center', fontSize: 11, color: 'warning.dark',
+                                    bgcolor: softBg('warning'), border: '1px solid', borderColor: 'warning.main',
+                                    borderRadius: '10px', px: '8px', py: '2px', whiteSpace: 'nowrap',
+                                }}>📎 Awaiting document</Box>
+                            )}
+                            <ActionBtn variant="success" onClick={onApprove} disabled={disabled || awaitingDocument}>Approve</ActionBtn>
                             <ActionBtn variant="danger" onClick={onReject} disabled={disabled}>Reject</ActionBtn>
                         </>
                     ) : (
