@@ -29,6 +29,7 @@ public class LeaveTypeDto
     public string EligibilityNotes { get; set; } = "All employees";
     public EligibilityScope EligibilityScope { get; set; }
     public GenderAvailability AvailableTo { get; set; }
+    public int MinServiceMonths { get; set; }
 
     /// <summary>
     /// Whether <see cref="AvailableTo"/> is fixed by what this type is — true for

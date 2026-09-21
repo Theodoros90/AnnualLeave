@@ -48,6 +48,14 @@ export interface LeaveType {
      */
     availableTo: GenderAvailability
     /**
+     * Months of service before this type is offered, measured from the employee's
+     * start date to today. 0 is no minimum. Enforced on the server
+     * (`MinimumServiceRule`) and mirrored by `lib/leave-limits.ts`, so a card the
+     * rule hides is one the API would refuse. Optional because an API built before
+     * the column sends none, which reads as 0.
+     */
+    minServiceMonths?: number
+    /**
      * Whether `availableTo` is fixed by what the type is — Annual Leave for
      * everyone, Maternity Leave for women, Paternity Leave for men. Server-derived
      * from the name like `isSystem`; the dialog renders the radios read-only when it

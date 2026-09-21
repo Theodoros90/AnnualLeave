@@ -101,5 +101,18 @@ public class LeaveType
        on the card and gate nothing. */
     public GenderAvailability AvailableTo { get; set; } = GenderAvailability.Both;
 
+    /* How long somebody has to have worked here before this type is offered to
+       them, in months, measured from EmployeeProfile.EmploymentStartDate to the day
+       they file (MinimumServiceRule). 0 is no minimum — the same reading as
+       MinNoticeDays and MaxConsecutiveDays, and the opposite of a 0 DefaultAllowance.
+
+       The seeded data promised this in prose and enforced nothing: Unpaid Leave's
+       chip read "Employees after 1yr" and Sabbatical's "Tenured employees (5+
+       years)". Those two are stamped 12 and 60 by migration AddLeaveTypeMinService;
+       everything else stays at 0. An employee with no recorded start date passes,
+       for the same reason a null Gender does: it means nobody entered it, not that
+       they started today. */
+    public int MinServiceMonths { get; set; }
+
     public ICollection<AnnualLeave> AnnualLeaves { get; set; } = new List<AnnualLeave>();
 }

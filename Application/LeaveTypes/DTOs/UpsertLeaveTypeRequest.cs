@@ -71,4 +71,12 @@ public class UpsertLeaveTypeRequest
     /// validator refuses any value but theirs — and free on everything else.
     /// </summary>
     public GenderAvailability AvailableTo { get; set; } = GenderAvailability.Both;
+
+    /// <summary>
+    /// Months of service before the type is offered, measured from the employee's
+    /// start date to the day they file. 0 is no minimum. Ten years is the ceiling
+    /// — plenty for a sabbatical policy, and anything larger is a typed year.
+    /// </summary>
+    [Range(0, 120)]
+    public int MinServiceMonths { get; set; }
 }

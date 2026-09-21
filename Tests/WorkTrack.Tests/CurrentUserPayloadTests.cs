@@ -67,6 +67,28 @@ public class CurrentUserPayloadTests(ApiRouteTableFixture fixture)
     }
 
     /// <summary>
+    /// The leave forms hide a type wanting more service than the employee has,
+    /// measured from this date — so like <c>gender</c> it is a field the client
+    /// decides with, and like <c>gender</c> dropping it fails open: the client reads
+    /// undefined as "not recorded" and offers every type, with the server refusing
+    /// whichever one is pressed.
+    /// </summary>
+    [Fact]
+    public void The_employment_start_date_reaches_the_client_as_an_iso_date()
+    {
+        var profile = new EmployeeProfile
+        {
+            Id = "profile-1",
+            UserId = "user-1",
+            EmploymentStartDate = new DateOnly(2024, 3, 18),
+        };
+
+        var json = Render(Gender.Female, profile);
+
+        Assert.Equal("2024-03-18", json.GetProperty("employmentStartDate").GetString());
+    }
+
+    /// <summary>
     /// The fields the client's <c>UserInfo</c> type declares. Named one by one so
     /// that extracting the anonymous object into a DTO cannot quietly drop one.
     /// </summary>
@@ -81,6 +103,7 @@ public class CurrentUserPayloadTests(ApiRouteTableFixture fixture)
                  {
                      "id", "userName", "email", "displayName", "imageUrl", "phoneNumber",
                      "dateOfBirth", "gender", "departmentId", "departmentName", "hasChildren", "roles",
+                     "employmentStartDate",
                  })
         {
             Assert.True(json.TryGetProperty(field, out _), $"user-info is missing '{field}'.");

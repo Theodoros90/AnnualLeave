@@ -492,6 +492,49 @@ it('sends who a type is available to unchanged when toggling it from the card', 
     })))
 })
 
+/*
+ * Minimum service. The seeded Unpaid Leave chip has read "Employees after 1yr"
+ * since the type existed, and nothing enforced it; `minServiceMonths` is the
+ * column MinimumServiceRule now reads. The card has to say it, the dialog has to
+ * edit it, and — the trap CLAUDE.md warns about — the Enabled toggle, a full
+ * replace, has to send it back unchanged.
+ */
+const UNPAID = leaveType({ id: 9, name: 'Unpaid Leave', perChildEntitlement: false, minServiceMonths: 12 })
+
+it('says on the card how long an employee has to have served', async () => {
+    api.getLeaveTypes.mockResolvedValue([UNPAID])
+    await renderPanel()
+
+    expect(screen.getByText(/12 months of service/)).toBeInTheDocument()
+})
+
+it('offers a minimum service field prefilled from the type and saves what is typed', async () => {
+    api.getLeaveTypes.mockResolvedValue([UNPAID])
+    await renderPanel()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+    const field = screen.getByLabelText(/Min service \(months\)/)
+    expect(field).toHaveValue(12)
+
+    fireEvent.change(field, { target: { value: '24' } })
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledTimes(1))
+    expect(api.updateLeaveType.mock.calls[0][1]).toMatchObject({ minServiceMonths: 24 })
+})
+
+it('sends the minimum service unchanged when toggling a type from the card', async () => {
+    api.getLeaveTypes.mockResolvedValue([UNPAID])
+    await renderPanel()
+
+    fireEvent.click(screen.getAllByRole('switch')[0])
+
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledWith(UNPAID.id, expect.objectContaining({
+        isActive: false,
+        minServiceMonths: 12,
+    })))
+})
+
 it('says on the card when a type is for one gender only, and nothing when it is for everyone', async () => {
     api.getLeaveTypes.mockResolvedValue([
         leaveType({ id: 1, name: 'Paternity Leave', availableTo: 'Male' }),

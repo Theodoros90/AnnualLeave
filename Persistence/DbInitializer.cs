@@ -796,6 +796,9 @@ public class DbInitializer
                 DefaultAllowance = 30, AllowanceUnit = "days/year",
                 AccrualNotes = "No annual limit · Manager + HR approval",
                 MinNoticeDays = 14, MaxConsecutiveDays = 30, HalfDayAllowed = false,
+                // The chip below promised this for as long as the type existed;
+                // MinimumServiceRule is what now makes it true.
+                MinServiceMonths = 12,
                 EligibilityNotes = "Employees after 1yr", EligibilityScope = EligibilityScope.Limited
             },
             new LeaveType
@@ -807,6 +810,7 @@ public class DbInitializer
                 DefaultAllowance = 90, AllowanceUnit = "days/5 years",
                 AccrualNotes = "After 5 years of service · Once per period",
                 MinNoticeDays = 60, MaxConsecutiveDays = 90, HalfDayAllowed = false,
+                MinServiceMonths = 60,
                 EligibilityNotes = "Tenured employees (5+ years)", EligibilityScope = EligibilityScope.Limited
             },
             new LeaveType
@@ -854,8 +858,8 @@ public class DbInitializer
             ["Compassionate Leave"] = new() { Icon = "🕊️", ColorKey = "bereavement", Description = "Time off following the loss of a loved one.", Paid = true, AttachmentPolicy = AttachmentPolicy.Optional, DefaultAllowance = 5, AllowanceUnit = "days/event", AccrualNotes = "Granted per event · No annual limit", MinNoticeDays = 0, MaxConsecutiveDays = 5, HalfDayAllowed = false, EligibilityNotes = "All employees", EligibilityScope = EligibilityScope.All },
             ["Maternity Leave"] = new() { Icon = "👶", ColorKey = "maternity", Description = "Time off for new mothers around the birth of a child.", Paid = true, AttachmentPolicy = AttachmentPolicy.Required, DefaultAllowance = 90, AllowanceUnit = "days/event", AccrualNotes = "Granted per event · Once per pregnancy", MinNoticeDays = 30, MaxConsecutiveDays = 90, HalfDayAllowed = false, EligibilityNotes = "Female employees", EligibilityScope = EligibilityScope.Limited, AvailableTo = GenderAvailability.Female },
             ["Paternity Leave"] = new() { Icon = "👨‍👶", ColorKey = "paternity", Description = "Time off for a father around the birth of a child, and while that child is young.", Paid = true, AttachmentPolicy = AttachmentPolicy.Required, DefaultAllowance = 0, AllowanceUnit = "weeks/child", PerChildEntitlement = true, PerChildTotalWeeks = 18, PerChildWeeksPerYear = 5, ChildEligibleUntilAge = 15, AccrualNotes = "18 weeks per child · Max 5 weeks per child per year · Until the child turns 15", MinNoticeDays = 30, MaxConsecutiveDays = 25, HalfDayAllowed = false, EligibilityNotes = "Employees with children under 15", EligibilityScope = EligibilityScope.Limited, AvailableTo = GenderAvailability.Male },
-            ["Unpaid Leave"] = new() { Icon = "💼", ColorKey = "unpaid", Description = "Extended time off without pay or balance deduction.", Paid = false, AttachmentPolicy = AttachmentPolicy.None, DefaultAllowance = 30, AllowanceUnit = "days/year", AccrualNotes = "No annual limit · Manager + HR approval", MinNoticeDays = 14, MaxConsecutiveDays = 30, HalfDayAllowed = false, EligibilityNotes = "Employees after 1yr", EligibilityScope = EligibilityScope.Limited },
-            ["Sabbatical"] = new() { Icon = "🎓", ColorKey = "default", Description = "Extended career break for study, travel, or research.", Paid = false, AttachmentPolicy = AttachmentPolicy.None, DefaultAllowance = 90, AllowanceUnit = "days/5 years", AccrualNotes = "After 5 years of service · Once per period", MinNoticeDays = 60, MaxConsecutiveDays = 90, HalfDayAllowed = false, EligibilityNotes = "Tenured employees (5+ years)", EligibilityScope = EligibilityScope.Limited },
+            ["Unpaid Leave"] = new() { Icon = "💼", ColorKey = "unpaid", Description = "Extended time off without pay or balance deduction.", Paid = false, AttachmentPolicy = AttachmentPolicy.None, DefaultAllowance = 30, AllowanceUnit = "days/year", AccrualNotes = "No annual limit · Manager + HR approval", MinNoticeDays = 14, MaxConsecutiveDays = 30, HalfDayAllowed = false, MinServiceMonths = 12, EligibilityNotes = "Employees after 1yr", EligibilityScope = EligibilityScope.Limited },
+            ["Sabbatical"] = new() { Icon = "🎓", ColorKey = "default", Description = "Extended career break for study, travel, or research.", Paid = false, AttachmentPolicy = AttachmentPolicy.None, DefaultAllowance = 90, AllowanceUnit = "days/5 years", AccrualNotes = "After 5 years of service · Once per period", MinNoticeDays = 60, MaxConsecutiveDays = 90, HalfDayAllowed = false, MinServiceMonths = 60, EligibilityNotes = "Tenured employees (5+ years)", EligibilityScope = EligibilityScope.Limited },
         };
 
         var rows = await context.LeaveTypes.ToListAsync();
@@ -887,6 +891,7 @@ public class DbInitializer
             row.EligibilityNotes = preset.EligibilityNotes;
             row.EligibilityScope = preset.EligibilityScope;
             row.AvailableTo = preset.AvailableTo;
+            row.MinServiceMonths = preset.MinServiceMonths;
             changed = true;
         }
 

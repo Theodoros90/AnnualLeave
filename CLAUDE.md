@@ -97,7 +97,7 @@ that means when adding code:
 |--------|-----------|
 | `User` | Extends `IdentityUser`; has `DisplayName`, `ImageUrl`, `IsActive` (may this account sign in — a leaver is switched off rather than deleted, since `DeleteAdminUser` nulls out every approval they gave). `DateOfBirth` and `Gender` are recorded HR data an admin maintains on the Users panel. **`Gender` decides who is offered Maternity and Paternity Leave, and any other type an admin restricted through `LeaveType.AvailableTo`** — see [Who is offered a leave type](#domain-model-summary) below the table. It follows `DepartmentId`'s rule exactly — **required for an Employee or a Manager, refused for an Admin** — on both admin dialogs and both admin validators (`PersonFieldRules.GenderRequiredMessage` / `GenderNotForAdminMessage`, mirrored by `genderError` in `client/src/lib/validation/person.ts`, which the dialogs skip for an Admin): the dialog offers Male or Female only, and hides the radios for an Admin, who sits outside every leave rule a gender routes. `UpdateAdminUserValidator` reads the **stored** role to tell which rule applies, since the payload carries none, so `AdminUsersPanel`'s edit mutation sets **roles → user → profile** in that order; reordering refuses every role change on a field the admin cannot see. It used to offer an explicit "Not specified" so a value set by mistake could be taken back — see **Full-replace update DTOs** under [Backend Patterns](#backend-patterns) — but the eligibility rule reads a stored `null` as "offer everything", so a type restricted to one gender was still offered to anyone an admin left unspecified, and the restriction looked like a rule and behaved like none. The column stays nullable for accounts predating it, and such a `null` is still offered **both** parental types rather than neither, until the account is next saved — when the admin has to pick one, the same backfill-on-save the date of birth gets. An Admin's `null` is the standing answer, not a gap, so an Admin filing their *own* leave is offered everything; accepted as the price of not asking them |
 | `AnnualLeave` | `EmployeeId`, `StartDate/EndDate`, `Status` (enum), `TotalDays` (computed, no weekends). `ChildId` is nullable — required on a request against a `PerChildEntitlement` type, `null` on every row predating the feature (and on any request against a type that isn't per-child), and a `null` `ChildId` counts against no per-child ledger |
-| `LeaveType` | `Name`, `IsActive`, `AffectsBalance` (is it deducted from the enforced pool), `DefaultAllowance` and `MaxCarryoverDays` — the allowance and the year-end cap that bounds it (and which it in turn bounds: a cap may not exceed the allowance, and is nullable, `null` meaning no cap at all), both per type and both edited **only** on Leave Types. See [Leave is configured once](#domain-model-summary). `PerChildEntitlement` plus its three numbers (`PerChildTotalWeeks`, `PerChildWeeksPerYear`, `ChildEligibleUntilAge`) configure the second, per-child ledger — see [the two leave ledgers](#domain-model-summary) below the table. `AttachmentPolicy` decides whether a request needs a supporting document, and is enforced on create and edit — see [the attachment policy](#domain-model-summary) below the table. Annual, Maternity and Paternity Leave are **built-in** (`Domain/SystemLeaveTypes.cs`): they cannot be renamed or deleted, though every other setting on them stays editable. Keyed by name, which is sound only because the name is frozen and already unique case-insensitively; `LeaveTypeDto.IsSystem` derives the flag so the client keeps no copy of the list. Annual leave additionally cannot be **disabled** — it is the type the enforced pool is a budget for — but Maternity and Paternity can be, for an organisation that does not offer them |
+| `LeaveType` | `Name`, `IsActive`, `AffectsBalance` (is it deducted from the enforced pool), `DefaultAllowance` and `MaxCarryoverDays` — the allowance and the year-end cap that bounds it (and which it in turn bounds: a cap may not exceed the allowance, and is nullable, `null` meaning no cap at all), both per type and both edited **only** on Leave Types. See [Leave is configured once](#domain-model-summary). `PerChildEntitlement` plus its three numbers (`PerChildTotalWeeks`, `PerChildWeeksPerYear`, `ChildEligibleUntilAge`) configure the second, per-child ledger — see [the two leave ledgers](#domain-model-summary) below the table. `AttachmentPolicy` decides whether a request needs a supporting document, and is enforced on create and edit — see [the attachment policy](#domain-model-summary) below the table. `MinServiceMonths` hides the type from anyone whose `EmploymentStartDate` is not that many months behind today (0 = no minimum) — see [A leave type can ask for a length of service](#domain-model-summary) below the table. Annual, Maternity and Paternity Leave are **built-in** (`Domain/SystemLeaveTypes.cs`): they cannot be renamed or deleted, though every other setting on them stays editable. Keyed by name, which is sound only because the name is frozen and already unique case-insensitively; `LeaveTypeDto.IsSystem` derives the flag so the client keeps no copy of the list. Annual leave additionally cannot be **disabled** — it is the type the enforced pool is a budget for — but Maternity and Paternity can be, for an organisation that does not offer them |
 | `AnnualLeave` (cont.) | `Duration` (`Full`/`HalfDayMorning`/`HalfDayAfternoon`) decides whether the request costs whole days or 0.5 of one, and `TotalDays` is **decimal** because of it. `Full` is 0, so every row predating the column reads as the full day it was charged as. A half day covers exactly one date and is refused on a type whose `HalfDayAllowed` is off — see [A half day is stored and charged](#domain-model-summary) below the table |
 | `Timesheet` | `EmployeeId`, `PeriodStart/End`, `TotalHours`, `Status` (Draft→Submitted→Approved/Rejected), `DepartmentId` (nullable — the department it was filed under, kept for history so it outlives its author's move; null when the author has none, i.e. an Admin, matching `AnnualLeave.DepartmentId`) |
 | `TimesheetEntry` | `TimesheetId`, `ProjectId`, `Date`, `HoursWorked` (decimal 4,2), optional `ActivityTypeId`, `ProjectTypeId` and `ProjectComponentId`. One entry per project **+ type + component** per date |
@@ -417,6 +417,53 @@ reads like the weekends and public holidays beside it — but only for a type th
 actually asks for notice, since a 0 would otherwise put the earliest start at
 today and quietly ban backdating, which no rule here does.
 
+**A leave type can ask for a length of service.** `LeaveType.MinServiceMonths` is
+how long somebody has to have worked here before the type is offered to them,
+measured from `EmployeeProfile.EmploymentStartDate` to **the day they file**.
+`Application/AnnualLeaves/Commands/MinimumServiceRule.cs` is the rule, called from
+`CreateAnnualLeave` and `EditAnnualLeave`; `minServiceError` in
+`client/src/lib/leave-limits.ts` mirrors it and `isLeaveTypeOffered` applies it, so
+every surface that filters the type list — `ApplyLeavePage`, `MyLeavePage`,
+`DashboardHome`, and `AnnualLeaveForm` for the employee's own request — hides the
+card until the months are served, then shows it. Keep the two in step, the same
+way `NoticePeriodRule` and `leave-limits.ts` are kept in step.
+
+The seeded data promised this in prose and enforced nothing: Unpaid Leave's chip
+read "Employees after 1yr" and Sabbatical's "Tenured employees (5+ years)".
+Migration `AddLeaveTypeMinService` stamps those two at 12 and 60; everything else
+is 0. Five things about it that are deliberate:
+
+- **Measured to today, not to the leave's start date.** The type appears on the
+  employee's anniversary and not before, so someone at seven weeks cannot book a
+  two-month type for the autumn. That is the rule as chosen — it is what makes
+  "appears once you have served N months" true — not an oversight. Doing it the
+  other way would mean always showing the card and refusing early dates, the way
+  the notice period does.
+- **A 0 is "no minimum"**, the same reading as `MinNoticeDays` and
+  `MaxConsecutiveDays`, and the opposite of a 0 `DefaultAllowance`. The validator
+  caps it at 120 months.
+- **A `null` start date passes**, on both sides. It means nobody entered it — an
+  Admin never has one, since the validators refuse it for the role, and an Employee
+  row predating the column has none until next saved — and refusing on a blank would
+  take the type away from everyone until an admin filled the field in one person at
+  a time. The same reasoning as a `null` `Gender` in `ParentalLeaveEligibility`.
+- **Re-checked on every edit**, unlike notice. Service only grows, so a request
+  accepted once can never later fail it; what an edit has to catch is a switch onto
+  a type wanting more service than the employee has. No exemption for an admin
+  filing on somebody's behalf, matching `AttachmentPolicyRule`.
+- **Month arithmetic clamps the day** the way .NET's `DateOnly.AddMonths` does: 31
+  January plus one month is 28 February. The JS `Date` overflows into March, so
+  `leave-limits.ts` has its own `addMonthsClamped` rather than `setMonth`; without
+  it a month-end hire's card would appear a few days after the API started
+  accepting them.
+
+Two plumbing notes. `GET /api/account/user-info` (`CurrentUserPayload`) now carries
+`employmentStartDate`, since the client decides with it — like `gender`, dropping it
+fails open. And `GetLeaveTypeList` projects its columns by hand; `AvailableTo` had
+been left out of that projection, so a custom type restricted to one gender listed
+as `Both` and the card's Enabled toggle would have written that `Both` back. Both
+columns are projected now and `MinServiceMonthsPlumbingTests` pins the round trip.
+
 **Coverage is announced, not just recorded.** `AnnualLeave.DelegateId` — the
 colleague nominated on step 3 of the apply form — used to be a private note: stored,
 rendered in a detail drawer, and told to nobody, so the nominated colleague found
@@ -491,11 +538,12 @@ Four things about it that are deliberate:
   (`EditEmployeeProfileRequest` carries none). `AdminUsersPanel`'s edit mutation
   therefore saves the *user* before the profile, so the date being checked against
   is the one just stored. Reordering those two calls breaks the age check silently.
-- **It changes no behaviour.** In particular it does **not** pro-rate
-  `AnnualLeaveEntitlement` for a mid-year joiner: the allowance is stamped from the
-  leave type in full and is never set per person (see [Leave is configured
-  once](#domain-model-summary)). The field is recorded HR data and nothing reads it
-  yet.
+- **One rule reads it, and it is not the allowance.** `MinimumServiceRule` measures
+  it against `LeaveType.MinServiceMonths` to decide whether a type is offered yet —
+  see [A leave type can ask for a length of service](#domain-model-summary) below.
+  It does **not** pro-rate `AnnualLeaveEntitlement` for a mid-year joiner: the
+  allowance is stamped from the leave type in full and is never set per person (see
+  [Leave is configured once](#domain-model-summary)).
 
 Two more traps worth knowing, both found the hard way:
 

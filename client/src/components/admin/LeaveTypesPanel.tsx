@@ -250,6 +250,10 @@ function LeaveTypesPanel() {
             // copied: a built-in type sends its fixed value whatever the row says,
             // so a stale row cannot be echoed back into a refusal.
             availableTo: resolveAvailability(t),
+            // Left out, this full replace would drop a type's service requirement
+            // the moment somebody flipped Enabled. `?? 0` for a response predating
+            // the column, which the server reads as no minimum anyway.
+            minServiceMonths: t.minServiceMonths ?? 0,
         }
         updateMutation.mutate({ id: t.id, payload })
     }
@@ -608,6 +612,13 @@ function LeaveTypeCard({ derived, onEdit, onToggle, onDelete }: {
                         label={<>Max <strong>{t.maxConsecutiveDays} consecutive days</strong> per request</>}
                     />
                 )}
+                {(t.minServiceMonths ?? 0) > 0 && (
+                    <Rule
+                        ok={true}
+                        glyph="🗓️"
+                        label={<>Available after <strong>{t.minServiceMonths} {t.minServiceMonths === 1 ? 'month' : 'months'} of service</strong></>}
+                    />
+                )}
             </Box>
 
             {/* Eligibility */}
@@ -884,6 +895,7 @@ function LeaveTypeFormDialog(props: {
     const [accrualNotes, setAccrualNotes] = useState(i?.accrualNotes ?? '')
     const [minNoticeDays, setMinNoticeDays] = useState<number>(i?.minNoticeDays ?? 0)
     const [maxConsecutiveDays, setMaxConsecutiveDays] = useState<number>(i?.maxConsecutiveDays ?? 0)
+    const [minServiceMonths, setMinServiceMonths] = useState<number>(i?.minServiceMonths ?? 0)
     const [halfDayAllowed, setHalfDayAllowed] = useState(i?.halfDayAllowed ?? false)
     const [eligibilityNotes, setEligibilityNotes] = useState(i?.eligibilityNotes ?? 'All employees')
     const [eligibilityScope, setEligibilityScope] = useState<EligibilityScope>(i?.eligibilityScope ?? 'All')
@@ -952,6 +964,7 @@ function LeaveTypeFormDialog(props: {
             // The fixed value for a built-in type, so the radios being disabled is
             // not the only thing standing between a stale row and a refusal.
             availableTo: fixedAvailableTo ?? availableTo,
+            minServiceMonths: Number(minServiceMonths) || 0,
         })
     }
 
@@ -1130,6 +1143,19 @@ function LeaveTypeFormDialog(props: {
                             helperText="0 = no maximum"
                         />
                     </Stack>
+
+                    {/* Enforced by MinimumServiceRule on the server and mirrored by
+                        lib/leave-limits.ts: the type is hidden from an employee until
+                        their start date is this many months behind today. */}
+                    <TextField
+                        label="Min service (months)"
+                        type="number"
+                        value={minServiceMonths}
+                        onChange={(e) => setMinServiceMonths(Number(e.target.value))}
+                        inputProps={{ min: 0, max: 120 }}
+                        fullWidth
+                        helperText="0 = no minimum · counted from the employee's start date to the day they request"
+                    />
 
                     <TextField
                         select

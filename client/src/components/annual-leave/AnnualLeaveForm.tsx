@@ -216,7 +216,9 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
         if (!filesOwnRequest) return all
 
         const offered = all.filter(
-            (leaveType) => isLeaveTypeOffered(leaveType, authStore.user?.gender, hasEligibleChild),
+            (leaveType) => isLeaveTypeOffered(
+                leaveType, authStore.user?.gender, hasEligibleChild, authStore.user?.employmentStartDate,
+            ),
         )
 
         /* An existing request keeps its own type on the list even when the rule
@@ -225,7 +227,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
            type the employee did not choose is not this dialog's decision to make. */
         const current = leave && all.find((leaveType) => leaveType.id === leave.leaveTypeId)
         return current && !offered.includes(current) ? [...offered, current] : offered
-    }, [leaveTypes, filesOwnRequest, authStore.user?.gender, hasEligibleChild, leave])
+    }, [leaveTypes, filesOwnRequest, authStore.user?.gender, authStore.user?.employmentStartDate, hasEligibleChild, leave])
 
     /* Whose request this is, when it isn't the signed-in user's own — an admin
        filing or editing on someone else's behalf. Wording only: the picker's

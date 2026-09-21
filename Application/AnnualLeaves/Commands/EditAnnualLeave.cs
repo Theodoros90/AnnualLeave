@@ -149,6 +149,17 @@ public class EditAnnualLeave
                 // a parental one the employee was never offered.
                 if (editedLeaveType is not null)
                 {
+                    /* Unconditional, unlike the notice check: service only grows, so
+                       a request accepted once can never later fail this. What an edit
+                       has to catch is a switch onto a type wanting more service than
+                       the employee has. */
+                    var serviceError = MinimumServiceRule.Check(
+                        editedLeaveType,
+                        employeeProfile.EmploymentStartDate,
+                        DateOnly.FromDateTime(DateTime.UtcNow.Date));
+                    if (serviceError is not null)
+                        return Result<Unit>.Failure(serviceError);
+
                     var eligibilityError = await ParentalLeaveEligibility.CheckAsync(
                         context,
                         editedLeaveType,

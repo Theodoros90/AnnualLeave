@@ -44,6 +44,16 @@ public class CurrentUserPayload
     /// </summary>
     public bool? HasChildren { get; init; }
 
+    /// <summary>
+    /// When the employee started, so the leave forms can hide a type wanting more
+    /// service than they have (<c>MinimumServiceRule</c>, mirrored in
+    /// <c>lib/leave-limits.ts</c>). Null for an Admin, who has no employee profile,
+    /// and for an Employee row predating the column and not saved since — the
+    /// client reads either as "not recorded" and offers every type, as the server
+    /// does.
+    /// </summary>
+    public DateOnly? EmploymentStartDate { get; init; }
+
     public IList<string> Roles { get; init; } = [];
 
     public static CurrentUserPayload From(User user, EmployeeProfile? employeeProfile, IList<string> roles) => new()
@@ -59,6 +69,7 @@ public class CurrentUserPayload
         DepartmentId = employeeProfile?.DepartmentId,
         DepartmentName = employeeProfile?.Department?.Name,
         HasChildren = employeeProfile?.HasChildren,
+        EmploymentStartDate = employeeProfile?.EmploymentStartDate,
         Roles = roles,
     };
 }

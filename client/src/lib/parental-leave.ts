@@ -1,3 +1,4 @@
+import { minServiceError } from './leave-limits'
 import type { Gender, GenderAvailability, LeaveType } from './types'
 
 /**
@@ -81,12 +82,20 @@ function offeredTo(type: Pick<LeaveType, 'name' | 'availableTo'>): Gender | unde
  * `hasEligibleChild` is consulted only for Maternity and Paternity Leave, and
  * still applies when the gender is unspecified: it is a fact about the employee's
  * own declared children, not a field nobody got round to.
+ *
+ * `employmentStartDate` feeds the minimum-service rule (`minServiceError`): a type
+ * wanting N months of service is offered only once the employee's start date is
+ * N months behind `today`. Unrecorded passes, like an unrecorded gender.
  */
 export function isLeaveTypeOffered(
-    type: Pick<LeaveType, 'name' | 'availableTo'>,
+    type: Pick<LeaveType, 'name' | 'availableTo' | 'minServiceMonths'>,
     gender: Gender | null | undefined,
     hasEligibleChild: boolean,
+    employmentStartDate?: string | null,
+    today: Date = new Date(),
 ): boolean {
+    if (minServiceError(type, employmentStartDate, today) !== null) return false
+
     const requiredGender = offeredTo(type)
     if (gender && requiredGender && gender !== requiredGender) return false
 

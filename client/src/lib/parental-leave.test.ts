@@ -41,6 +41,37 @@ function offered(type: LeaveType, gender: Gender | null | undefined, hasEligible
     return isLeaveTypeOffered(type, gender, hasEligibleChild)
 }
 
+// The service half of the rule. Mirrors MinimumServiceRule.cs: a type wanting N
+// months of service is offered only once the employee's start date is N months
+// behind today. It sits inside isLeaveTypeOffered so that every surface that
+// filters the type list — the apply page, the balance panel, the edit dialog for
+// the employee's own request — hides the card the API would refuse.
+describe('isLeaveTypeOffered · minimum service', () => {
+    const today = new Date('2026-09-21T00:00:00')
+    const unpaid = { ...leaveType('Unpaid Leave'), minServiceMonths: 12 }
+
+    it('hides a type wanting more service than the employee has', () => {
+        expect(isLeaveTypeOffered(unpaid, 'Male', false, '2026-08-01', today)).toBe(false)
+    })
+
+    it('offers it once the months are served', () => {
+        expect(isLeaveTypeOffered(unpaid, 'Male', false, '2025-09-21', today)).toBe(true)
+    })
+
+    it('offers it to an employee with no recorded start date', () => {
+        expect(isLeaveTypeOffered(unpaid, 'Male', false, null, today)).toBe(true)
+        expect(isLeaveTypeOffered(unpaid, 'Male', false, undefined, today)).toBe(true)
+    })
+
+    // Both halves apply: enough service does not buy a father Maternity Leave.
+    it('still applies the gender and child rules to a tenured employee', () => {
+        const tenuredMaternity = { ...maternity, minServiceMonths: 1 }
+        expect(isLeaveTypeOffered(tenuredMaternity, 'Male', true, '2020-01-01', today)).toBe(false)
+        expect(isLeaveTypeOffered(tenuredMaternity, 'Female', false, '2020-01-01', today)).toBe(false)
+        expect(isLeaveTypeOffered(tenuredMaternity, 'Female', true, '2020-01-01', today)).toBe(true)
+    })
+})
+
 describe('isLeaveTypeOffered', () => {
     it('offers maternity leave to a female employee with an eligible child', () => {
         expect(offered(maternity, 'Female', true)).toBe(true)

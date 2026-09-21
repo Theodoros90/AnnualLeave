@@ -45,6 +45,9 @@ public class UpsertLeaveTypeRequestValidator : AbstractValidator<UpsertLeaveType
         });
         RuleFor(x => x.MinNoticeDays).InclusiveBetween(0, 365);
         RuleFor(x => x.MaxConsecutiveDays).InclusiveBetween(0, 365);
+        // Months of service before the type is offered; 0 is no minimum. Ten years
+        // covers any sabbatical policy, and a larger number is a typed year.
+        RuleFor(x => x.MinServiceMonths).InclusiveBetween(0, 120);
 
         /* Who a built-in type is offered to is what the type is, not a setting on it:
            Annual Leave is the pool everyone's balance budgets, Maternity Leave is for
