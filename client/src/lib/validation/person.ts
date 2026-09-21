@@ -103,6 +103,11 @@ export const GENDER_REQUIRED_MESSAGE = 'Gender is required.'
  * *choose* that null made a type restricted to one gender reachable by anyone
  * left unspecified. The only thing that can be wrong with the value is its
  * absence — the radios offer two answers and nothing else.
+ *
+ * Callers only ask this for an Employee or a Manager. An Admin has no recorded
+ * gender — the field is hidden for them, and the API refuses one outright
+ * (`PersonFieldRules.GenderNotForAdminMessage`) — so the dialogs skip the check
+ * and send null, exactly as they do for `employmentStartDateError`.
  */
 export function genderError(value: Gender | null | undefined): string | undefined {
     return value ? undefined : GENDER_REQUIRED_MESSAGE

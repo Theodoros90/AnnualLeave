@@ -153,8 +153,8 @@ public class EmploymentStartDateTests : IDisposable
             Roles = [role],
             DateOfBirth = dateOfBirth ?? BornThirtyYearsAgo,
             EmploymentStartDate = employmentStartDate,
-            // Required — see UserGenderTests.
-            Gender = Gender.Female,
+            // Required for everyone but an Admin, who is refused one — see UserGenderTests.
+            Gender = role == AppRoles.Admin ? null : Gender.Female,
         };
 
     private Task<FluentValidation.Results.ValidationResult> ValidateCreate(AdminCreateUserDto payload) =>

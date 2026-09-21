@@ -532,10 +532,10 @@ describe('AdminUsersPanel — Admin hides the Profile section', () => {
         fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Admin' } })
         fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
         setDateOfBirth(dialog)
-        setGender(dialog)
         setEmploymentStartDate(dialog)
 
-        // No department to select — Create is enabled all the same.
+        // No department to select, and no gender either — Create is enabled all
+        // the same.
         const create = within(dialog).getByRole('button', { name: /^create$/i })
         expect(create).toBeEnabled()
         fireEvent.click(create)
@@ -547,7 +547,51 @@ describe('AdminUsersPanel — Admin hides the Profile section', () => {
             departmentId: null,
             managerId: null,
             jobTitle: null,
+            gender: null,
         })
+    })
+
+    /* Gender sits in Personal details rather than Profile, but it follows the same
+       rule: it is recorded to decide who is offered gender-restricted leave, which
+       an Admin is outside of, and the API refuses one for them outright. So the
+       radios go with the role, and Create must not gate on a field it is not
+       showing — the report that started this was an Edit User dialog for an Admin
+       stuck on "Gender is required." with nothing the admin could do about it. */
+    it('hides Gender when Admin is picked, and brings it back otherwise', async () => {
+        const dialog = await openCreateDialog()
+
+        expect(within(dialog).getByRole('radio', { name: 'Female' })).toBeInTheDocument()
+
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+
+        expect(within(dialog).queryByRole('radio', { name: 'Male' })).not.toBeInTheDocument()
+        expect(within(dialog).queryByRole('radio', { name: 'Female' })).not.toBeInTheDocument()
+        expect(within(dialog).queryByText('Gender is required.')).not.toBeInTheDocument()
+
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'Employee' }))
+        expect(within(dialog).getByRole('radio', { name: 'Female' })).toBeInTheDocument()
+    })
+
+    // A gender picked *before* the role was switched to Admin is not sent: the API
+    // refuses one for an Admin, and the dialog stopped showing it.
+    it('does not send a gender picked before the role was switched to Admin', async () => {
+        const dialog = await openCreateDialog()
+
+        api.createAdminUser.mockResolvedValue({
+            id: 'u1', userName: 'newadmin@example.test', email: 'newadmin@example.test', displayName: 'New Admin',
+            imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Admin'], inviteEmailSent: true,
+        })
+
+        fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'newadmin@example.test' } })
+        fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Admin' } })
+        setDateOfBirth(dialog)
+        setGender(dialog, 'Male')
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+
+        fireEvent.click(within(dialog).getByRole('button', { name: /^create$/i }))
+
+        await waitFor(() => expect(createAdminUser).toHaveBeenCalledTimes(1))
+        expect(api.createAdminUser.mock.calls[0][0]).toMatchObject({ roles: ['Admin'], gender: null })
     })
 
     // An Employee or Manager still has to be placed in one: it is where their
@@ -571,7 +615,8 @@ describe('AdminUsersPanel — Admin hides the Profile section', () => {
 // send back the department a promoted user is leaving behind.
 describe('AdminUsersPanel — editing across the Admin boundary', () => {
     const EMPLOYEE_USER = { id: 'u-employee', userName: 'employee@example.test', email: 'employee@example.test', displayName: 'Theodoros Iona', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'], dateOfBirth: '1990-03-04', gender: 'Female' }
-    const ADMIN_USER = { id: 'u-admin', userName: 'admin@example.test', email: 'admin@example.test', displayName: 'Admin User', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Admin'], dateOfBirth: '1990-03-04', gender: 'Female' }
+    // No gender: an Admin is never asked one, and the API refuses one for them.
+    const ADMIN_USER = { id: 'u-admin', userName: 'admin@example.test', email: 'admin@example.test', displayName: 'Admin User', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Admin'], dateOfBirth: '1990-03-04', gender: null }
 
     const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
     // What the server now returns for an admin: a profile, and no department.
@@ -645,6 +690,95 @@ describe('AdminUsersPanel — editing across the Admin boundary', () => {
             id: ADMIN_PROFILE.id,
             departmentId: DEPARTMENT.id,
         })
+    })
+
+    /* Gender follows the role the same way, though it sits in Personal details:
+       an Admin is never asked one and the API refuses one for them. The report
+       that started this was exactly this dialog, opened on an Admin, stuck on
+       "Gender is required." with Save disabled and no way past it. */
+    it('hides Gender for an admin and saves them with none', async () => {
+        const dialog = await openEditFor('Admin User')
+
+        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Admin' })).toBeChecked())
+        expect(within(dialog).queryByRole('radio', { name: 'Male' })).not.toBeInTheDocument()
+        expect(within(dialog).queryByRole('radio', { name: 'Female' })).not.toBeInTheDocument()
+        expect(within(dialog).queryByText('Gender is required.')).not.toBeInTheDocument()
+
+        const save = within(dialog).getByRole('button', { name: /^save$/i })
+        expect(save).toBeEnabled()
+        fireEvent.click(save)
+
+        await waitFor(() => expect(api.updateAdminUser).toHaveBeenCalledTimes(1))
+        expect(api.updateAdminUser.mock.calls[0][1]).toMatchObject({ gender: null })
+    })
+
+    // Same as the department and the start date: the stored answer is cleared on
+    // a promotion, not sent back from a field the dialog stopped showing.
+    it('clears the gender when an employee is promoted to Admin', async () => {
+        const dialog = await openEditFor('Theodoros Iona')
+
+        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Female' })).toBeChecked())
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+
+        expect(within(dialog).queryByRole('radio', { name: 'Female' })).not.toBeInTheDocument()
+        fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+        await waitFor(() => expect(api.updateAdminUser).toHaveBeenCalledTimes(1))
+        expect(api.updateAdminUser.mock.calls[0][1]).toMatchObject({ gender: null })
+    })
+
+    // And a demotion has to pick one, just as it has to pick a department.
+    it('will not save a demoted admin until a gender is picked', async () => {
+        const dialog = await openEditFor('Admin User')
+
+        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Admin' })).toBeChecked())
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'Employee' }))
+        await selectDepartment(dialog)
+        setEmploymentStartDate(dialog)
+
+        expect(within(dialog).getByText('Gender is required.')).toBeInTheDocument()
+        expect(within(dialog).getByRole('button', { name: /^save$/i })).toBeDisabled()
+
+        setGender(dialog, 'Male')
+
+        expect(within(dialog).queryByText('Gender is required.')).not.toBeInTheDocument()
+        expect(within(dialog).getByRole('button', { name: /^save$/i })).toBeEnabled()
+        fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+        await waitFor(() => expect(api.updateAdminUser).toHaveBeenCalledTimes(1))
+        expect(api.updateAdminUser.mock.calls[0][1]).toMatchObject({ gender: 'Male' })
+    })
+
+    /* The server decides whether a gender is required or refused from the *stored*
+       role, so on a role change the roles call has to land first — the user save
+       arrives with the null a promotion sends, or the value a demotion sends, and
+       has to be judged against the role it was built for. The user still goes
+       before the profile, whose start-date check reads the stored date of birth.
+       Reordering any of the three refuses a save with a message about a field the
+       admin cannot see. */
+    it('sets the roles before it saves the user, and the user before the profile', async () => {
+        const dialog = await openEditFor('Theodoros Iona')
+
+        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Employee' })).toBeChecked())
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+        fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+        await waitFor(() => expect(api.updateEmployeeProfile).toHaveBeenCalledTimes(1))
+
+        const order = (fn: { mock: { invocationCallOrder: number[] } }) => fn.mock.invocationCallOrder[0]
+        expect(order(api.setAdminUserRoles)).toBeLessThan(order(api.updateAdminUser))
+        expect(order(api.updateAdminUser)).toBeLessThan(order(api.updateEmployeeProfile))
+    })
+
+    it('does not quote a gender on an admin\'s expanded row', async () => {
+        renderPanel()
+
+        const nameEl = await screen.findByText('Admin User')
+        fireEvent.click(nameEl)
+
+        const row = nameEl.parentElement!.parentElement!.parentElement!.parentElement!
+        await within(row.parentElement!).findByText('Date of birth')
+        expect(within(row.parentElement!).queryByText('Gender')).not.toBeInTheDocument()
     })
 })
 

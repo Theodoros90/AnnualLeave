@@ -38,12 +38,14 @@ public class AdminCreateUserDto
     public DateOnly? DateOfBirth { get; set; }
 
     /// <summary>
-    /// Required — <c>CreateAdminUserValidator</c> refuses a null. Decides which
-    /// leave types this person is offered: Maternity and Paternity Leave, and any
-    /// other type an admin restricted through <c>LeaveType.AvailableTo</c> — see
+    /// Required for an Employee or a Manager, refused for an Admin — the same
+    /// role-dependent rule as <see cref="DepartmentId"/>, enforced by
+    /// <c>CreateAdminUserValidator</c>. Decides which leave types this person is
+    /// offered: Maternity and Paternity Leave, and any other type an admin
+    /// restricted through <c>LeaveType.AvailableTo</c> — see
     /// <c>Application.AnnualLeaves.Commands.ParentalLeaveEligibility</c>. Nullable
-    /// only so the JSON binder can report "missing" rather than defaulting a real
-    /// person to <c>Male</c> (the enum's 0).
+    /// so the JSON binder can report "missing" rather than defaulting a real
+    /// person to <c>Male</c> (the enum's 0), and so an Admin has something to send.
     /// </summary>
     public Gender? Gender { get; set; }
 

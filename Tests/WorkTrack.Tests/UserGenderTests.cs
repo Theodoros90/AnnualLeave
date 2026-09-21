@@ -19,16 +19,26 @@ namespace WorkTrack.Tests;
 /// Gender is recorded HR data an administrator maintains, and it decides who is
 /// offered a leave type restricted through <c>LeaveType.AvailableTo</c> — see
 /// <see cref="ParentalLeaveEligibilityTests"/> for that rule. What this file covers
-/// is the plumbing around the column: it survives a create and an edit, and it is
-/// <b>required</b> on both.
+/// is the plumbing around the column: it survives a create and an edit, it is
+/// <b>required</b> on both for an Employee and a Manager, and it is <b>refused</b>
+/// on both for an Admin.
 ///
 /// The requirement is the load-bearing part. The dialog used to offer an explicit
 /// "Not specified", and the eligibility rule reads a stored null as "offer
 /// everything" (so that accounts predating the column keep their parental leave).
 /// Together those meant a type restricted to Male was still offered to anyone an
 /// admin had left unspecified — the restriction looked like a rule and behaved
-/// like none. Both admin validators now refuse a null, so a null can only be a
-/// legacy row, and it goes away the next time that account is saved.
+/// like none. Both admin validators now refuse a null for those two roles, so a
+/// null can only be a legacy row, and it goes away the next time that account is
+/// saved.
+///
+/// The Admin half follows the department and the employment start date (see
+/// <see cref="AdminHasNoDepartmentTests"/> and <see cref="EmploymentStartDateTests"/>):
+/// the dialogs never ask an Admin, so a payload carrying one was built against a
+/// shape the dialog does not have, and refusing rather than ignoring it means a
+/// promotion to Admin clears the stored answer instead of stranding it. The edit
+/// validator reads the stored role, which is why the dialog sets roles before it
+/// saves the user.
 /// </summary>
 public class UserGenderTests : IDisposable
 {
@@ -128,14 +138,19 @@ public class UserGenderTests : IDisposable
         Assert.Equal(gender, await StoredGenderAsync(result.Value!.Id));
     }
 
-    private static AdminCreateUserDto CreatePayload(Gender? gender) => new()
+    /// <summary>
+    /// The Profile fields go with the role: an Admin has no department and no
+    /// start date (both refused for them), so the payload must not carry either
+    /// or the failure being tested would be drowned by two it is not about.
+    /// </summary>
+    private static AdminCreateUserDto CreatePayload(Gender? gender, string role = AppRoles.Employee) => new()
     {
         Email = "newjoiner@test.local",
         DisplayName = "New Joiner",
-        DepartmentId = 1,
-        Roles = [AppRoles.Employee],
+        DepartmentId = role == AppRoles.Admin ? null : 1,
+        Roles = [role],
         DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-30),
-        EmploymentStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-2),
+        EmploymentStartDate = role == AppRoles.Admin ? null : DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-2),
         Gender = gender,
     };
 
@@ -147,48 +162,89 @@ public class UserGenderTests : IDisposable
         Gender = gender,
     };
 
-    private async Task<FluentValidation.Results.ValidationResult> ValidateCreateAsync(Gender? gender)
+    private async Task<FluentValidation.Results.ValidationResult> ValidateCreateAsync(
+        Gender? gender, string role = AppRoles.Employee)
     {
         await SeedAsync();
         return await new CreateAdminUserValidator(Db, Roles)
-            .ValidateAsync(new CreateAdminUser.Command { User = CreatePayload(gender) });
+            .ValidateAsync(new CreateAdminUser.Command { User = CreatePayload(gender, role) });
     }
 
-    private static FluentValidation.Results.ValidationResult ValidateUpdate(Gender? gender) =>
-        new UpdateAdminUserValidator()
-            .Validate(new UpdateAdminUser.Command { Id = "u-1", User = UpdatePayload(gender) });
+    /// <summary>
+    /// A stored account in <paramref name="role"/>, because the edit validator
+    /// reads the role off the database — the payload carries none.
+    /// </summary>
+    private async Task<string> GivenUserAsync(string role)
+    {
+        var user = new User
+        {
+            Email = "stored@test.local",
+            UserName = "stored@test.local",
+            DisplayName = "Stored User",
+            EmailConfirmed = true,
+        };
 
-    private static void AssertGenderRefused(FluentValidation.Results.ValidationResult result)
+        Assert.True((await Users.CreateAsync(user, "Pa$$w0rd!")).Succeeded);
+        Assert.True((await Users.AddToRoleAsync(user, role)).Succeeded);
+        Db.ChangeTracker.Clear();
+        return user.Id;
+    }
+
+    private async Task<FluentValidation.Results.ValidationResult> ValidateUpdateAsync(
+        Gender? gender, string role = AppRoles.Employee)
+    {
+        await SeedAsync();
+        var id = await GivenUserAsync(role);
+        return await new UpdateAdminUserValidator(Db)
+            .ValidateAsync(new UpdateAdminUser.Command { Id = id, User = UpdatePayload(gender) });
+    }
+
+    private static void AssertGenderRefused(
+        FluentValidation.Results.ValidationResult result,
+        string expectedMessage)
     {
         Assert.False(result.IsValid, "Expected Gender to be refused.");
         var error = Assert.Single(result.Errors, e => e.PropertyName.EndsWith("Gender", StringComparison.Ordinal));
-        Assert.Equal(PersonFieldRules.GenderRequiredMessage, error.ErrorMessage);
+        Assert.Equal(expectedMessage, error.ErrorMessage);
     }
+
+    private static void AssertGenderRequired(FluentValidation.Results.ValidationResult result) =>
+        AssertGenderRefused(result, PersonFieldRules.GenderRequiredMessage);
+
+    private static void AssertGenderNotForAdmin(FluentValidation.Results.ValidationResult result) =>
+        AssertGenderRefused(result, PersonFieldRules.GenderNotForAdminMessage);
 
     private static void AssertGenderAccepted(FluentValidation.Results.ValidationResult result) =>
         Assert.DoesNotContain(result.Errors, e => e.PropertyName.EndsWith("Gender", StringComparison.Ordinal));
+
+    /* ── Employee and Manager: required ─────────────────────────────────────── */
 
     /// <summary>
     /// The rule this file exists for. Without it "no gender" was a third answer
     /// the dialog offered, and the eligibility rule reads a null as "offer every
     /// type" — so restricting a type to one gender changed nothing for anyone an
-    /// admin had left unspecified.
+    /// admin had left unspecified. Both roles, because both sit inside the leave
+    /// rules a gender routes.
     /// </summary>
-    [Fact]
-    public async Task Create_refuses_no_gender_at_all() =>
-        AssertGenderRefused(await ValidateCreateAsync(null));
+    [Theory]
+    [InlineData(AppRoles.Employee)]
+    [InlineData(AppRoles.Manager)]
+    public async Task Create_refuses_no_gender_at_all(string role) =>
+        AssertGenderRequired(await ValidateCreateAsync(null, role));
 
-    [Fact]
-    public void Update_refuses_no_gender_at_all() =>
-        AssertGenderRefused(ValidateUpdate(null));
+    [Theory]
+    [InlineData(AppRoles.Employee)]
+    [InlineData(AppRoles.Manager)]
+    public async Task Update_refuses_no_gender_at_all(string role) =>
+        AssertGenderRequired(await ValidateUpdateAsync(null, role));
 
     /// <summary>
     /// The DTO is nullable so the binder can say "missing" rather than defaulting
     /// to the enum's 0 — but a number outside the enum is not an answer either.
     /// </summary>
     [Fact]
-    public void Update_refuses_a_gender_outside_the_enum() =>
-        AssertGenderRefused(ValidateUpdate((Gender)7));
+    public async Task Update_refuses_a_gender_outside_the_enum() =>
+        AssertGenderRequired(await ValidateUpdateAsync((Gender)7));
 
     [Theory]
     [InlineData(Gender.Male)]
@@ -199,8 +255,86 @@ public class UserGenderTests : IDisposable
     [Theory]
     [InlineData(Gender.Male)]
     [InlineData(Gender.Female)]
-    public void Update_accepts_either_gender(Gender gender) =>
-        AssertGenderAccepted(ValidateUpdate(gender));
+    public async Task Update_accepts_either_gender(Gender gender) =>
+        AssertGenderAccepted(await ValidateUpdateAsync(gender));
+
+    /// <summary>
+    /// The one path with no stored role to read: nothing behind the id. Held to
+    /// the non-Admin rule rather than waved through, so the shape tests that use a
+    /// made-up id (<see cref="PersonFieldValidationTests"/>) keep meaning what they
+    /// say, and the handler is the one to report the account as missing.
+    /// </summary>
+    [Fact]
+    public async Task An_unknown_account_is_held_to_the_non_Admin_rule()
+    {
+        await SeedAsync();
+
+        var result = await new UpdateAdminUserValidator(Db)
+            .ValidateAsync(new UpdateAdminUser.Command { Id = "no-such-user", User = UpdatePayload(null) });
+
+        AssertGenderRequired(result);
+    }
+
+    /* ── Admin: never asked, so refused ─────────────────────────────────────── */
+
+    /// <summary>
+    /// The dialogs hide the field for an Admin, so a rule that demanded one would
+    /// make an Admin impossible to create or save through the only screen that
+    /// does either.
+    /// </summary>
+    [Fact]
+    public async Task An_Admin_can_be_created_without_a_gender() =>
+        AssertGenderAccepted(await ValidateCreateAsync(null, AppRoles.Admin));
+
+    [Fact]
+    public async Task An_Admin_can_be_saved_without_a_gender() =>
+        AssertGenderAccepted(await ValidateUpdateAsync(null, AppRoles.Admin));
+
+    /// <summary>
+    /// Refused rather than quietly dropped, matching the department and the start
+    /// date: the dialog cannot send one, so a payload that carries it was built
+    /// against a shape the dialog does not have.
+    /// </summary>
+    [Theory]
+    [InlineData(Gender.Male)]
+    [InlineData(Gender.Female)]
+    public async Task An_Admin_cannot_be_created_with_a_gender(Gender gender) =>
+        AssertGenderNotForAdmin(await ValidateCreateAsync(gender, AppRoles.Admin));
+
+    [Theory]
+    [InlineData(Gender.Male)]
+    [InlineData(Gender.Female)]
+    public async Task An_Admin_cannot_be_saved_with_a_gender(Gender gender) =>
+        AssertGenderNotForAdmin(await ValidateUpdateAsync(gender, AppRoles.Admin));
+
+    /// <summary>
+    /// What "refused rather than ignored" buys: a promotion to Admin arrives, roles
+    /// already switched, with the null the dialog now sends — and the full-replace
+    /// handler clears the stored answer rather than stranding one the Admin's own
+    /// dialog can no longer show or take back.
+    /// </summary>
+    [Fact]
+    public async Task Promoting_an_employee_to_Admin_clears_their_gender()
+    {
+        await SeedAsync();
+        var id = (await Create(Gender.Male)).Value!.Id;
+
+        var tracked = await Users.FindByIdAsync(id);
+        Assert.NotNull(tracked);
+        Assert.True((await Users.RemoveFromRoleAsync(tracked, AppRoles.Employee)).Succeeded);
+        Assert.True((await Users.AddToRoleAsync(tracked, AppRoles.Admin)).Succeeded);
+        Db.ChangeTracker.Clear();
+
+        var validation = await new UpdateAdminUserValidator(Db)
+            .ValidateAsync(new UpdateAdminUser.Command { Id = id, User = UpdatePayload(null) });
+        Assert.True(validation.IsValid, string.Join(" | ", validation.Errors.Select(e => e.ErrorMessage)));
+
+        var result = await Update(id, null);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Null(result.Value!.Gender);
+        Assert.Null(await StoredGenderAsync(id));
+    }
 
     /// <summary>
     /// The backfill path. An account created before the column has a null the

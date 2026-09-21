@@ -44,12 +44,27 @@ public class CreateAdminUserValidator : AbstractValidator<CreateAdminUser.Comman
 
             RuleFor(x => x.User.PhoneNumber).MaximumLength(PersonFieldRules.PhoneNumberMaxLength).ValidPhoneNumber();
             RuleFor(x => x.User.DateOfBirth).ValidDateOfBirth();
-            RuleFor(x => x.User.Gender)
-                .NotNull()
-                .WithMessage(PersonFieldRules.GenderRequiredMessage)
-                .IsInEnum()
-                .WithMessage(PersonFieldRules.GenderRequiredMessage);
             RuleFor(x => x.User.JobTitle).MaximumLength(150);
+
+            // Gender follows the department's rule rather than the date of birth's:
+            // required for an Employee and a Manager, refused for an Admin. It is
+            // there to decide who is offered gender-restricted leave, and the
+            // dialog hides it for an Admin the way it hides the Profile section.
+            When(x => !IsAdmin(x.User.Roles), () =>
+            {
+                RuleFor(x => x.User.Gender)
+                    .NotNull()
+                    .WithMessage(PersonFieldRules.GenderRequiredMessage)
+                    .IsInEnum()
+                    .WithMessage(PersonFieldRules.GenderRequiredMessage);
+            });
+
+            When(x => IsAdmin(x.User.Roles), () =>
+            {
+                RuleFor(x => x.User.Gender)
+                    .Null()
+                    .WithMessage(PersonFieldRules.GenderNotForAdminMessage);
+            });
 
             RuleFor(x => x.User.AnnualLeaveEntitlement)
                 .InclusiveBetween(0, 365)

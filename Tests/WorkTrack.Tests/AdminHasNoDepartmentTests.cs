@@ -132,8 +132,8 @@ public class AdminHasNoDepartmentTests : IDisposable
         Roles = [role],
         // Required since the field became mandatory — see PersonFieldValidationTests.
         DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-30),
-        // Likewise — see UserGenderTests.
-        Gender = Gender.Female,
+        // Likewise for everyone but an Admin, who is refused one — see UserGenderTests.
+        Gender = role == AppRoles.Admin ? null : Gender.Female,
     };
 
     private Task<FluentValidation.Results.ValidationResult> ValidateCreate(AdminCreateUserDto payload) =>
