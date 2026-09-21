@@ -12,5 +12,13 @@ public class EmployeeProfileDto
     /// <summary>Decimal because a half day costs 0.5 of it. 22.5 of 23 is a balance.</summary>
     public decimal LeaveBalance { get; set; }
     public string? JobTitle { get; set; }
+
+    /// <summary>
+    /// Null for an Admin, and for any profile predating the column. Distinct from
+    /// <see cref="CreatedAt"/>, which is when the row was written rather than when
+    /// the person started.
+    /// </summary>
+    public DateOnly? EmploymentStartDate { get; set; }
+
     public DateTime CreatedAt { get; set; }
 }

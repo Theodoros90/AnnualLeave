@@ -13,6 +13,21 @@ public enum EligibilityScope
     Limited = 1
 }
 
+/// <summary>
+/// Who a leave type is offered to, by recorded <see cref="Gender"/>. <c>Both</c> is
+/// 0 so every row predating the column reads as offered to everyone, which is what
+/// every type but Maternity and Paternity Leave was.
+///
+/// Serialised as "Both" / "Male" / "Female" like <see cref="Gender"/> is: the client
+/// types it as a string union.
+/// </summary>
+public enum GenderAvailability
+{
+    Both = 0,
+    Male = 1,
+    Female = 2,
+}
+
 public class LeaveType
 {
     public int Id { get; set; }
@@ -73,6 +88,18 @@ public class LeaveType
     public bool HalfDayAllowed { get; set; }
     public string EligibilityNotes { get; set; } = "All employees";
     public EligibilityScope EligibilityScope { get; set; } = EligibilityScope.All;
+
+    /* Which gender this type is offered to. Enforced, not advertised: a request
+       against a type restricted to one gender is refused for an employee whose
+       recorded Gender is the other (ParentalLeaveEligibility). An unspecified gender
+       still passes — see the comment on User.Gender.
+
+       Fixed on the three built-in types (SystemLeaveTypes.FixedAvailability): Annual
+       Leave is for everyone, Maternity Leave for women, Paternity Leave for men, and
+       the validator refuses any other value for them. Editable on everything else.
+       Distinct from EligibilityScope/EligibilityNotes, which are the free-text chip
+       on the card and gate nothing. */
+    public GenderAvailability AvailableTo { get; set; } = GenderAvailability.Both;
 
     public ICollection<AnnualLeave> AnnualLeaves { get; set; } = new List<AnnualLeave>();
 }

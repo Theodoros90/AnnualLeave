@@ -68,7 +68,7 @@ const ANNUAL_LEAVE_TYPE = {
     maxCarryoverDays: 5,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: 'Resets 1 Jan', minNoticeDays: 7, maxConsecutiveDays: 15,
-    halfDayAllowed: true, eligibilityNotes: 'All employees', eligibilityScope: 'All',
+    halfDayAllowed: true, eligibilityNotes: 'All employees', eligibilityScope: 'All', availableTo: 'Both',
 } as const
 
 beforeEach(() => {
@@ -589,7 +589,7 @@ describe('unused leave leads with what is about to be lost', () => {
         id: displayName, userId: displayName, displayName,
         departmentId: null, managerId: null,
         annualLeaveEntitlement: 25, leaveBalance,
-        jobTitle: null, createdAt: '2026-01-01T00:00:00Z',
+        jobTitle: null, employmentStartDate: null, createdAt: '2026-01-01T00:00:00Z',
     })
 
     beforeEach(() => {

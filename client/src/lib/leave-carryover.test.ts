@@ -39,7 +39,7 @@ function leaveType(overrides: Partial<LeaveType> = {}): LeaveType {
         maxConsecutiveDays: 0,
         halfDayAllowed: false,
         eligibilityNotes: 'All employees',
-        eligibilityScope: 'All',
+        eligibilityScope: 'All', availableTo: 'Both',
         isSystem: true,
         supportsPerChildEntitlement: false,
         ...overrides,

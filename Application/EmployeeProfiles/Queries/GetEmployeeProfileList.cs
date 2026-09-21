@@ -62,6 +62,7 @@ public class GetEmployeeProfileList
                     AnnualLeaveEntitlement = ep.AnnualLeaveEntitlement,
                     LeaveBalance = ep.LeaveBalance,
                     JobTitle = ep.JobTitle,
+                    EmploymentStartDate = ep.EmploymentStartDate,
                     CreatedAt = ep.CreatedAt
                 })
                 .ToListAsync(cancellationToken);

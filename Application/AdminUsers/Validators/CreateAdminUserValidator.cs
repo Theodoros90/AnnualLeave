@@ -78,6 +78,32 @@ public class CreateAdminUserValidator : AbstractValidator<CreateAdminUser.Comman
                     .WithMessage("An Admin cannot belong to a department.");
             });
 
+            // The start date rides with the department, for the same reason: both
+            // live in the Profile section, which the panel hides for an Admin. So
+            // an Employee or a Manager must bring one and an Admin must not — and
+            // an Admin sending one was built against a shape this does not have.
+            When(x => !IsAdmin(x.User.Roles), () =>
+            {
+                RuleFor(x => x.User.EmploymentStartDate)
+                    .NotNull()
+                    .WithMessage(PersonFieldRules.EmploymentStartDateRequiredMessage);
+            });
+
+            When(x => IsAdmin(x.User.Roles), () =>
+            {
+                RuleFor(x => x.User.EmploymentStartDate)
+                    .Null()
+                    .WithMessage(PersonFieldRules.EmploymentStartDateNotForAdminMessage);
+            });
+
+            // Both dates arrive in the same payload here, so the age check is a
+            // plain cross-field rule — unlike the edit path, which has to read the
+            // stored date of birth.
+            RuleFor(x => x.User.EmploymentStartDate)
+                .Must((command, startDate) =>
+                    PersonFieldRules.IsOldEnoughToStart(startDate, command.User.DateOfBirth))
+                .WithMessage(PersonFieldRules.EmploymentStartDateTooYoungMessage);
+
             RuleFor(x => x.User.ManagerId)
                 .MustAsync(async (managerId, cancellationToken) =>
                     await context.EmployeeProfiles.AnyAsync(ep => ep.Id == managerId, cancellationToken))

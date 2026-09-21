@@ -87,6 +87,10 @@ public class CreateAdminUser
                 DepartmentId = request.User.DepartmentId,
                 ManagerId = string.IsNullOrWhiteSpace(request.User.ManagerId) ? null : request.User.ManagerId,
                 JobTitle = string.IsNullOrWhiteSpace(request.User.JobTitle) ? null : request.User.JobTitle.Trim(),
+                // Recorded, not acted on: the entitlement below is stamped from the
+                // leave type's allowance in full, and is deliberately not pro-rated
+                // for somebody joining mid-year.
+                EmploymentStartDate = request.User.EmploymentStartDate,
                 AnnualLeaveEntitlement = entitlement,
                 LeaveBalance = entitlement,
             };

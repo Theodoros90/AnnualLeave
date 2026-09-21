@@ -31,7 +31,7 @@ const ANNUAL_LEAVE_TYPE = {
     defaultAllowance: 25, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0,
-    maxConsecutiveDays: 0, halfDayAllowed: false, eligibilityNotes: '', eligibilityScope: 'All',
+    maxConsecutiveDays: 0, halfDayAllowed: false, eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
 } as const
 
 /** A second budget, deliberately smaller than the annual one. */
@@ -93,6 +93,7 @@ function profile(over: Partial<EmployeeProfile> & Pick<EmployeeProfile, 'id' | '
         annualLeaveEntitlement: 20,
         leaveBalance: 20,
         jobTitle: null,
+        employmentStartDate: null,
         createdAt: '2026-01-01T00:00:00',
         ...over,
     }

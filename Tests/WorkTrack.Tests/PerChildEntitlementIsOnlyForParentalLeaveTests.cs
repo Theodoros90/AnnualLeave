@@ -25,6 +25,9 @@ public class PerChildEntitlementIsOnlyForParentalLeaveTests
         RequiresApproval = true,
         IsActive = true,
         PerChildEntitlement = perChild,
+        // The built-in types lock who they are available to; sending anything else
+        // would be a second refusal that is not the one under test.
+        AvailableTo = SystemLeaveTypes.FixedAvailability(name) ?? GenderAvailability.Both,
         // Valid numbers throughout, so a refusal can only be about the name.
         PerChildTotalWeeks = perChild ? 18 : 0,
         PerChildWeeksPerYear = perChild ? 5 : 0,

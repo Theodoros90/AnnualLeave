@@ -105,6 +105,8 @@ public class CreateAdminUserCommandTests : IDisposable
         JobTitle = "Engineer",
         // Required since the field became mandatory — see PersonFieldValidationTests.
         DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-30),
+        // Likewise, for an Employee or a Manager — see EmploymentStartDateTests.
+        EmploymentStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-2),
     };
 
     private Task<Result<AdminUserDto>> Handle(AdminCreateUserDto payload, FakeAccountEmailSender mail) =>

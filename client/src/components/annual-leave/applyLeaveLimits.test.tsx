@@ -36,7 +36,7 @@ const ANNUAL_LEAVE_TYPE = {
     defaultAllowance: 23, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0,
-    maxConsecutiveDays: 0, halfDayAllowed: true, eligibilityNotes: '', eligibilityScope: 'All',
+    maxConsecutiveDays: 0, halfDayAllowed: true, eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
 } as const
 
 /** A year of notice, so every cell in the month the calendar opens on is too soon. */
@@ -59,7 +59,7 @@ const USER: UserInfo = {
 const PROFILE: EmployeeProfile = {
     id: 'pr1', userId: USER.id, displayName: USER.displayName, departmentId: 2,
     managerId: null, annualLeaveEntitlement: 23, leaveBalance: 23,
-    jobTitle: null, createdAt: '2026-01-01T00:00:00',
+    jobTitle: null, employmentStartDate: null, createdAt: '2026-01-01T00:00:00',
 }
 
 const NO_CHILDREN: ChildLeaveEntitlementSummary = {

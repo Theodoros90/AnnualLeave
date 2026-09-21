@@ -56,6 +56,13 @@ public class AdminCreateUserDto
     [StringLength(150)]
     public string? JobTitle { get; set; }
 
+    /// <summary>
+    /// Required for an Employee or a Manager, and must be absent for an Admin —
+    /// the same role-dependent rule as <see cref="DepartmentId"/>, and settled by
+    /// <c>CreateAdminUserValidator</c> for the same reason.
+    /// </summary>
+    public DateOnly? EmploymentStartDate { get; set; }
+
     /// <summary>Defaults to 20 when omitted — see CreateUser in AdminUsersController.</summary>
     [Range(0, 365)]
     public int? AnnualLeaveEntitlement { get; set; }

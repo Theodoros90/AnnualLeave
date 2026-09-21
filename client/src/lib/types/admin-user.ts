@@ -47,6 +47,12 @@ export interface AdminCreateUserRequest {
     gender?: Gender | null
     managerId?: string | null
     jobTitle?: string | null
+    /**
+     * Required for an Employee or a Manager, and null for an Admin — the same
+     * role-dependent rule as `departmentId`, since both live in the Profile
+     * section the dialog hides for an Admin.
+     */
+    employmentStartDate: string | null
     annualLeaveEntitlement?: number
 }
 

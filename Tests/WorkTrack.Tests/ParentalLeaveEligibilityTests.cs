@@ -75,6 +75,7 @@ public class ParentalLeaveEligibilityTests
             RequiresApproval = true,
             AffectsBalance = false,
             DefaultAllowance = 90,
+            AvailableTo = GenderAvailability.Female,
         });
 
         db.LeaveTypes.Add(new LeaveType
@@ -85,6 +86,7 @@ public class ParentalLeaveEligibilityTests
             RequiresApproval = true,
             AffectsBalance = false,
             DefaultAllowance = 0,
+            AvailableTo = GenderAvailability.Male,
             PerChildEntitlement = true,
             PerChildTotalWeeks = 18,
             PerChildWeeksPerYear = 5,

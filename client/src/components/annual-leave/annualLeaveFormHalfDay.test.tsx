@@ -37,7 +37,7 @@ const ANNUAL_LEAVE_TYPE = {
     defaultAllowance: 23, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0, maxConsecutiveDays: 0,
-    halfDayAllowed: true, eligibilityNotes: '', eligibilityScope: 'All',
+    halfDayAllowed: true, eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
 } as const
 
 const FULL_DAY_ONLY_TYPE = {

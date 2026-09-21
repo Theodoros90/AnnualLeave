@@ -90,3 +90,42 @@ export function dateOfBirthError(value: string, asOf: string = today()): string 
     if (value > asOf) return DOB_FUTURE_MESSAGE
     return value > latestAllowedDateOfBirth(asOf) ? DOB_TOO_YOUNG_MESSAGE : undefined
 }
+
+export const START_DATE_REQUIRED_MESSAGE = 'Employment start date is required.'
+export const START_DATE_TOO_YOUNG_MESSAGE =
+    `Employment start date must be on or after their ${MINIMUM_AGE_YEARS}th birthday.`
+
+/**
+ * The earliest date somebody born on `dateOfBirth` may be recorded as having
+ * started: their MINIMUM_AGE_YEARS birthday. Also the date input's `min`, so the
+ * native picker will not offer a date the form is then going to refuse.
+ *
+ * Undefined when no date of birth is on file, which leaves the input uncapped —
+ * there is no age to bound it by.
+ */
+export function earliestAllowedStartDate(dateOfBirth: string | null | undefined): string | undefined {
+    if (!dateOfBirth) return undefined
+    return `${Number(dateOfBirth.slice(0, 4)) + MINIMUM_AGE_YEARS}${dateOfBirth.slice(4)}`
+}
+
+/**
+ * Mirrors `PersonFieldRules.EmploymentStartDate*` and the two validators that
+ * apply them. Required, and not before the person's MINIMUM_AGE_YEARS birthday —
+ * a start date decades before that is a typed year, not a career.
+ *
+ * Note what is *not* here: a start date in the future is accepted, unlike a date
+ * of birth. An administrator keys a new hire in before their first day.
+ *
+ * Callers only ask this for an Employee or a Manager. An Admin has no start date
+ * — the Profile section that collects it is hidden for them, and the API refuses
+ * one outright — so the dialogs skip the check rather than passing a blank.
+ */
+export function employmentStartDateError(
+    value: string,
+    dateOfBirth: string | null | undefined,
+): string | undefined {
+    if (!value) return START_DATE_REQUIRED_MESSAGE
+
+    const earliest = earliestAllowedStartDate(dateOfBirth)
+    return earliest && value < earliest ? START_DATE_TOO_YOUNG_MESSAGE : undefined
+}

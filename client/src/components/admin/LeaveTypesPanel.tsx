@@ -4,9 +4,14 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
+import FormControl from '@mui/material/FormControl'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import FormHelperText from '@mui/material/FormHelperText'
+import FormLabel from '@mui/material/FormLabel'
 import InputAdornment from '@mui/material/InputAdornment'
 import MenuItem from '@mui/material/MenuItem'
+import Radio from '@mui/material/Radio'
+import RadioGroup from '@mui/material/RadioGroup'
 import Stack from '@mui/material/Stack'
 import Switch from '@mui/material/Switch'
 import TextField from '@mui/material/TextField'
@@ -29,10 +34,12 @@ import {
 } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { describeAllowance } from '../../lib/leave-allowance'
+import { fixedAvailability, resolveAvailability } from '../../lib/parental-leave'
 import { softBg } from '../../lib/theme-tokens'
 import type {
     AttachmentPolicy,
     EligibilityScope,
+    GenderAvailability,
     LeaveType,
 } from '../../lib/types'
 
@@ -238,6 +245,11 @@ function LeaveTypesPanel() {
             halfDayAllowed: t.halfDayAllowed,
             eligibilityNotes: t.eligibilityNotes,
             eligibilityScope: t.eligibilityScope,
+            // A full replace that left this out would reopen a men-only type to
+            // everyone the moment somebody flipped Enabled. Resolved rather than
+            // copied: a built-in type sends its fixed value whatever the row says,
+            // so a stale row cannot be echoed back into a refusal.
+            availableTo: resolveAvailability(t),
         }
         updateMutation.mutate({ id: t.id, payload })
     }
@@ -615,6 +627,18 @@ function LeaveTypeCard({ derived, onEdit, onToggle, onDelete }: {
                 }}>
                     {t.eligibilityNotes || (t.eligibilityScope === 'All' ? 'All employees' : 'Limited')}
                 </Box>
+                {/* The enforced half, beside the free-text one. Nothing for 'Both':
+                    "everyone" is the default and the notes chip already says so. */}
+                {resolveAvailability(t) !== 'Both' && (
+                    <Box sx={{
+                        display: 'inline-flex', alignItems: 'center',
+                        px: '8px', py: '2px', borderRadius: '10px',
+                        fontSize: 10, fontWeight: 500,
+                        bgcolor: softBg('warning'), color: 'warning.dark',
+                    }}>
+                        {resolveAvailability(t)} only
+                    </Box>
+                )}
             </Box>
 
             {/* Footer stats */}
@@ -863,6 +887,19 @@ function LeaveTypeFormDialog(props: {
     const [halfDayAllowed, setHalfDayAllowed] = useState(i?.halfDayAllowed ?? false)
     const [eligibilityNotes, setEligibilityNotes] = useState(i?.eligibilityNotes ?? 'All employees')
     const [eligibilityScope, setEligibilityScope] = useState<EligibilityScope>(i?.eligibilityScope ?? 'All')
+    /* Who the type is offered to. Read-only on the three built-in types, where it
+       is what the type is rather than a setting (Annual Leave for everyone,
+       Maternity Leave for women, Paternity Leave for men) — the server's derived
+       flag says which, and the server refuses a change regardless. A new type
+       starts open to everyone. */
+    /* The name decides first, the server's flag second: an API built before the
+       column sends neither field, and a Maternity row the migration has not reached
+       still says Both — the dialog must show Female, read-only, regardless. */
+    const fixedAvailableTo = i ? fixedAvailability(i.name) : undefined
+    const availabilityLocked = fixedAvailableTo !== undefined || !!i?.availabilityLocked
+    const [availableTo, setAvailableTo] = useState<GenderAvailability>(
+        fixedAvailableTo ?? i?.availableTo ?? 'Both',
+    )
     /* Not a setting an admin chooses — Maternity and Paternity Leave keep a per-child
        ledger and no other type may. Taken from the server's derived flag rather than
        the stored `perChildEntitlement` column, so one of those two still shows its
@@ -912,6 +949,9 @@ function LeaveTypeFormDialog(props: {
             halfDayAllowed,
             eligibilityNotes: eligibilityNotes.trim() || 'All employees',
             eligibilityScope,
+            // The fixed value for a built-in type, so the radios being disabled is
+            // not the only thing standing between a stale row and a refusal.
+            availableTo: fixedAvailableTo ?? availableTo,
         })
     }
 
@@ -1139,6 +1179,27 @@ function LeaveTypeFormDialog(props: {
                             label="Active"
                         />
                     </Box>
+
+                    {/* Who it is offered to. Enforced: a request from the other gender
+                        is refused by the API, and the leave forms hide the card. */}
+                    <FormControl disabled={availabilityLocked}>
+                        <FormLabel id="leave-type-available-to" sx={{ fontSize: 13 }}>Available to</FormLabel>
+                        <RadioGroup
+                            row
+                            aria-labelledby="leave-type-available-to"
+                            value={availableTo}
+                            onChange={(e) => setAvailableTo(e.target.value as GenderAvailability)}
+                        >
+                            <FormControlLabel value="Both" control={<Radio size="small" />} label="Both" />
+                            <FormControlLabel value="Male" control={<Radio size="small" />} label="Male" />
+                            <FormControlLabel value="Female" control={<Radio size="small" />} label="Female" />
+                        </RadioGroup>
+                        <FormHelperText sx={{ ml: 0 }}>
+                            {availabilityLocked
+                                ? 'Built-in leave type — who it is available to cannot be changed.'
+                                : 'Employees of the other gender are not offered this type.'}
+                        </FormHelperText>
+                    </FormControl>
 
                     {/* Eligibility */}
                     <Stack direction="row" spacing={2}>

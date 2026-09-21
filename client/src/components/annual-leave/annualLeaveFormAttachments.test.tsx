@@ -36,7 +36,7 @@ const EVIDENCE_TYPE = {
     defaultAllowance: 10, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0, maxConsecutiveDays: 0, halfDayAllowed: false,
-    eligibilityNotes: '', eligibilityScope: 'All',
+    eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
 } as const
 
 const RELAXED_TYPE = {

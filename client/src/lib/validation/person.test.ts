@@ -3,6 +3,7 @@ import {
     MINIMUM_AGE_YEARS,
     PHONE_MAX_LENGTH,
     dateOfBirthError,
+    employmentStartDateError,
     emailError,
     phoneNumberError,
 } from './person'
@@ -73,5 +74,49 @@ describe('dateOfBirthError', () => {
         expect(dateOfBirthError('2026-09-12', TODAY)).toBe('Date of birth must be in the past.')
         // Today itself is a newborn, so the age rule is what catches it.
         expect(dateOfBirthError(TODAY, TODAY)).toBe(`Must be at least ${MINIMUM_AGE_YEARS} years old.`)
+    })
+})
+
+describe('employmentStartDateError', () => {
+    /* Fixed, so "16 years after" does not drift with the clock the suite runs on.
+       There is no `asOf` here: unlike the date of birth, a start date has no
+       relationship with today — a future one is a hire keyed in early. */
+    const BORN = '2006-04-20'
+
+    it('reports a blank date as required, since the field is mandatory', () => {
+        expect(employmentStartDateError('', BORN)).toBe('Employment start date is required.')
+    })
+
+    it('accepts an ordinary start date', () => {
+        expect(employmentStartDateError('2024-01-15', BORN)).toBeUndefined()
+    })
+
+    it('accepts a start date in the future, for a hire keyed in before their first day', () => {
+        expect(employmentStartDateError('2026-12-01', BORN)).toBeUndefined()
+    })
+
+    it('accepts starting on the day they turn the minimum age', () => {
+        expect(employmentStartDateError('2022-04-20', BORN)).toBeUndefined()
+    })
+
+    it('rejects starting the day before they turn the minimum age', () => {
+        expect(employmentStartDateError('2022-04-19', BORN)).toBe(
+            `Employment start date must be on or after their ${MINIMUM_AGE_YEARS}th birthday.`,
+        )
+    })
+
+    it('rejects a start date before they were born, which is a typed year', () => {
+        expect(employmentStartDateError('1999-06-01', BORN)).toBe(
+            `Employment start date must be on or after their ${MINIMUM_AGE_YEARS}th birthday.`,
+        )
+    })
+
+    it('has no age to check against when no date of birth is on file', () => {
+        expect(employmentStartDateError('1999-06-01', '')).toBeUndefined()
+        expect(employmentStartDateError('1999-06-01', null)).toBeUndefined()
+    })
+
+    it('still requires the date when no date of birth is on file', () => {
+        expect(employmentStartDateError('', '')).toBe('Employment start date is required.')
     })
 })

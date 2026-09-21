@@ -1,10 +1,11 @@
-import type { Gender, LeaveType } from './types'
+import type { Gender, GenderAvailability, LeaveType } from './types'
 
 /**
  * Which leave types an employee is offered.
  *
- * Maternity and Paternity Leave are shown only to an employee whose recorded
- * gender matches the type and who has a child young enough to qualify. Everything
+ * Two rules, applied in order. A type whose `availableTo` names one gender is
+ * offered only to an employee whose recorded gender matches. Maternity and
+ * Paternity Leave additionally need a child young enough to qualify. Everything
  * else is offered to everybody, so this is a filter over the whole list rather
  * than a special case around two cards.
  *
@@ -15,24 +16,55 @@ import type { Gender, LeaveType } from './types'
  * card that only fails when pressed.
  */
 
-/** The two types the rule reaches, and the gender each is offered to. */
-const OFFERED_TO: Record<string, Gender> = {
+/** Trimmed and lower-cased, matching how `SystemLeaveTypes` compares on the server. */
+function key(name: string): string {
+    return name.trim().toLowerCase()
+}
+
+/**
+ * The three built-in types and who each is fixed to — the client's copy of
+ * `SystemLeaveTypes.FixedAvailability`. Annual Leave is for everyone, Maternity
+ * Leave for women, Paternity Leave for men. These names are frozen (none can be
+ * renamed), which is what makes matching on them sound.
+ */
+const FIXED_AVAILABILITY: Record<string, GenderAvailability> = {
+    'annual leave': 'Both',
     'maternity leave': 'Female',
     'paternity leave': 'Male',
 }
 
-/**
- * Trimmed and lower-cased, matching how `SystemLeaveTypes` compares on the server.
- * These two names are frozen — neither can be renamed — which is what makes
- * matching on them sound.
- */
-function offeredTo(name: string): Gender | undefined {
-    return OFFERED_TO[name.trim().toLowerCase()]
+/** The two types the eligible-child half reaches. */
+const PARENTAL_TYPES = new Set(['maternity leave', 'paternity leave'])
+
+export function isParentalLeaveType(name: string): boolean {
+    return PARENTAL_TYPES.has(key(name))
 }
 
-/** Whether this leave type is one the gender + eligible-child rule applies to. */
-export function isParentalLeaveType(name: string): boolean {
-    return offeredTo(name) !== undefined
+/**
+ * Who a built-in type is fixed to, or undefined for a type whose availability is
+ * the admin's to set. The server refuses any other value for these three, so the
+ * dialog shows them read-only and the rest of the client reads this ahead of the
+ * stored column.
+ */
+export function fixedAvailability(name: string): GenderAvailability | undefined {
+    return FIXED_AVAILABILITY[key(name)]
+}
+
+/**
+ * Who `type` is available to, as the client should treat it. The fixed value wins
+ * for a built-in type; otherwise the stored column; `'Both'` when a response
+ * predating the column carries neither. Reading the name first is deliberate: an
+ * API built before the column, or a Maternity row the migration has not reached,
+ * still reports Both, and a father must not be offered Maternity Leave for it.
+ */
+export function resolveAvailability(type: Pick<LeaveType, 'name' | 'availableTo'>): GenderAvailability {
+    return fixedAvailability(type.name) ?? type.availableTo ?? 'Both'
+}
+
+/** The gender `type` is offered to, or undefined when it is offered to everyone. */
+function offeredTo(type: Pick<LeaveType, 'name' | 'availableTo'>): Gender | undefined {
+    const availability = resolveAvailability(type)
+    return availability === 'Both' ? undefined : availability
 }
 
 /**
@@ -44,18 +76,19 @@ export function isParentalLeaveType(name: string): boolean {
  * away from the whole company until an administrator filled the field in one
  * person at a time.
  *
- * `hasEligibleChild` still applies in that case: it is a fact about the employee's
+ * `hasEligibleChild` is consulted only for Maternity and Paternity Leave, and
+ * still applies when the gender is unspecified: it is a fact about the employee's
  * own declared children, not a field nobody got round to.
  */
 export function isLeaveTypeOffered(
-    type: Pick<LeaveType, 'name'>,
+    type: Pick<LeaveType, 'name' | 'availableTo'>,
     gender: Gender | null | undefined,
     hasEligibleChild: boolean,
 ): boolean {
-    const requiredGender = offeredTo(type.name)
-    if (requiredGender === undefined) return true
+    const requiredGender = offeredTo(type)
+    if (gender && requiredGender && gender !== requiredGender) return false
 
-    if (gender && gender !== requiredGender) return false
+    if (!isParentalLeaveType(type.name)) return true
 
     return hasEligibleChild
 }
