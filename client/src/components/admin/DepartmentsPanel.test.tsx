@@ -32,7 +32,7 @@ function dept(id: number, name: string, code: string, isActive = true): Departme
 function profile(userId: string, departmentId: number): EmployeeProfile {
     return {
         id: `pr-${userId}`, userId, displayName: userId, departmentId, managerId: null,
-        annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01T00:00:00',
+        annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: null, createdAt: '2026-01-01T00:00:00',
     }
 }
 
@@ -229,7 +229,7 @@ describe('DepartmentsPanel — an admin belongs to no department', () => {
     const ADMIN_PROFILE: EmployeeProfile = {
         id: 'pr-admin', userId: 'admin', displayName: 'Admin User', departmentId: null,
         managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null,
-        createdAt: '2026-01-01T00:00:00',
+        employmentStartDate: null, createdAt: '2026-01-01T00:00:00',
     }
 
     beforeEach(() => {

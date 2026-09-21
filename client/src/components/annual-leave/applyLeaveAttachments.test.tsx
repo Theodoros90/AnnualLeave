@@ -49,7 +49,7 @@ const USER: UserInfo = {
 const PROFILE: EmployeeProfile = {
     id: 'pr1', userId: USER.id, displayName: USER.displayName, departmentId: 2,
     managerId: null, annualLeaveEntitlement: 25, leaveBalance: 25,
-    jobTitle: null, createdAt: '2026-01-01T00:00:00',
+    jobTitle: null, employmentStartDate: null, createdAt: '2026-01-01T00:00:00',
 }
 
 const EVIDENCE_URL = '/api/files/8f2c1b6e-0000-4000-8000-000000000001'

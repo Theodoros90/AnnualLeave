@@ -58,6 +58,32 @@ public class EmployeeProfile : ISoftDeletable, IAuditable
 
     public string? JobTitle { get; set; }
 
+    /// <summary>
+    /// The day this person started working here. Recorded HR data an administrator
+    /// maintains on the Users panel, beside the department and the job title — the
+    /// three fields that say where somebody sits in the organisation.
+    ///
+    /// Required for an Employee and a Manager, and refused for an Admin, exactly as
+    /// <see cref="DepartmentId"/> is: the Profile section that collects all three is
+    /// hidden for an Admin, so a rule that demanded one would make an Admin
+    /// impossible to create through the only screen that creates users. Enforced by
+    /// <c>CreateAdminUserValidator</c> and <c>EditEmployeeProfileRequestValidator</c>,
+    /// and mirrored on the client by <c>lib/validation/person.ts</c>.
+    ///
+    /// Not <see cref="CreatedAt"/>, which is when the row was written — when an
+    /// administrator got round to keying the account in, and the same day for
+    /// everybody migrated in at once.
+    ///
+    /// Nullable because every profile predating the column has no value, and a hire
+    /// date for a real person is not ours to invent. Nothing backfills it: the rule
+    /// is what makes it mandatory, so an older account has to be given one the next
+    /// time it is saved — the same trade <c>PersonFieldRules.ValidDateOfBirth</c>
+    /// documents. Nothing reads it yet; in particular it does **not** pro-rate
+    /// <see cref="AnnualLeaveEntitlement"/>, which is stamped from the leave type's
+    /// allowance and never set per person.
+    /// </summary>
+    public DateOnly? EmploymentStartDate { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool IsDeleted { get; set; }
 }

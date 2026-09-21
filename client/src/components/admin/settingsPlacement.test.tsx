@@ -589,7 +589,7 @@ describe('unused leave leads with what is about to be lost', () => {
         id: displayName, userId: displayName, displayName,
         departmentId: null, managerId: null,
         annualLeaveEntitlement: 25, leaveBalance,
-        jobTitle: null, createdAt: '2026-01-01T00:00:00Z',
+        jobTitle: null, employmentStartDate: null, createdAt: '2026-01-01T00:00:00Z',
     })
 
     beforeEach(() => {

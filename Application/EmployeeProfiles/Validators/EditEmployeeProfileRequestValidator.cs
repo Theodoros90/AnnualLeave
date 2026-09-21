@@ -1,3 +1,4 @@
+using Application.Core;
 using Application.EmployeeProfiles.Commands;
 using Domain;
 using FluentValidation;
@@ -36,15 +37,26 @@ public class EditEmployeeProfileRequestValidator : AbstractValidator<EditEmploye
             RuleFor(x => x.EmployeeProfile)
                 .CustomAsync(async (request, validationContext, cancellationToken) =>
                 {
-                    var isAdmin = await context.EmployeeProfiles
+                    // The employment start date is settled here too, rather than in
+                    // rules of its own: it is role-dependent in exactly the same way
+                    // and would otherwise repeat this lookup. Its age check needs the
+                    // stored date of birth, which the payload does not carry — the
+                    // dialog saves the user before the profile, so the date read here
+                    // is the one just written.
+                    var owner = await context.EmployeeProfiles
                         .AsNoTracking()
-                        .AnyAsync(ep =>
-                            ep.Id == request.Id
-                            && ep.User != null
-                            && ep.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin),
-                            cancellationToken);
+                        .Where(ep => ep.Id == request.Id)
+                        .Select(ep => new
+                        {
+                            IsAdmin = ep.User != null
+                                && ep.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin),
+                            DateOfBirth = ep.User == null ? null : ep.User.DateOfBirth,
+                        })
+                        .FirstOrDefaultAsync(cancellationToken);
 
-                    if (isAdmin)
+                    if (owner is null) return;
+
+                    if (owner.IsAdmin)
                     {
                         if (request.DepartmentId is not null)
                         {
@@ -53,7 +65,27 @@ public class EditEmployeeProfileRequestValidator : AbstractValidator<EditEmploye
                                 "An Admin cannot belong to a department.");
                         }
 
+                        if (request.EmploymentStartDate is not null)
+                        {
+                            validationContext.AddFailure(
+                                "EmployeeProfile.EmploymentStartDate",
+                                PersonFieldRules.EmploymentStartDateNotForAdminMessage);
+                        }
+
                         return;
+                    }
+
+                    if (request.EmploymentStartDate is null)
+                    {
+                        validationContext.AddFailure(
+                            "EmployeeProfile.EmploymentStartDate",
+                            PersonFieldRules.EmploymentStartDateRequiredMessage);
+                    }
+                    else if (!PersonFieldRules.IsOldEnoughToStart(request.EmploymentStartDate, owner.DateOfBirth))
+                    {
+                        validationContext.AddFailure(
+                            "EmployeeProfile.EmploymentStartDate",
+                            PersonFieldRules.EmploymentStartDateTooYoungMessage);
                     }
 
                     if (request.DepartmentId is not { } departmentId)

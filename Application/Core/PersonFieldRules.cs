@@ -85,4 +85,32 @@ public static partial class PersonFieldRules
                     ? DateOfBirthFutureMessage
                     : DateOfBirthTooYoungMessage;
             });
+
+    public const string EmploymentStartDateRequiredMessage = "Employment start date is required.";
+
+    public const string EmploymentStartDateNotForAdminMessage =
+        "An Admin has no employment start date.";
+
+    public static readonly string EmploymentStartDateTooYoungMessage =
+        $"Employment start date must be on or after their {MinimumAgeYears}th birthday.";
+
+    /// <summary>
+    /// Whether <paramref name="startDate"/> is old enough for somebody born on
+    /// <paramref name="dateOfBirth"/>. A start date before their sixteenth birthday
+    /// is a typed year rather than a career, and <see cref="MinimumAgeYears"/> is
+    /// already the youngest anyone may be recorded as.
+    ///
+    /// True when either date is missing: a profile predating the date-of-birth
+    /// column has no age to disagree with, and refusing would strand it. The start
+    /// date being absent is a separate complaint with its own message.
+    ///
+    /// The boundary belongs to the employee — starting on the day they turn sixteen
+    /// is allowed, matching <see cref="LatestAllowedDateOfBirth"/>. A start date in
+    /// the future is deliberately fine: an administrator keys a new hire in before
+    /// their first day, unlike a date of birth, which cannot be ahead of us.
+    /// </summary>
+    public static bool IsOldEnoughToStart(DateOnly? startDate, DateOnly? dateOfBirth) =>
+        startDate is not { } start
+        || dateOfBirth is not { } born
+        || start >= born.AddYears(MinimumAgeYears);
 }

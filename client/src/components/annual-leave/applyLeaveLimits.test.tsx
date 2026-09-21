@@ -59,7 +59,7 @@ const USER: UserInfo = {
 const PROFILE: EmployeeProfile = {
     id: 'pr1', userId: USER.id, displayName: USER.displayName, departmentId: 2,
     managerId: null, annualLeaveEntitlement: 23, leaveBalance: 23,
-    jobTitle: null, createdAt: '2026-01-01T00:00:00',
+    jobTitle: null, employmentStartDate: null, createdAt: '2026-01-01T00:00:00',
 }
 
 const NO_CHILDREN: ChildLeaveEntitlementSummary = {

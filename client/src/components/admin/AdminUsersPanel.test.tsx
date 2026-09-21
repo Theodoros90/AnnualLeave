@@ -106,6 +106,7 @@ describe('AdminUsersPanel — Create User', () => {
         fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'newjoiner@example.test' } })
         await selectDepartment(dialog)
         setDateOfBirth(dialog)
+        setEmploymentStartDate(dialog)
 
         expect(within(dialog).getByText('Display name is required')).toBeInTheDocument()
         expect(within(dialog).getByRole('button', { name: /^create$/i })).toBeDisabled()
@@ -134,6 +135,7 @@ describe('AdminUsersPanel — Create User', () => {
         fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Joiner' } })
         await selectDepartment(dialog)
         setDateOfBirth(dialog)
+        setEmploymentStartDate(dialog)
 
         fireEvent.click(within(dialog).getByRole('button', { name: /^create$/i }))
 
@@ -153,6 +155,7 @@ describe('AdminUsersPanel — Create User', () => {
             // figure to send and no chance to send a stale one.
             phoneNumber: null,
             dateOfBirth: '1990-03-04',
+            employmentStartDate: '2024-02-01',
             // Untouched, and sent as null rather than omitted: the DTO is a full
             // replace, so null is the value that means "not specified".
             gender: null,
@@ -180,6 +183,7 @@ describe('AdminUsersPanel — Create User', () => {
         fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Joiner' } })
         await selectDepartment(dialog)
         setDateOfBirth(dialog)
+        setEmploymentStartDate(dialog)
         fireEvent.click(within(dialog).getByRole('button', { name: /^create$/i }))
 
         expect(await screen.findByText(/the welcome email could not be sent/i)).toBeInTheDocument()
@@ -251,8 +255,8 @@ describe('AdminUsersPanel — manager is derived from department', () => {
     const MANAGER_USER = { id: 'u-manager', userName: 'manager@example.test', email: 'manager@example.test', displayName: 'Andreas Georgiou', imageUrl: '', emailConfirmed: true, roles: ['Manager'], dateOfBirth: '1990-03-04' }
     const EMPLOYEE_USER = { id: 'u-employee', userName: 'employee@example.test', email: 'employee@example.test', displayName: 'Theodoros Iona', imageUrl: '', emailConfirmed: true, roles: ['Employee'], dateOfBirth: '1990-03-04' }
 
-    const MANAGER_PROFILE = { id: 'p-manager', userId: 'u-manager', displayName: 'Andreas Georgiou', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01' }
-    const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01' }
+    const MANAGER_PROFILE = { id: 'p-manager', userId: 'u-manager', displayName: 'Andreas Georgiou', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
+    const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
 
     beforeEach(() => {
         api.getAdminUsers.mockResolvedValue([MANAGER_USER, EMPLOYEE_USER] as never)
@@ -361,6 +365,7 @@ describe('AdminUsersPanel — manager is derived from department', () => {
         fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Hire' } })
         await selectDepartment(dialog)
         setDateOfBirth(dialog)
+        setEmploymentStartDate(dialog)
 
         expect(await within(dialog).findByDisplayValue('Andreas Georgiou')).toBeInTheDocument()
 
@@ -392,6 +397,7 @@ describe('AdminUsersPanel — manager is derived from department', () => {
         fireEvent.click(within(dialog).getByRole('radio', { name: 'Manager' }))
         await selectDepartment(dialog)
         setDateOfBirth(dialog)
+        setEmploymentStartDate(dialog)
 
         expect(within(dialog).queryByRole('textbox', { name: 'Manager' })).not.toBeInTheDocument()
         expect(within(dialog).queryByDisplayValue('Andreas Georgiou')).not.toBeInTheDocument()
@@ -462,6 +468,7 @@ describe('AdminUsersPanel — role selection', () => {
         fireEvent.click(within(dialog).getByRole('radio', { name: 'Manager' }))
         await selectDepartment(dialog)
         setDateOfBirth(dialog)
+        setEmploymentStartDate(dialog)
         fireEvent.click(within(dialog).getByRole('button', { name: /^create$/i }))
 
         await waitFor(() => expect(createAdminUser).toHaveBeenCalledTimes(1))
@@ -519,6 +526,7 @@ describe('AdminUsersPanel — Admin hides the Profile section', () => {
         fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Admin' } })
         fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
         setDateOfBirth(dialog)
+        setEmploymentStartDate(dialog)
 
         // No department to select — Create is enabled all the same.
         const create = within(dialog).getByRole('button', { name: /^create$/i })
@@ -558,9 +566,9 @@ describe('AdminUsersPanel — editing across the Admin boundary', () => {
     const EMPLOYEE_USER = { id: 'u-employee', userName: 'employee@example.test', email: 'employee@example.test', displayName: 'Theodoros Iona', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'], dateOfBirth: '1990-03-04' }
     const ADMIN_USER = { id: 'u-admin', userName: 'admin@example.test', email: 'admin@example.test', displayName: 'Admin User', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Admin'], dateOfBirth: '1990-03-04' }
 
-    const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01' }
+    const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
     // What the server now returns for an admin: a profile, and no department.
-    const ADMIN_PROFILE = { id: 'p-admin', userId: 'u-admin', displayName: 'Admin User', departmentId: null, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01' }
+    const ADMIN_PROFILE = { id: 'p-admin', userId: 'u-admin', displayName: 'Admin User', departmentId: null, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
 
     beforeEach(() => {
         api.getAdminUsers.mockResolvedValue([EMPLOYEE_USER, ADMIN_USER] as never)
@@ -619,6 +627,7 @@ describe('AdminUsersPanel — editing across the Admin boundary', () => {
 
         await selectDepartment(dialog)
         setDateOfBirth(dialog)
+        setEmploymentStartDate(dialog)
 
         expect(within(dialog).getByRole('button', { name: /^save$/i })).toBeEnabled()
         fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
@@ -745,7 +754,7 @@ describe('AdminUsersPanel — activating and deactivating', () => {
  */
 describe('AdminUsersPanel — leave is not configured per user', () => {
     const EMPLOYEE = { id: 'u-employee', userName: 'e@example.test', email: 'e@example.test', displayName: 'Some Employee', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'], dateOfBirth: '1990-03-04' }
-    const PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Some Employee', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 14, jobTitle: 'Engineer', createdAt: '2026-01-01' }
+    const PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Some Employee', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 14, jobTitle: 'Engineer', employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
 
     beforeEach(() => {
         api.getAdminUsers.mockResolvedValue([EMPLOYEE] as never)
@@ -800,8 +809,8 @@ describe('AdminUsersPanel — recording gender', () => {
     const MALE_USER = { id: 'u-male', userName: 'm@example.test', email: 'm@example.test', displayName: 'Stored Male', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'], gender: 'Male', dateOfBirth: '1990-03-04' }
     const UNSET_USER = { id: 'u-unset', userName: 'u@example.test', email: 'u@example.test', displayName: 'No Gender', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'], gender: null, dateOfBirth: '1990-03-04' }
 
-    const MALE_PROFILE = { id: 'p-male', userId: 'u-male', displayName: 'Stored Male', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01' }
-    const UNSET_PROFILE = { id: 'p-unset', userId: 'u-unset', displayName: 'No Gender', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01' }
+    const MALE_PROFILE = { id: 'p-male', userId: 'u-male', displayName: 'Stored Male', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
+    const UNSET_PROFILE = { id: 'p-unset', userId: 'u-unset', displayName: 'No Gender', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
 
     beforeEach(() => {
         api.getAdminUsers.mockResolvedValue([MALE_USER, UNSET_USER] as never)
@@ -902,6 +911,15 @@ function setDateOfBirth(dialog: HTMLElement, value = "1990-03-04") {
     fireEvent.change(within(dialog).getByLabelText(/date of birth/i), { target: { value } })
 }
 
+/* The Profile section's mandatory start date, filled so a test about something
+   else can still reach Save. Tolerant of the field's absence, because the whole
+   Profile section is hidden for an Admin and several of these tests pick that
+   role — the dedicated cases below are what hold the rule itself. */
+function setEmploymentStartDate(dialog: HTMLElement, value = '2024-02-01') {
+    const field = within(dialog).queryByLabelText(/employment start date/i)
+    if (field) fireEvent.change(field, { target: { value } })
+}
+
 async function selectDepartment(dialog: HTMLElement) {
     fireEvent.mouseDown(within(dialog).getByRole('combobox'))
 
@@ -921,9 +939,9 @@ describe('AdminUsersPanel — managing an employee\'s children', () => {
     const EMPLOYEE = { id: 'u-employee', userName: 'e@example.test', email: 'e@example.test', displayName: 'Theodoros Iona', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'] }
     const ADMIN = { id: 'u-admin', userName: 'a@example.test', email: 'a@example.test', displayName: 'Admin User', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Admin'] }
 
-    const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01' }
+    const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
     // An admin sits outside the department structure and gets no Profile section.
-    const ADMIN_PROFILE = { id: 'p-admin', userId: 'u-admin', displayName: 'Admin User', departmentId: null, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01' }
+    const ADMIN_PROFILE = { id: 'p-admin', userId: 'u-admin', displayName: 'Admin User', departmentId: null, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
 
     beforeEach(() => {
         api.getAdminUsers.mockResolvedValue([EMPLOYEE, ADMIN] as never)
@@ -1011,6 +1029,7 @@ describe('AdminUsersPanel — adding children while creating a user', () => {
         fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Hire' } })
         await selectDepartment(dialog)
         setDateOfBirth(dialog)
+        setEmploymentStartDate(dialog)
     }
 
     async function addPendingChild(dialog: HTMLElement, name: string, dateOfBirth: string) {
@@ -1115,7 +1134,7 @@ describe('AdminUsersPanel — adding children while creating a user', () => {
 // whole Profile section.
 describe('AdminUsersPanel — dialogs explain themselves', () => {
     const EMPLOYEE_USER = { id: 'u-employee', userName: 'employee@example.test', email: 'employee@example.test', displayName: 'Theodoros Iona', imageUrl: '', emailConfirmed: true, roles: ['Employee'], dateOfBirth: '1990-03-04' }
-    const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01' }
+    const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
 
     beforeEach(() => {
         api.getAdminUsers.mockResolvedValue([EMPLOYEE_USER] as never)
@@ -1223,7 +1242,7 @@ describe('AdminUsersPanel — a form nobody has touched is not wrong yet', () =>
     // blank -- long enough to flash red on a record that is perfectly valid.
     it('opens Edit User with nothing flagged', async () => {
         const EMPLOYEE_USER = { id: 'u-employee', userName: 'employee@example.test', email: 'employee@example.test', displayName: 'Theodoros Iona', imageUrl: '', emailConfirmed: true, roles: ['Employee'], dateOfBirth: '1990-03-04' }
-        const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01' }
+        const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
         api.getAdminUsers.mockResolvedValue([EMPLOYEE_USER] as never)
         api.getEmployeeProfiles.mockResolvedValue([EMPLOYEE_PROFILE] as never)
 
@@ -1249,7 +1268,7 @@ describe('AdminUsersPanel — a form nobody has touched is not wrong yet', () =>
    is the same rule reaching the other two surfaces that collect the number. */
 describe('AdminUsersPanel — phone number takes only a number', () => {
     const EMPLOYEE_USER = { id: 'u-employee', userName: 'employee@example.test', email: 'employee@example.test', displayName: 'Theodoros Iona', imageUrl: '', emailConfirmed: true, roles: ['Employee'], phoneNumber: '99123456', dateOfBirth: '1990-03-04' }
-    const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01' }
+    const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
 
     it('refuses to create a user whose phone number contains letters', async () => {
         const dialog = await openCreateDialog()
@@ -1258,6 +1277,7 @@ describe('AdminUsersPanel — phone number takes only a number', () => {
         fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'newjoiner@example.test' } })
         await selectDepartment(dialog)
         setDateOfBirth(dialog)
+        setEmploymentStartDate(dialog)
         expect(within(dialog).getByRole('button', { name: /^create$/i })).toBeEnabled()
 
         fireEvent.change(within(dialog).getByLabelText(/phone number/i), { target: { value: 'cvbcvb' } })
@@ -1273,6 +1293,7 @@ describe('AdminUsersPanel — phone number takes only a number', () => {
         fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'newjoiner@example.test' } })
         await selectDepartment(dialog)
         setDateOfBirth(dialog)
+        setEmploymentStartDate(dialog)
         fireEvent.change(within(dialog).getByLabelText(/phone number/i), { target: { value: '+357 99 123456' } })
 
         expect(within(dialog).queryByText('Phone number can only contain numbers.')).not.toBeInTheDocument()
@@ -1308,6 +1329,7 @@ describe('AdminUsersPanel — email and date of birth are checked as they are ty
         fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'newjoiner@example.test' } })
         await selectDepartment(dialog)
         setDateOfBirth(dialog)
+        setEmploymentStartDate(dialog)
         expect(within(dialog).getByRole('button', { name: /^create$/i })).toBeEnabled()
         return dialog
     }
@@ -1365,7 +1387,7 @@ describe('AdminUsersPanel — email and date of birth are checked as they are ty
    itself rather than only disabling Save. */
 describe('AdminUsersPanel — date of birth is required', () => {
     const EMPLOYEE_USER = { id: 'u-employee', userName: 'employee@example.test', email: 'employee@example.test', displayName: 'Theodoros Iona', imageUrl: '', emailConfirmed: true, roles: ['Employee'] }
-    const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, createdAt: '2026-01-01' }
+    const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
 
     async function openEditFor(user: object) {
         api.getAdminUsers.mockResolvedValue([user] as never)
@@ -1386,6 +1408,9 @@ describe('AdminUsersPanel — date of birth is required', () => {
         fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Joiner' } })
         fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'newjoiner@example.test' } })
         await selectDepartment(dialog)
+        // Also mandatory, and not what this is about — filled so the date of birth
+        // is the only thing left holding Create shut.
+        setEmploymentStartDate(dialog)
 
         expect(within(dialog).getByText('Date of birth is required.')).toBeInTheDocument()
         expect(within(dialog).getByRole('button', { name: /^create$/i })).toBeDisabled()
@@ -1416,5 +1441,189 @@ describe('AdminUsersPanel — date of birth is required', () => {
 
         expect(within(dialog).queryByText('Date of birth is required.')).not.toBeInTheDocument()
         expect(within(dialog).getByRole('button', { name: /^save$/i })).toBeEnabled()
+    })
+})
+
+/*
+ * When somebody joined was recorded nowhere — EmployeeProfile.CreatedAt is when the
+ * row was written, not a hire date. So Employment start date, in the Profile section
+ * beside the department and the job title, mandatory for an Employee and a Manager
+ * and absent for an Admin, exactly as the department is.
+ *
+ * Mirrors Application/Core/PersonFieldRules.cs and the two validators that apply it;
+ * these keep the dialogs from offering a submit the API is certain to refuse.
+ */
+describe('AdminUsersPanel — employment start date', () => {
+    const START_DATE = '2024-02-01'
+
+    const EMPLOYEE_USER = {
+        id: 'u-employee', userName: 'e@example.test', email: 'e@example.test',
+        displayName: 'Some Employee', imageUrl: '', emailConfirmed: true, isActive: true,
+        roles: ['Employee'], dateOfBirth: '1990-03-04',
+    }
+    const EMPLOYEE_PROFILE = {
+        id: 'p-employee', userId: 'u-employee', displayName: 'Some Employee',
+        departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20,
+        leaveBalance: 20, jobTitle: 'Engineer', employmentStartDate: START_DATE,
+        createdAt: '2026-01-01',
+    }
+
+    function startDateField(dialog: HTMLElement) {
+        return within(dialog).getByLabelText(/employment start date/i)
+    }
+
+    async function openEditDialog(
+        user = EMPLOYEE_USER,
+        profile: Record<string, unknown> = EMPLOYEE_PROFILE,
+    ) {
+        api.getAdminUsers.mockResolvedValue([user] as never)
+        api.getEmployeeProfiles.mockResolvedValue([profile] as never)
+
+        renderPanel()
+        const nameEl = await screen.findByText(user.displayName)
+        const row = nameEl.parentElement!.parentElement!.parentElement!.parentElement!
+        fireEvent.click(within(row).getByTitle('Edit'))
+        return screen.getByRole('dialog')
+    }
+
+    /* ── Creating ───────────────────────────────────────────────────────────── */
+
+    it('will not create an employee without a start date', async () => {
+        const dialog = await openCreateDialog()
+
+        fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'newjoiner@example.test' } })
+        fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Joiner' } })
+        await selectDepartment(dialog)
+        setDateOfBirth(dialog)
+
+        expect(within(dialog).getByText('Employment start date is required.')).toBeInTheDocument()
+        expect(within(dialog).getByRole('button', { name: /^create$/i })).toBeDisabled()
+
+        fireEvent.change(startDateField(dialog), { target: { value: START_DATE } })
+
+        expect(within(dialog).getByRole('button', { name: /^create$/i })).toBeEnabled()
+    })
+
+    it('sends the start date it collected', async () => {
+        const dialog = await openCreateDialog()
+
+        fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'newjoiner@example.test' } })
+        fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Joiner' } })
+        await selectDepartment(dialog)
+        setDateOfBirth(dialog)
+        fireEvent.change(startDateField(dialog), { target: { value: START_DATE } })
+
+        fireEvent.click(within(dialog).getByRole('button', { name: /^create$/i }))
+
+        await waitFor(() => expect(createAdminUser).toHaveBeenCalledTimes(1))
+        expect(vi.mocked(createAdminUser).mock.calls[0][0]).toMatchObject({
+            employmentStartDate: START_DATE,
+        })
+    })
+
+    it('does not ask an Admin for one, and does not send one', async () => {
+        const dialog = await openCreateDialog()
+
+        fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'boss@example.test' } })
+        fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Admin' } })
+        setDateOfBirth(dialog)
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+
+        // The whole Profile section goes with the role, so the field goes with it.
+        expect(within(dialog).queryByLabelText(/employment start date/i)).not.toBeInTheDocument()
+        expect(within(dialog).getByRole('button', { name: /^create$/i })).toBeEnabled()
+
+        fireEvent.click(within(dialog).getByRole('button', { name: /^create$/i }))
+
+        await waitFor(() => expect(createAdminUser).toHaveBeenCalledTimes(1))
+        expect(vi.mocked(createAdminUser).mock.calls[0][0]).toMatchObject({
+            employmentStartDate: null,
+        })
+    })
+
+    /* A date typed before the person turned sixteen is a typed year, not a career.
+       The dialog holds both dates, so it can say so without asking the server. */
+    it('refuses a start date before the sixteenth birthday', async () => {
+        const dialog = await openCreateDialog()
+
+        fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'newjoiner@example.test' } })
+        fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Joiner' } })
+        await selectDepartment(dialog)
+        setDateOfBirth(dialog, '1990-03-04')
+        fireEvent.change(startDateField(dialog), { target: { value: '2004-01-01' } })
+
+        expect(within(dialog).getByText(/on or after their 16th birthday/i)).toBeInTheDocument()
+        expect(within(dialog).getByRole('button', { name: /^create$/i })).toBeDisabled()
+    })
+
+    /* ── Editing ────────────────────────────────────────────────────────────── */
+
+    it('opens on the start date already on file', async () => {
+        const dialog = await openEditDialog()
+
+        await waitFor(() => expect(startDateField(dialog)).toHaveValue(START_DATE))
+    })
+
+    it('sends the start date when the profile is saved', async () => {
+        const dialog = await openEditDialog()
+
+        await waitFor(() => expect(startDateField(dialog)).toHaveValue(START_DATE))
+        fireEvent.change(startDateField(dialog), { target: { value: '2025-06-16' } })
+        fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+        await waitFor(() => expect(api.updateEmployeeProfile).toHaveBeenCalledTimes(1))
+        expect(api.updateEmployeeProfile.mock.calls[0][0]).toMatchObject({
+            id: EMPLOYEE_PROFILE.id,
+            employmentStartDate: '2025-06-16',
+        })
+    })
+
+    /* A full replace: clearing the field would clear the stored date, so Save has
+       to block rather than let a blank through. */
+    it('will not save an employee whose start date has been cleared', async () => {
+        const dialog = await openEditDialog()
+
+        await waitFor(() => expect(startDateField(dialog)).toHaveValue(START_DATE))
+        fireEvent.change(startDateField(dialog), { target: { value: '' } })
+
+        expect(within(dialog).getByText('Employment start date is required.')).toBeInTheDocument()
+        expect(within(dialog).getByRole('button', { name: /^save$/i })).toBeDisabled()
+    })
+
+    /* The same trade the date of birth made: nothing backfills the column, so an
+       older record has to be given a date before it can be saved again. */
+    it('asks for one on a record that predates the field', async () => {
+        const dialog = await openEditDialog(EMPLOYEE_USER, {
+            ...EMPLOYEE_PROFILE,
+            employmentStartDate: null,
+        })
+
+        await waitFor(() =>
+            expect(within(dialog).getByText('Employment start date is required.')).toBeInTheDocument())
+        expect(within(dialog).getByRole('button', { name: /^save$/i })).toBeDisabled()
+
+        fireEvent.change(startDateField(dialog), { target: { value: START_DATE } })
+
+        expect(within(dialog).getByRole('button', { name: /^save$/i })).toBeEnabled()
+    })
+
+    /* Same rule as the department beside it: nothing may hold a start date for an
+       Admin, so a promotion must not send the one it stopped showing. */
+    it('clears the start date when an employee is promoted to Admin', async () => {
+        const dialog = await openEditDialog()
+
+        await waitFor(() => expect(startDateField(dialog)).toHaveValue(START_DATE))
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+
+        expect(within(dialog).queryByLabelText(/employment start date/i)).not.toBeInTheDocument()
+
+        fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+        await waitFor(() => expect(api.updateEmployeeProfile).toHaveBeenCalledTimes(1))
+        expect(api.updateEmployeeProfile.mock.calls[0][0]).toMatchObject({
+            id: EMPLOYEE_PROFILE.id,
+            departmentId: null,
+            employmentStartDate: null,
+        })
     })
 })

@@ -26,6 +26,10 @@ public class EditEmployeeProfile
             employeeProfile.DepartmentId = request.EmployeeProfile.DepartmentId;
             employeeProfile.ManagerId = request.EmployeeProfile.ManagerId;
             employeeProfile.JobTitle = request.EmployeeProfile.JobTitle;
+            // Assigned unconditionally, like every field above it: the dialog shows
+            // the start date, so a null arriving here is a promotion to Admin
+            // clearing it rather than a client that forgot to send it.
+            employeeProfile.EmploymentStartDate = request.EmployeeProfile.EmploymentStartDate;
 
             await context.SaveChangesAsync(cancellationToken);
 

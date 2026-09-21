@@ -25,4 +25,13 @@ public class EditEmployeeProfileRequest
 
     [StringLength(100)]
     public string? JobTitle { get; set; }
+
+    /// <summary>
+    /// Required for an Employee or a Manager, null only for an Admin — role-dependent
+    /// like <see cref="DepartmentId"/> above it, so <c>EditEmployeeProfileRequestValidator</c>
+    /// settles it rather than an annotation here. Unlike the leave numbers, this one
+    /// belongs on the request: the dialog shows it, so omitting it would clear a
+    /// start date already on file.
+    /// </summary>
+    public DateOnly? EmploymentStartDate { get; set; }
 }

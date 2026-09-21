@@ -1094,6 +1094,13 @@ public class DbInitializer
 
         var profiles = new List<EmployeeProfile> { adminProfile };
 
+        // A plausible hire date for the demo staff. Mandatory for an Employee and a
+        // Manager, so seeding it is what keeps the demo database saveable: without
+        // one, every demo employee is refused the moment an admin opens their record
+        // and presses Save. The admin profile above deliberately has none — the rule
+        // refuses an Admin a start date, the same way it refuses them a department.
+        var demoStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-2);
+
         // Demo profiles — only for demo users that were actually seeded.
         EmployeeProfile? AddManager(string email, int departmentId, string jobTitle)
         {
@@ -1106,6 +1113,7 @@ public class DbInitializer
                 DepartmentId = departmentId,
                 ManagerId = adminProfile.Id,
                 JobTitle = jobTitle,
+                EmploymentStartDate = demoStartDate,
                 AnnualLeaveEntitlement = allowance,
                 CreatedAt = DateTime.UtcNow
             };
@@ -1124,6 +1132,7 @@ public class DbInitializer
                 DepartmentId = departmentId,
                 ManagerId = managerProfileId,
                 JobTitle = jobTitle,
+                EmploymentStartDate = demoStartDate,
                 AnnualLeaveEntitlement = allowance,
                 CreatedAt = DateTime.UtcNow
             });

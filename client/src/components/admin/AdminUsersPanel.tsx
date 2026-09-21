@@ -30,7 +30,10 @@ import {
     updateEmployeeProfile,
 } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
-import { dateOfBirthError, emailError, latestAllowedDateOfBirth, phoneNumberError } from '../../lib/validation/person'
+import {
+    dateOfBirthError, earliestAllowedStartDate, emailError, employmentStartDateError,
+    latestAllowedDateOfBirth, phoneNumberError,
+} from '../../lib/validation/person'
 import ChildrenSection from '../layout/ChildrenSection'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
 import type {
@@ -503,15 +506,20 @@ function AdminUsersPanel() {
             phoneNumber: string | null
             dateOfBirth: string | null
             gender: Gender | null
+            employmentStartDate: string | null
         }) => {
             await updateAdminUser(payload.userId, { email: payload.email, displayName: payload.displayName, phoneNumber: payload.phoneNumber, dateOfBirth: payload.dateOfBirth, gender: payload.gender })
             await setAdminUserRoles(payload.userId, { roles: payload.roles })
             if (payload.profile) {
+                // The user is saved first on purpose: the profile validator checks the
+                // start date against the *stored* date of birth, so the one just typed
+                // has to be in the database by the time this lands.
                 await updateEmployeeProfile({
                     id: payload.profile.id,
                     departmentId: payload.departmentId,
                     managerId: payload.managerId,
                     jobTitle: payload.jobTitle || null,
+                    employmentStartDate: payload.employmentStartDate,
                 })
             }
         },
@@ -1136,6 +1144,12 @@ function UserRow({
                             <>
                                 <ExpandRow label="Department" value={derived.departmentName ?? '—'} />
                                 <ExpandRow label="Job title" value={derived.profile?.jobTitle || '—'} />
+                                <ExpandRow
+                                    label="Employment start date"
+                                    value={derived.profile?.employmentStartDate
+                                        ? new Date(derived.profile.employmentStartDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                                        : '—'}
+                                />
                                 {role === 'Employee' && (
                                     <ExpandRow label="Manager" value={managerName ?? '—'} />
                                 )}
@@ -1472,6 +1486,7 @@ function EditUserDialog(props: {
         phoneNumber: string | null
         dateOfBirth: string | null
         gender: Gender | null
+        employmentStartDate: string | null
     }) => void
 }) {
     const open = !!props.data
@@ -1483,6 +1498,7 @@ function EditUserDialog(props: {
     const [role, setRole] = useState<UserRole>('Employee')
     const [departmentId, setDepartmentId] = useState(0)
     const [jobTitle, setJobTitle] = useState('')
+    const [employmentStartDate, setEmploymentStartDate] = useState('')
     const [phoneNumber, setPhoneNumber] = useState('')
     const [dateOfBirth, setDateOfBirth] = useState('')
     const [gender, setGender] = useState<Gender | null>(null)
@@ -1515,6 +1531,7 @@ function EditUserDialog(props: {
                 setRole(primaryRoleOf(props.data!.user.roles))
                 setDepartmentId(props.data!.profile?.departmentId ?? 0)
                 setJobTitle(props.data!.profile?.jobTitle ?? '')
+                setEmploymentStartDate(props.data!.profile?.employmentStartDate ?? '')
                 setPhoneNumber(props.data!.user.phoneNumber ?? '')
                 setDateOfBirth(props.data!.user.dateOfBirth ?? '')
                 setGender(props.data!.user.gender ?? null)
@@ -1543,6 +1560,20 @@ function EditUserDialog(props: {
     // inherit, and an Employee without one is invisible to every manager and has
     // no leave routing.
     const departmentMissing = !isAdmin && !departmentId
+
+    /* The start date rides with the department, for the same reason: both live in
+       the Profile section, which is hidden for an Admin. So a promotion sends null
+       rather than the date it stopped showing, and a demotion has to supply one. */
+    const effectiveEmploymentStartDate = isAdmin ? null : employmentStartDate || null
+    const startDateError = isAdmin
+        ? undefined
+        : employmentStartDateError(employmentStartDate, dateOfBirth || null)
+
+    /* Announced on an untouched form too, once the record's own values are in the
+       fields — a profile predating the column opens with a genuine gap the admin
+       has to fill, and saying nothing would leave Save disabled with no reason
+       given. Same treatment, and same hydration guard, as the date of birth. */
+    const showStartDateError = !!startDateError && (dirty || (!!user && hydratedFor === user.id))
 
     /* Whether a gap is *shown* as an error, as opposed to whether it blocks Save.
        The two differ only on a form the admin has not started. */
@@ -1682,6 +1713,30 @@ function EditUserDialog(props: {
                                     fullWidth
                                 />
                             </FieldRow>
+                            {/* On its own row rather than paired: it needs the width for
+                                its error, and the Manager field below it is full width
+                                for the same reason. */}
+                            <FieldRow>
+                                <TextField
+                                    label="Employment start date"
+                                    type="date"
+                                    value={employmentStartDate}
+                                    onChange={(e) => { setDirty(true); setEmploymentStartDate(e.target.value) }}
+                                    fullWidth
+                                    required
+                                    /* `min` is their 16th birthday — an affordance only, the
+                                       same way the date of birth's `max` is: a date input can
+                                       still be typed into, and startDateError holds the line.
+                                       No `max`: a start date in the future is a hire keyed in
+                                       before their first day. */
+                                    slotProps={{
+                                        inputLabel: { shrink: true },
+                                        htmlInput: { min: earliestAllowedStartDate(dateOfBirth || null) },
+                                    }}
+                                    error={showStartDateError}
+                                    helperText={showStartDateError ? startDateError : 'The day this person joined.'}
+                                />
+                            </FieldRow>
                             {showManagerField && (
                                 <TextField
                                     label="Manager"
@@ -1705,12 +1760,12 @@ function EditUserDialog(props: {
                 <Button variant="outlined" onClick={props.onClose} disabled={props.isPending} sx={cancelBtnSx}>Cancel</Button>
                 <Button
                     variant="contained"
-                    disabled={props.isPending || !user || departmentMissing || displayNameMissing || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth)}
+                    disabled={props.isPending || !user || departmentMissing || displayNameMissing || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth)}
                     onClick={() =>
                         /* No override means the leave type's own allowance, not 0: a stored 0
                            switches the approval-time balance check off outright (see
                            Application/AnnualLeaves/Commands/AnnualLeaveBalanceCalculator.cs). */
-                        user && props.onSubmit({ userId: user.id, email, displayName, roles: [role], profile, departmentId: effectiveDepartmentId, jobTitle, managerId: showManagerField ? departmentManager?.profileId ?? null : profile?.managerId ?? null, phoneNumber: phoneNumber.trim() || null, dateOfBirth: dateOfBirth || null, gender })
+                        user && props.onSubmit({ userId: user.id, email, displayName, roles: [role], profile, departmentId: effectiveDepartmentId, jobTitle, managerId: showManagerField ? departmentManager?.profileId ?? null : profile?.managerId ?? null, phoneNumber: phoneNumber.trim() || null, dateOfBirth: dateOfBirth || null, gender, employmentStartDate: effectiveEmploymentStartDate })
                     }
                     sx={saveBtnSx}
                 >
@@ -1736,6 +1791,7 @@ function CreateUserDialog(props: {
         phoneNumber: string | null
         dateOfBirth: string | null
         gender: Gender | null
+        employmentStartDate: string | null
         /** Written after the account exists — see the create mutation. */
         children: UpsertChildRequest[]
     }) => void
@@ -1749,6 +1805,7 @@ function CreateUserDialog(props: {
     const [role, setRole] = useState<UserRole>('Employee')
     const [departmentId, setDepartmentId] = useState<number>(0)
     const [jobTitle, setJobTitle] = useState('')
+    const [employmentStartDate, setEmploymentStartDate] = useState('')
     const [phoneNumber, setPhoneNumber] = useState('')
     const [dateOfBirth, setDateOfBirth] = useState('')
     const [gender, setGender] = useState<Gender | null>(null)
@@ -1791,12 +1848,22 @@ function CreateUserDialog(props: {
     // the field is hidden for them and no manager is set.
     const showManagerField = role === 'Employee'
 
+    /* Rides with the department, for the same reason — see EditUserDialog's copy.
+       Unlike there, a blank is only announced once the admin has started: an empty
+       form on open is not a form full of mistakes. */
+    const effectiveEmploymentStartDate = isAdmin ? null : employmentStartDate || null
+    const startDateError = isAdmin
+        ? undefined
+        : employmentStartDateError(employmentStartDate, dateOfBirth || null)
+    const showStartDateError = dirty && !!startDateError
+
     const close = () => {
         setEmail('')
         setDisplayName('')
         setRole('Employee')
         setDepartmentId(0)
         setJobTitle('')
+        setEmploymentStartDate('')
         setPhoneNumber('')
         setDateOfBirth('')
         setGender(null)
@@ -1895,6 +1962,24 @@ function CreateUserDialog(props: {
                                     fullWidth
                                 />
                             </FieldRow>
+                            {/* On its own row — see EditUserDialog. */}
+                            <FieldRow>
+                                <TextField
+                                    label="Employment start date"
+                                    type="date"
+                                    value={employmentStartDate}
+                                    onChange={(e) => { setDirty(true); setEmploymentStartDate(e.target.value) }}
+                                    fullWidth
+                                    required
+                                    // `min` is their 16th birthday, and there is no `max` — see EditUserDialog.
+                                    slotProps={{
+                                        inputLabel: { shrink: true },
+                                        htmlInput: { min: earliestAllowedStartDate(dateOfBirth || null) },
+                                    }}
+                                    error={showStartDateError}
+                                    helperText={showStartDateError ? startDateError : 'The day this person joined.'}
+                                />
+                            </FieldRow>
                             {showManagerField && (
                                 <TextField
                                     label="Manager"
@@ -1915,7 +2000,7 @@ function CreateUserDialog(props: {
                 <Button variant="outlined" onClick={close} disabled={props.isPending} sx={cancelBtnSx}>Cancel</Button>
                 <Button
                     variant="contained"
-                    disabled={props.isPending || !displayName.trim() || effectiveDepartmentId === 0 || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth)}
+                    disabled={props.isPending || !displayName.trim() || effectiveDepartmentId === 0 || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth)}
                     onClick={() => props.onSubmit({
                         email: email.trim(),
                         displayName: displayName.trim(),
@@ -1926,6 +2011,9 @@ function CreateUserDialog(props: {
                         phoneNumber: phoneNumber.trim() || null,
                         dateOfBirth: dateOfBirth || null,
                         gender,
+                        // Null for an Admin, same rule as jobTitle and the department:
+                        // the API refuses one outright for that role.
+                        employmentStartDate: effectiveEmploymentStartDate,
                         // Never for an Admin: the Profile section is hidden for them,
                         // so anything collected before the role was switched must not
                         // be sent — same rule as jobTitle above.
