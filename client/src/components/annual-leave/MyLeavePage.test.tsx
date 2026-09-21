@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoreProvider } from '../../lib/mobx'
@@ -39,7 +39,7 @@ const ANNUAL_LEAVE_TYPE = {
     defaultAllowance: 23, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0,
-    maxConsecutiveDays: 0, halfDayAllowed: false, eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
+    maxConsecutiveDays: 0, halfDayAllowed: false, availableTo: 'Both',
 } as const
 
 const SICK_LEAVE_TYPE = {
@@ -351,5 +351,68 @@ describe('MyLeavePage year tiles', () => {
         await renderPage()
 
         await waitFor(() => expect(tile(`✓ Taken in ${year}`).textContent).toContain('5'))
+    })
+})
+
+/**
+ * A pending request has to be editable, because of the attachment rule. The
+ * server (`AttachmentPolicyRule`) gates *approval* on the document, not filing:
+ * call-up papers are dated the day of service, so a Military Leave request goes
+ * in first and the document is attached afterwards — from here. The row used to
+ * offer only Cancel while pending, so there was nowhere to attach anything.
+ */
+describe('MyLeavePage pending requests', () => {
+    const year = new Date().getFullYear() + 1
+
+    const MILITARY_LEAVE_TYPE = {
+        ...ANNUAL_LEAVE_TYPE, id: 5, name: 'Military Leave', affectsBalance: false, attachmentPolicy: 'Required',
+    } as const
+
+    function aRequest(over: Partial<AnnualLeave> = {}): AnnualLeave {
+        return {
+            id: 'L-military', employeeId: USER.id, leaveTypeId: MILITARY_LEAVE_TYPE.id,
+            startDate: `${year}-03-02T00:00:00`, endDate: `${year}-03-04T00:00:00`,
+            reason: 'Reservist call-up', evidenceUrl: null, delegateId: null, delegateName: '',
+            status: 'Pending', duration: 'Full', totalDays: 3,
+            createdAt: `${year - 1}-02-01T00:00:00`, approvedAt: null,
+            employeeName: USER.displayName, departmentName: 'Delivery', childId: null, childName: '',
+            ...over,
+        }
+    }
+
+    beforeEach(() => {
+        api.getLeaveTypes.mockResolvedValue([...LEAVE_TYPES, MILITARY_LEAVE_TYPE] as never)
+    })
+
+    it('offers Edit on a pending request and opens it in the edit dialog', async () => {
+        api.getAnnualLeaves.mockResolvedValue([aRequest()])
+        await renderPage()
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+
+        expect(await screen.findByText('Edit Leave Request')).toBeInTheDocument()
+    })
+
+    it('says on the row that a required document is still to come', async () => {
+        api.getAnnualLeaves.mockResolvedValue([aRequest()])
+        await renderPage()
+
+        expect(await screen.findByText(/Document needed before approval/)).toBeInTheDocument()
+    })
+
+    it('drops the reminder once the document is attached', async () => {
+        api.getAnnualLeaves.mockResolvedValue([aRequest({ evidenceUrl: '/api/files/8f2c1b6e-0000-4000-8000-000000000001' })])
+        await renderPage()
+
+        await screen.findByRole('button', { name: 'Edit' })
+        expect(screen.queryByText(/Document needed/)).not.toBeInTheDocument()
+    })
+
+    it('offers no Edit on a request that has been decided', async () => {
+        api.getAnnualLeaves.mockResolvedValue([aRequest({ status: 'Approved', approvedAt: `${year - 1}-02-02T00:00:00` })])
+        await renderPage()
+
+        await screen.findByRole('button', { name: 'View details' })
+        expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
     })
 })

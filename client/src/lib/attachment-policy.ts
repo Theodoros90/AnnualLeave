@@ -66,3 +66,33 @@ export function isAttachmentOffered(
 ): boolean {
     return attachmentRequirement(type) !== 'none' || hasExistingEvidence
 }
+
+/**
+ * Whether a missing document should disable submit. Only when submitting would
+ * *approve* the request — the server gates approval, not filing (see
+ * `AttachmentPolicyRule.cs`): the document a type requires may be dated after
+ * the request had to go in, as call-up papers are, so an employee files without
+ * one and attaches it later from My Leave. `willBeApproved` is the caller's
+ * answer to "does this submit end with the request approved?" — a type that
+ * auto-approves, or an edit of a request that is approved already.
+ */
+export function isAttachmentBlockingSubmit(
+    type: Pick<LeaveType, 'attachmentPolicy'> | undefined,
+    hasFile: boolean,
+    willBeApproved: boolean,
+): boolean {
+    return willBeApproved && isAttachmentMissing(type, hasFile)
+}
+
+/**
+ * Whether a stored request is short a document its type insists on — what a
+ * manager's Approve button reads before offering itself, and what the employee's
+ * own pending row reads to say "Document needed". Trims the stored URL the way
+ * the server does, since whitespace is not an attachment.
+ */
+export function isAwaitingDocument(
+    type: Pick<LeaveType, 'attachmentPolicy'> | undefined,
+    evidenceUrl: string | null | undefined,
+): boolean {
+    return isAttachmentMissing(type, !!evidenceUrl?.trim())
+}

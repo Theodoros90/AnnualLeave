@@ -1,5 +1,5 @@
 import apiClient from './client'
-import type { AttachmentPolicy, EligibilityScope, GenderAvailability, LeaveType } from '../types'
+import type { AttachmentPolicy, GenderAvailability, LeaveType } from '../types'
 
 export interface UpsertLeaveTypeRequest {
     name: string
@@ -22,8 +22,6 @@ export interface UpsertLeaveTypeRequest {
     minNoticeDays: number
     maxConsecutiveDays: number
     halfDayAllowed: boolean
-    eligibilityNotes: string
-    eligibilityScope: EligibilityScope
     availableTo: GenderAvailability
     /** Months of service before the type is offered; 0 is no minimum. */
     minServiceMonths: number

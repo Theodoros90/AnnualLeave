@@ -31,7 +31,7 @@ const ANNUAL_LEAVE_TYPE = {
     defaultAllowance: 25, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0,
-    maxConsecutiveDays: 0, halfDayAllowed: false, eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
+    maxConsecutiveDays: 0, halfDayAllowed: false, availableTo: 'Both',
 } as const
 
 /** A second budget, deliberately smaller than the annual one. */
@@ -438,5 +438,68 @@ describe('AllLeaveAdminPage — a request is measured against its own leave type
         const cell = policyText.parentElement!
         expect(cell.getAttribute('title')).toBe(
             'Paternity Leave: 18 weeks per child · max 5 weeks/year — tracked per child, not a per-employee balance')
+    })
+})
+
+/**
+ * The attachment policy gates approval on the server (`AttachmentPolicyRule`), so
+ * an undocumented request on a Required type cannot be approved from here — not
+ * one at a time, and not swept up in a bulk approval alongside the rest.
+ */
+describe('AllLeaveAdminPage — a required document holds approval', () => {
+    const MILITARY_LEAVE_TYPE = {
+        ...ANNUAL_LEAVE_TYPE, id: 3, name: 'Military Leave', colorKey: 'military',
+        affectsBalance: false, attachmentPolicy: 'Required',
+    } as const
+
+    const UNDOCUMENTED = leave({
+        id: 'p5', employeeId: 'emp-2a', employeeName: 'Employee 2A', leaveTypeId: MILITARY_LEAVE_TYPE.id,
+        startDate: monthOffset(1, 20), endDate: monthOffset(1, 22),
+    })
+
+    beforeEach(() => {
+        api.getLeaveTypes.mockResolvedValue([ANNUAL_LEAVE_TYPE, SICK_LEAVE_TYPE, MILITARY_LEAVE_TYPE] as never)
+        api.getAnnualLeaves.mockResolvedValue([...PENDING, UNDOCUMENTED, ...DECIDED])
+        api.updateLeaveStatus.mockResolvedValue(undefined as never)
+    })
+
+    /** The row that carries the reminder: walk up from it to the box holding its own Approve. */
+    function heldRow() {
+        let el: HTMLElement | null = screen.getByText(/Awaiting document/)
+        while (el && !within(el).queryByRole('button', { name: 'Approve' })) el = el.parentElement
+        if (!el) throw new Error('No row holds the Awaiting document reminder.')
+        return el
+    }
+
+    it('disables Approve on the row and says why', async () => {
+        await renderPage()
+
+        const row = heldRow()
+        expect(within(row).getByRole('button', { name: 'Approve' })).toBeDisabled()
+        expect(within(row).getByRole('button', { name: 'Reject' })).toBeEnabled()
+    })
+
+    it('leaves a documented request on the same type approvable', async () => {
+        api.getAnnualLeaves.mockResolvedValue([
+            ...PENDING,
+            { ...UNDOCUMENTED, evidenceUrl: '/api/files/8f2c1b6e-0000-4000-8000-000000000001' },
+            ...DECIDED,
+        ])
+        await renderPage()
+
+        expect(screen.queryByText(/Awaiting document/)).not.toBeInTheDocument()
+        for (const approve of screen.getAllByRole('button', { name: 'Approve' })) expect(approve).toBeEnabled()
+    })
+
+    it('skips an undocumented request in a bulk approval', async () => {
+        await renderPage()
+
+        for (const box of screen.getAllByRole('checkbox')) fireEvent.click(box)
+        fireEvent.click(await screen.findByRole('button', { name: /Approve Selected/ }))
+
+        await waitFor(() => expect(api.updateLeaveStatus).toHaveBeenCalledTimes(PENDING.length))
+        const approvedIds = api.updateLeaveStatus.mock.calls.map(([id]) => id)
+        expect(approvedIds).not.toContain(UNDOCUMENTED.id)
+        expect(approvedIds).toEqual(expect.arrayContaining(PENDING.map((l) => l.id)))
     })
 })

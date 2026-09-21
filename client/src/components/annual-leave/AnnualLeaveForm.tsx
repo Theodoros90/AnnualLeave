@@ -15,7 +15,7 @@ import { AttachFile as AttachFileIcon, CalendarMonth as CalendarMonthIcon, OpenI
 import Box from '@mui/material/Box'
 import { createAnnualLeave, editAnnualLeave, getChildLeaveEntitlements, getLeaveTypes, getAdminUsers, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered } from '../../lib/parental-leave'
-import { attachmentRequirement, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
+import { attachmentRequirement, isAttachmentBlockingSubmit, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
 import { maxConsecutiveError, noticeError } from '../../lib/leave-limits'
 import { collapseToHalfDay, durationLabel, isHalfDayOffered } from '../../lib/half-day'
 import { resolveFileUrl } from '../../lib/api/file-url'
@@ -113,15 +113,23 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
     // the server reports when nothing carries a per-child entitlement.
     const childEligibleUntilAge = (leaveTypes ?? []).find((lt) => lt.id === watchedLeaveTypeId)?.childEligibleUntilAge ?? 0
 
-    /* The attachment policy, enforced by AttachmentPolicyRule on the server for
-       every caller — an admin filing on somebody's behalf included. A request that
-       predates the policy carries no evidence, so editing one means attaching a
-       document; leaving Save enabled would only turn that into a failed round trip. */
+    /* The attachment policy, enforced by AttachmentPolicyRule on the server at
+       *approval* rather than filing — for every caller, an admin included. A
+       pending request may be saved without a document (that is the edit an
+       employee makes to attach one dated after they had to file), so Save is
+       disabled only where saving would approve, or leave approved, an undocumented
+       request: a type that approves itself, or an edit of an approved request.
+       Leaving Save enabled there would only turn it into a failed round trip. */
     const selectedLeaveType = (leaveTypes ?? []).find((lt) => lt.id === watchedLeaveTypeId)
     const attachmentRule = attachmentRequirement(selectedLeaveType)
     const attachmentMissing = isAttachmentMissing(
         selectedLeaveType,
         !!evidenceFile || !!evidenceUrl.trim(),
+    )
+    const attachmentBlocking = isAttachmentBlockingSubmit(
+        selectedLeaveType,
+        !!evidenceFile || !!evidenceUrl.trim(),
+        isEdit ? leave?.status === 'Approved' : selectedLeaveType?.requiresApproval === false,
     )
     /* A type set to "No attachment needed" gets no upload at all. Evidence the
        request already carries is the exception: this dialog is the only place to
@@ -742,10 +750,12 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                             {!readOnly && (
                                 <Typography
                                     variant="caption"
-                                    color={attachmentMissing ? 'error' : 'text.secondary'}
+                                    color={attachmentBlocking ? 'error' : attachmentMissing ? 'warning.dark' : 'text.secondary'}
                                 >
                                     {attachmentRule === 'required'
-                                        ? 'Required: upload PDF, image, DOC, or DOCX evidence (max 10 MB).'
+                                        ? attachmentBlocking
+                                            ? 'Required: upload PDF, image, DOC, or DOCX evidence (max 10 MB).'
+                                            : 'Required before approval: upload PDF, image, DOC, or DOCX evidence (max 10 MB). The request can be saved without it and approved once it is attached.'
                                         : attachmentRule === 'encouraged'
                                             ? 'Recommended: upload PDF, image, DOC, or DOCX evidence (max 10 MB).'
                                             /* Only reachable for a request that carries evidence under a type
@@ -777,7 +787,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                         form="leave-form"
                         variant="contained"
                         sx={saveBtnSx}
-                        disabled={isPending || isLoadingLeaveTypes || childPickerBlocked || attachmentMissing || !!noticeBreach}
+                        disabled={isPending || isLoadingLeaveTypes || childPickerBlocked || attachmentBlocking || !!noticeBreach}
                         startIcon={isPending ? <CircularProgress size={16} color="inherit" /> : null}
                     >
                         {submitLabel}

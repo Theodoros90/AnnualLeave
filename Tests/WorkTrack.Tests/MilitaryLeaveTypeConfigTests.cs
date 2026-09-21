@@ -83,7 +83,6 @@ public class MilitaryLeaveTypeConfigTests : IDisposable
         Assert.False(military.HalfDayAllowed);
         Assert.True(military.RequiresApproval);
         Assert.True(military.IsActive);
-        Assert.Equal(EligibilityScope.Limited, military.EligibilityScope);
         Assert.Equal("military", military.ColorKey);
     }
 
@@ -157,8 +156,6 @@ public class MilitaryLeaveTypeConfigTests : IDisposable
             MinNoticeDays = military.MinNoticeDays,
             MaxConsecutiveDays = military.MaxConsecutiveDays,
             HalfDayAllowed = military.HalfDayAllowed,
-            EligibilityNotes = military.EligibilityNotes,
-            EligibilityScope = military.EligibilityScope,
         });
 
         Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.ErrorMessage)));

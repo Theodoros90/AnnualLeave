@@ -40,7 +40,6 @@ public class MappingProfiles : Profile
             .ForMember(d => d.Description, opt => opt.MapFrom(s => (s.Description ?? string.Empty).Trim()))
             .ForMember(d => d.AllowanceUnit, opt => opt.MapFrom(s => string.IsNullOrWhiteSpace(s.AllowanceUnit) ? "days/year" : s.AllowanceUnit.Trim()))
             .ForMember(d => d.AccrualNotes, opt => opt.MapFrom(s => (s.AccrualNotes ?? string.Empty).Trim()))
-            .ForMember(d => d.EligibilityNotes, opt => opt.MapFrom(s => string.IsNullOrWhiteSpace(s.EligibilityNotes) ? "All employees" : s.EligibilityNotes.Trim()))
             .ForMember(d => d.Id, opt => opt.Ignore())
             .ForMember(d => d.AnnualLeaves, opt => opt.Ignore());
 

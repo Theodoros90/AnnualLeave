@@ -237,9 +237,10 @@ read-only. Until this column the two parental genders were hard-wired by name in
 the rule and nothing else could be restricted; migration `AddLeaveTypeAvailableTo`
 stamped the two rows, and `Both` is 0 so every other existing type reads as
 offered to everyone. The card's Enabled toggle resubmits it like every other
-column (see the trap at the end of this section). It is distinct from
-`EligibilityScope`/`EligibilityNotes`, which are the free-text chip and gate
-nothing. **The client reads the three names ahead of the column**
+column (see the trap at the end of this section). The card's "Available to" chip is
+derived from it; the free-text `EligibilityScope`/`EligibilityNotes` chip that
+used to sit beside it was read by no rule, and both columns are gone (migration
+`RemoveLeaveTypeEligibilityChip`). **The client reads the three names ahead of the column**
 (`fixedAvailability`/`resolveAvailability` in `parental-leave.ts`): an API built
 before the column sends neither field, and a Maternity row the migration has not
 reached still says `Both`, so the dialog, the card, the Enabled toggle and the
@@ -282,20 +283,35 @@ they are filing for, so that path keeps the whole list and lets the server answe
 the rule would no longer offer it, so editing an old request does not open on a
 blank select.
 
-**The attachment policy is enforced, not advertised.** `LeaveType.AttachmentPolicy`
-(`None`/`Optional`/`Required`) decides whether a request may be filed without a
-supporting document. Only `Required` refuses anything — `Optional` is encouragement
-rendered in amber and `None` offers no upload at all, and if either could refuse, an
-admin nudging a type towards documentation would lock employees out of it instead.
+**The attachment policy is enforced, not advertised — at approval.**
+`LeaveType.AttachmentPolicy` (`None`/`Optional`/`Required`) decides whether a request
+may be **approved** without a supporting document. Only `Required` refuses anything —
+`Optional` is encouragement rendered in amber and `None` offers no upload at all, and
+if either could refuse, an admin nudging a type towards documentation would lock
+employees out of it instead.
 
 `Application/AnnualLeaves/Commands/AttachmentPolicyRule.cs` is the rule, called
-from `CreateAnnualLeave` and `EditAnnualLeave`;
-`client/src/lib/attachment-policy.ts` mirrors it so neither leave form offers a
-submit the API is certain to refuse. Keep the two in step, the same way
+from `UpdateLeaveStatus`, `EditAnnualLeave` and the auto-approving branch of
+`CreateAnnualLeave`; `client/src/lib/attachment-policy.ts` mirrors it so no form
+offers a submit, and no manager page an Approve, the API is certain to refuse. Keep the two in step, the same way
 `ParentalLeaveEligibility` and `parental-leave.ts` are kept in step.
 
-Four things about it that are deliberate:
+Six things about it that are deliberate:
 
+- **It gates approval, not filing.** It first refused at filing time, and that
+  refused exactly the request Military Leave exists for: call-up papers are dated
+  the day of service, so the request has to go in before the document exists. The
+  rule now runs on every path into `Approved` — `UpdateLeaveStatus`, the status
+  path of `EditAnnualLeave` (which also catches an edit clearing the evidence on
+  an already-approved row), and the auto-approving branch of `CreateAnnualLeave`,
+  where filing *is* approval. A request left Pending is never asked. The client
+  mirrors the split: `isAttachmentBlockingSubmit` disables submit only where
+  submitting would approve, and `isAwaitingDocument` disables Approve on Team
+  Leave and All Leave (a bulk approval skips such rows rather than attempting
+  them) and puts "Document needed before approval" on the employee's own pending
+  row. That row now has an **Edit** button (`MyLeavePage`) — the API always let an
+  employee edit their own pending request, but the row offered only Cancel, so
+  there was nowhere to attach anything.
 - **`None` means the section is not there.** `isAttachmentOffered` in
   `attachment-policy.ts` decides that: a type set to *No attachment needed* drops
   step 5 off `ApplyLeavePage` (and its "Attachments" summary row) and the evidence
@@ -314,11 +330,14 @@ Four things about it that are deliberate:
   nothing an employee could see and submitted happily with no document. The name
   now only picks the wording of step 5's subtitle ("a doctor's note" beats "a
   supporting document" where we can tell); the policy decides everything else.
-- **There is no exemption, and it will bite on real data.** An admin filing on
-  somebody's behalf is refused like anyone else, and a request filed *before* the
-  policy was set to `Required` carries no evidence — so editing one, even to fix
-  the reason, means attaching a document first. That is the rule as chosen, not an
-  oversight.
+- **No exemption at approval.** An admin approving on somebody's behalf is refused
+  like a manager — the rule is about the leave type, not about who is clicking. But
+  an edit that leaves a request Pending is not an approval, so an admin fixing the
+  reason on an undocumented request (one filed before the policy was set to
+  `Required`) is no longer refused; the request simply cannot be approved until a
+  document is attached. A pending undocumented request under `Required` is
+  therefore a hard stop for the approver, not a warning. That is the rule as
+  chosen, not an oversight.
 - **Whitespace is not an attachment.** `AnnualLeave.EvidenceUrl` is free text, so
   the check trims before believing it.
 

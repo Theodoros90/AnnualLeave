@@ -75,7 +75,7 @@ public class User : IdentityUser
 /// <summary>
 /// Serialised as "Male" / "Female" rather than 1 / 2: <c>API/Program.cs</c>
 /// registers <c>JsonStringEnumConverter</c>, so the client types this as a string
-/// union the same way it types <c>AttachmentPolicy</c> and <c>EligibilityScope</c>.
+/// union the same way it types <c>AttachmentPolicy</c> and <c>GenderAvailability</c>.
 /// </summary>
 public enum Gender
 {

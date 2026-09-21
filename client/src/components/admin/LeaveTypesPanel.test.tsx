@@ -44,8 +44,7 @@ function leaveType(overrides: Partial<LeaveType> = {}): LeaveType {
         minNoticeDays: 0,
         maxConsecutiveDays: 0,
         halfDayAllowed: false,
-        eligibilityNotes: 'All employees',
-        eligibilityScope: 'All', availableTo: 'Both',
+        availableTo: 'Both',
         ...overrides,
         // Both flags are server-derived from the name (Domain/SystemLeaveTypes.cs),
         // so a fixture must not be free to disagree with its own name — that is how
@@ -584,4 +583,17 @@ it('sends the fixed value from the card toggle too, whatever the row says', asyn
     await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledWith(PATERNITY.id, expect.objectContaining({
         availableTo: 'Male',
     })))
+})
+
+/*
+ * The rule behind the card's line: a required document holds *approval*, not
+ * filing (AttachmentPolicyRule). The card used to read "Attachment required",
+ * which promised a refusal at filing time that call-up papers, dated the day of
+ * service, could never satisfy.
+ */
+it('says on the card that a required document is needed before approval', async () => {
+    api.getLeaveTypes.mockResolvedValue([leaveType({ name: 'Military Leave', perChildEntitlement: false, attachmentPolicy: 'Required' })])
+    await renderPanel()
+
+    expect(screen.getByText('Document required before approval')).toBeInTheDocument()
 })

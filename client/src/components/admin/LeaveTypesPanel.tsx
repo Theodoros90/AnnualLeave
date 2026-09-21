@@ -38,7 +38,6 @@ import { fixedAvailability, resolveAvailability } from '../../lib/parental-leave
 import { softBg } from '../../lib/theme-tokens'
 import type {
     AttachmentPolicy,
-    EligibilityScope,
     GenderAvailability,
     LeaveType,
 } from '../../lib/types'
@@ -87,8 +86,16 @@ function getErrorMessage(error: unknown) {
     return getApiErrorMessage(error, 'Something went wrong. Please try again.')
 }
 
+/* "Special leave" is anything not simply there for the taking: it needs a
+   document, is restricted to one gender, is a per-child entitlement, or asks for
+   a length of service. It used to read the free-text eligibility chip, which an
+   admin could set to "Limited" on a type nothing restricted or leave at "All" on
+   one that was; the enforced columns are the answer. */
 function isSpecial(t: LeaveType) {
-    return t.attachmentPolicy === 'Required' || t.eligibilityScope === 'Limited'
+    return t.attachmentPolicy === 'Required'
+        || resolveAvailability(t) !== 'Both'
+        || t.perChildEntitlement
+        || (t.minServiceMonths ?? 0) > 0
 }
 
 function gradientFor(colorKey: string) {
@@ -243,8 +250,6 @@ function LeaveTypesPanel() {
             minNoticeDays: t.minNoticeDays,
             maxConsecutiveDays: t.maxConsecutiveDays,
             halfDayAllowed: t.halfDayAllowed,
-            eligibilityNotes: t.eligibilityNotes,
-            eligibilityScope: t.eligibilityScope,
             // A full replace that left this out would reopen a men-only type to
             // everyone the moment somebody flipped Enabled. Resolved rather than
             // copied: a built-in type sends its fixed value whatever the row says,
@@ -621,7 +626,11 @@ function LeaveTypeCard({ derived, onEdit, onToggle, onDelete }: {
                 )}
             </Box>
 
-            {/* Eligibility */}
+            {/* Who the type is offered to: the enforced answer, resolved the same
+                way the dialog and the leave forms resolve it, so a built-in type
+                reads right whatever its row says. A free-text chip used to sit here
+                too, typed by the admin and read by no rule, so it could promise a
+                restriction nothing applied. */}
             <Box sx={{
                 p: '10px 20px', display: 'flex', flexWrap: 'wrap', gap: '4px',
                 alignItems: 'center', bgcolor: 'action.hover',
@@ -630,26 +639,14 @@ function LeaveTypeCard({ derived, onEdit, onToggle, onDelete }: {
                     Available to
                 </Box>
                 <Box sx={{
-                    display: 'inline-flex', alignItems: 'center', gap: '3px',
+                    display: 'inline-flex', alignItems: 'center',
                     px: '8px', py: '2px', borderRadius: '10px',
                     fontSize: 10, fontWeight: 500,
-                    bgcolor: t.eligibilityScope === 'All' ? softBg('success') : softBg('primary'),
-                    color: t.eligibilityScope === 'All' ? 'success.dark' : 'info.dark',
+                    bgcolor: resolveAvailability(t) === 'Both' ? softBg('success') : softBg('warning'),
+                    color: resolveAvailability(t) === 'Both' ? 'success.dark' : 'warning.dark',
                 }}>
-                    {t.eligibilityNotes || (t.eligibilityScope === 'All' ? 'All employees' : 'Limited')}
+                    {resolveAvailability(t) === 'Both' ? 'All employees' : `${resolveAvailability(t)} only`}
                 </Box>
-                {/* The enforced half, beside the free-text one. Nothing for 'Both':
-                    "everyone" is the default and the notes chip already says so. */}
-                {resolveAvailability(t) !== 'Both' && (
-                    <Box sx={{
-                        display: 'inline-flex', alignItems: 'center',
-                        px: '8px', py: '2px', borderRadius: '10px',
-                        fontSize: 10, fontWeight: 500,
-                        bgcolor: softBg('warning'), color: 'warning.dark',
-                    }}>
-                        {resolveAvailability(t)} only
-                    </Box>
-                )}
             </Box>
 
             {/* Footer stats */}
@@ -671,7 +668,7 @@ function AttachmentRule({ policy }: { policy: AttachmentPolicy }) {
         return (
             <Rule
                 ok={true}
-                label={<><strong>Attachment required</strong> (e.g. medical certificate, birth certificate)</>}
+                label={<><strong>Document required before approval</strong> (e.g. call-up papers, medical certificate)</>}
             />
         )
     }
@@ -897,8 +894,6 @@ function LeaveTypeFormDialog(props: {
     const [maxConsecutiveDays, setMaxConsecutiveDays] = useState<number>(i?.maxConsecutiveDays ?? 0)
     const [minServiceMonths, setMinServiceMonths] = useState<number>(i?.minServiceMonths ?? 0)
     const [halfDayAllowed, setHalfDayAllowed] = useState(i?.halfDayAllowed ?? false)
-    const [eligibilityNotes, setEligibilityNotes] = useState(i?.eligibilityNotes ?? 'All employees')
-    const [eligibilityScope, setEligibilityScope] = useState<EligibilityScope>(i?.eligibilityScope ?? 'All')
     /* Who the type is offered to. Read-only on the three built-in types, where it
        is what the type is rather than a setting (Annual Leave for everyone,
        Maternity Leave for women, Paternity Leave for men) — the server's derived
@@ -959,8 +954,6 @@ function LeaveTypeFormDialog(props: {
             minNoticeDays: Number(minNoticeDays) || 0,
             maxConsecutiveDays: Number(maxConsecutiveDays) || 0,
             halfDayAllowed,
-            eligibilityNotes: eligibilityNotes.trim() || 'All employees',
-            eligibilityScope,
             // The fixed value for a built-in type, so the radios being disabled is
             // not the only thing standing between a stale row and a refusal.
             availableTo: fixedAvailableTo ?? availableTo,
@@ -1166,7 +1159,7 @@ function LeaveTypeFormDialog(props: {
                     >
                         <MenuItem value="None">No attachment needed</MenuItem>
                         <MenuItem value="Optional">Attachment encouraged</MenuItem>
-                        <MenuItem value="Required">Attachment required</MenuItem>
+                        <MenuItem value="Required">Document required before approval</MenuItem>
                     </TextField>
 
                     {/* Toggles */}
@@ -1226,28 +1219,6 @@ function LeaveTypeFormDialog(props: {
                                 : 'Employees of the other gender are not offered this type.'}
                         </FormHelperText>
                     </FormControl>
-
-                    {/* Eligibility */}
-                    <Stack direction="row" spacing={2}>
-                        <TextField
-                            select
-                            label="Eligibility scope"
-                            value={eligibilityScope}
-                            onChange={(e) => setEligibilityScope(e.target.value as EligibilityScope)}
-                            sx={{ width: 180 }}
-                        >
-                            <MenuItem value="All">All employees</MenuItem>
-                            <MenuItem value="Limited">Limited</MenuItem>
-                        </TextField>
-                        <TextField
-                            label="Eligibility notes"
-                            value={eligibilityNotes}
-                            onChange={(e) => setEligibilityNotes(e.target.value)}
-                            fullWidth
-                            inputProps={{ maxLength: 250 }}
-                            helperText="Shown as the eligibility chip"
-                        />
-                    </Stack>
 
                     {props.error != null && (
                         <Alert severity="error">{getErrorMessage(props.error)}</Alert>

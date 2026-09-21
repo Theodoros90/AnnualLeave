@@ -13,9 +13,14 @@ import ApplyLeavePage from './ApplyLeavePage'
  * "(recommended for sick leave)" label and everything else read "(optional)", so
  * an admin who set *Attachment required* on Personal Days changed nothing an
  * employee could see and the request submitted with no document at all. These
- * tests fail if that guess comes back, or if the required policy stops disabling
- * submit — which is the client half of
+ * tests fail if that guess comes back — which is the client half of
  * `Application/AnnualLeaves/Commands/AttachmentPolicyRule.cs`.
+ *
+ * The rule gates *approval*, not filing. Call-up papers are dated the day of
+ * service, so a Military Leave request has to go in before its document exists:
+ * the employee files, attaches it later from My Leave, and only then can a
+ * manager approve. So a missing document disables submit only where submitting
+ * would approve — a type that auto-approves.
  */
 vi.mock('../../lib/api', () => ({
     createAnnualLeave: vi.fn(),
@@ -38,7 +43,7 @@ const BASE_TYPE: LeaveType = {
     defaultAllowance: 3, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0,
-    maxConsecutiveDays: 0, halfDayAllowed: false, eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
+    maxConsecutiveDays: 0, halfDayAllowed: false, availableTo: 'Both',
 }
 
 const USER: UserInfo = {
@@ -131,8 +136,28 @@ function stageFile(container: HTMLElement) {
 }
 
 describe('ApplyLeavePage — supporting documents follow the attachment policy', () => {
-    it('marks the section required and blocks submit for a Required policy', async () => {
+    it('marks the section required before approval and still lets the request be filed', async () => {
         await renderWithType({ attachmentPolicy: 'Required' })
+        pickDates()
+
+        const section = documentsSection()
+        expect(within(section).getByText('(required before approval)')).toBeInTheDocument()
+        expect(within(section).getByText(/attach it later from My Leave/i)).toBeInTheDocument()
+
+        const submit = await screen.findByRole('button', { name: /submit for approval/i })
+        expect(submit).toBeEnabled()
+        fireEvent.click(submit)
+
+        await waitFor(() => expect(api.createAnnualLeave).toHaveBeenCalledTimes(1))
+        expect(api.uploadLeaveEvidence).not.toHaveBeenCalled()
+        expect(api.createAnnualLeave).toHaveBeenCalledWith(
+            expect.objectContaining({ evidenceUrl: undefined }),
+        )
+    })
+
+    /** Filing is approval for a type that approves itself, so filing is gated. */
+    it('blocks submit for a Required policy on a type that approves itself', async () => {
+        await renderWithType({ attachmentPolicy: 'Required', requiresApproval: false })
         pickDates()
 
         expect(within(documentsSection()).getByText('(required)')).toBeInTheDocument()

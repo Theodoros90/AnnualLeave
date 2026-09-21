@@ -68,7 +68,7 @@ const ANNUAL_LEAVE_TYPE = {
     maxCarryoverDays: 5,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: 'Resets 1 Jan', minNoticeDays: 7, maxConsecutiveDays: 15,
-    halfDayAllowed: true, eligibilityNotes: 'All employees', eligibilityScope: 'All', availableTo: 'Both',
+    halfDayAllowed: true, availableTo: 'Both',
 } as const
 
 beforeEach(() => {

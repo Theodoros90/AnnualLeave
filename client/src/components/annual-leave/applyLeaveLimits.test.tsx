@@ -36,7 +36,7 @@ const ANNUAL_LEAVE_TYPE = {
     defaultAllowance: 23, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0,
-    maxConsecutiveDays: 0, halfDayAllowed: true, eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
+    maxConsecutiveDays: 0, halfDayAllowed: true, availableTo: 'Both',
 } as const
 
 /** A year of notice, so every cell in the month the calendar opens on is too soon. */

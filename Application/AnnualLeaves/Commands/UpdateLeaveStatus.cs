@@ -60,6 +60,25 @@ public class UpdateLeaveStatus
 
             annualLeave.Status = newStatus;
 
+            /* The attachment policy gates this transition rather than filing: the
+               document a type requires may be dated after the request had to go in
+               (call-up papers), so the employee files, attaches it from My Leave,
+               and only then can this approve. Rejecting or cancelling asks nothing.
+               No exemption for an admin — the rule is about the leave type, not
+               about who is clicking. */
+            if (oldStatus != AnnualLeaveStatus.Approved && newStatus == AnnualLeaveStatus.Approved)
+            {
+                var leaveType = await context.LeaveTypes
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(type => type.Id == annualLeave.LeaveTypeId, cancellationToken);
+                if (leaveType is not null)
+                {
+                    var attachmentError = AttachmentPolicyRule.Check(leaveType, annualLeave.EvidenceUrl);
+                    if (attachmentError is not null)
+                        return Result<Unit>.Failure(attachmentError);
+                }
+            }
+
             var employeeProfile = await context.EmployeeProfiles
                 .FirstOrDefaultAsync(ep => ep.Id == annualLeave.EmployeeProfileId, cancellationToken);
 

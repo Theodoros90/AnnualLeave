@@ -23,6 +23,7 @@ import {
     getLeaveTypes,
 } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
+import { isAwaitingDocument } from '../../lib/attachment-policy'
 import { useOfferedLeaveTypes, type PerChildLedger } from '../../lib/hooks'
 import { buildLeaveBalanceRows } from '../../lib/leave-balance-rows'
 import { useStore } from '../../lib/mobx'
@@ -99,6 +100,12 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
 
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('All')
     const [viewLeave, setViewLeave] = useState<AnnualLeave | null>(null)
+    /* A pending request is editable from here — the API always allowed the
+       employee to edit their own pending request, but the row offered only
+       Cancel. It matters because of the attachment rule: a required document is
+       checked at approval, not filing, so an employee whose papers are dated the
+       day of service files first and attaches them from this row afterwards. */
+    const [editLeave, setEditLeave] = useState<AnnualLeave | null>(null)
     const [apiError, setApiError] = useState('')
 
     const { data: allLeaves = [], isLoading } = useQuery({ queryKey: ['annualLeaves'], queryFn: getAnnualLeaves })
@@ -485,6 +492,11 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
                                     leaveTypeName={l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId)?.name : undefined}
                                     today={today}
                                     feedback={latestStatusComment.get(l.id)}
+                                    awaitingDocument={isAwaitingDocument(
+                                        l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined,
+                                        l.evidenceUrl,
+                                    )}
+                                    onEdit={() => setEditLeave(l)}
                                     onCancel={() => void handleCancel(l)}
                                     onView={() => setViewLeave(l)}
                                 />
@@ -528,6 +540,15 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
                 open={formOpen}
                 onClose={() => uiStore.closeCreateDrawer()}
                 isAdmin={isAdminUser}
+            />
+
+            {/* The employee's own request, so never the admin variant: the type
+                list is filtered by the employee's own eligibility, as on the
+                apply page. */}
+            <AnnualLeaveForm
+                open={editLeave !== null}
+                leave={editLeave ?? undefined}
+                onClose={() => setEditLeave(null)}
             />
 
             <LeaveDetailsDialog
@@ -816,12 +837,15 @@ function SectionHeader({ title }: { title: string }) {
 }
 
 function LeaveCard({
-    leave, leaveTypeName, today, feedback, onCancel, onView,
+    leave, leaveTypeName, today, feedback, awaitingDocument, onEdit, onCancel, onView,
 }: {
     leave: AnnualLeave
     leaveTypeName?: string
     today: Date
     feedback?: LeaveStatusHistory
+    /** Short a document the type insists on — see isAwaitingDocument. */
+    awaitingDocument?: boolean
+    onEdit?: () => void
     onCancel?: () => void
     onView?: () => void
 }) {
@@ -940,10 +964,29 @@ function LeaveCard({
                         </Box>
                     )}
 
+                    {/* The document a Required type asks for is checked at approval,
+                        not filing, so a pending request can sit here without one.
+                        Say so, and where to add it, rather than leaving the employee
+                        to wonder why nobody has approved it. */}
+                    {awaitingDocument && (
+                        <Box sx={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px', mt: '10px',
+                            p: '4px 10px 4px 6px', bgcolor: softBg('warning'),
+                            border: '1px solid', borderColor: 'warning.main', borderRadius: '14px',
+                            fontSize: 11, color: 'warning.dark',
+                        }}>
+                            <Box component="span" sx={{ fontSize: 12 }}>📎</Box>
+                            Document needed before approval — add it with Edit
+                        </Box>
+                    )}
+
                     <FeedbackBox status={status} feedback={feedback} />
                 </Box>
 
                 <Box sx={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                    {status === 'Pending' && onEdit && (
+                        <ActionButton onClick={onEdit} variant="ghost">Edit</ActionButton>
+                    )}
                     {status === 'Pending' && onCancel && (
                         <ActionButton onClick={onCancel} variant="danger">Cancel</ActionButton>
                     )}

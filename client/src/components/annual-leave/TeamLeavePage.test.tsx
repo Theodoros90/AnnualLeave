@@ -82,3 +82,51 @@ describe('TeamLeavePage coverage', () => {
         })
     })
 })
+
+/**
+ * The attachment policy gates approval on the server (`AttachmentPolicyRule`),
+ * so a request on a Required type with no document yet cannot be approved from
+ * here either — the button would only fail on the round trip. It stays visible
+ * and disabled, with the reason beside it, until the employee attaches one.
+ */
+describe('TeamLeavePage attachment policy', () => {
+    const EVIDENCE_URL = '/api/files/8f2c1b6e-0000-4000-8000-000000000001'
+
+    beforeEach(() => {
+        vi.clearAllMocks()
+        api.getLeaveStatusHistories.mockResolvedValue([])
+        api.getLeaveTypes.mockResolvedValue([
+            { id: 1, name: 'Annual Leave', attachmentPolicy: 'None' },
+            { id: 2, name: 'Military Leave', attachmentPolicy: 'Required' },
+        ] as never)
+    })
+
+    it('holds Approve until the required document is attached', async () => {
+        api.getAnnualLeaves.mockResolvedValue([{ ...BASE_LEAVE, leaveTypeId: 2, evidenceUrl: null }] as never)
+
+        renderPage()
+
+        const row = await screen.findByRole('row', { name: /Maria Ioannou/ })
+        expect(within(row).getByRole('button', { name: 'Approve' })).toBeDisabled()
+        expect(within(row).getByText(/Awaiting document/)).toBeInTheDocument()
+    })
+
+    it('offers Approve once the document is there', async () => {
+        api.getAnnualLeaves.mockResolvedValue([{ ...BASE_LEAVE, leaveTypeId: 2, evidenceUrl: EVIDENCE_URL }] as never)
+
+        renderPage()
+
+        const row = await screen.findByRole('row', { name: /Maria Ioannou/ })
+        expect(within(row).getByRole('button', { name: 'Approve' })).toBeEnabled()
+        expect(within(row).queryByText(/Awaiting document/)).not.toBeInTheDocument()
+    })
+
+    it('never holds a type that asks for no document', async () => {
+        api.getAnnualLeaves.mockResolvedValue([{ ...BASE_LEAVE, leaveTypeId: 1, evidenceUrl: null }] as never)
+
+        renderPage()
+
+        const row = await screen.findByRole('row', { name: /Maria Ioannou/ })
+        expect(within(row).getByRole('button', { name: 'Approve' })).toBeEnabled()
+    })
+})

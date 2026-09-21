@@ -16,7 +16,7 @@ const ANNUAL: LeaveType = {
     defaultAllowance: 23, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
     accrualNotes: '', minNoticeDays: 0, maxConsecutiveDays: 0, halfDayAllowed: false,
-    eligibilityNotes: '', eligibilityScope: 'All', availableTo: 'Both',
+    availableTo: 'Both',
 }
 
 /** Its own 10 days/year, and not deducted from the pooled balance — like every seeded type but annual. */

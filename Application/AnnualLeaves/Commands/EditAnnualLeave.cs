@@ -95,18 +95,9 @@ public class EditAnnualLeave
             annualLeave.Reason = request.AnnualLeave.Reason;
             annualLeave.EvidenceUrl = request.AnnualLeave.EvidenceUrl;
 
-            /* Same gate as on create, and deliberately with no exemption: an edit
-               can move a request onto a type that requires evidence, and a request
-               filed before the policy was set carries none. An admin fixing the
-               reason on such a row has to attach one — the rule is about the leave
-               type, not about who is typing. */
             if (editedLeaveType is not null)
             {
-                var attachmentError = AttachmentPolicyRule.Check(editedLeaveType, annualLeave.EvidenceUrl);
-                if (attachmentError is not null)
-                    return Result<Unit>.Failure(attachmentError);
-
-                /* Likewise no exemption: an edit can move a request onto a type
+                /* No exemption for an admin: an edit can move a request onto a type
                    that offers no half days, or widen a half day's dates past the
                    single date one covers. */
                 var halfDayError = HalfDayRule.Check(
@@ -222,6 +213,20 @@ public class EditAnnualLeave
                     Comment = request.AnnualLeave.StatusComment,
                     ChangedAt = DateTime.UtcNow
                 });
+            }
+
+            /* The attachment policy gates approval, not filing, so it is checked
+               against where the leave *ends up*: the status path above approving
+               an undocumented request, or an edit clearing the evidence on a row
+               that is already approved. Read after the edit's own EvidenceUrl is
+               applied, so attaching and approving in one save passes. An edit that
+               keeps the request Pending is not asked — that is the edit an employee
+               makes to attach a document dated after they had to file. */
+            if (editedLeaveType is not null && annualLeave.Status == AnnualLeaveStatus.Approved)
+            {
+                var attachmentError = AttachmentPolicyRule.Check(editedLeaveType, annualLeave.EvidenceUrl);
+                if (attachmentError is not null)
+                    return Result<Unit>.Failure(attachmentError);
             }
 
             if (employeeProfile is not null && annualLeave.Status == AnnualLeaveStatus.Approved)
