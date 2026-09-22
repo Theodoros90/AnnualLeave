@@ -819,9 +819,24 @@ function LeaveRow({
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 10, fontWeight: 600, flexShrink: 0,
             }}>{initials(leave.delegateName)}</Box>
-            <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Box sx={{ fontSize: 12, fontWeight: 500, color: 'text.primary' }}>{leave.delegateName}</Box>
                 <Box sx={{ fontSize: 10, color: 'text.secondary' }}>Nominated to cover</Box>
+                {/* The handover left for them, which they get by email at approval. */}
+                {leave.coverageNote && (
+                    <Box sx={{ fontSize: 11, color: 'text.secondary', mt: '4px', lineHeight: 1.4 }}>{leave.coverageNote}</Box>
+                )}
+                {leave.coverageAttachmentUrl && (
+                    <Box
+                        component="a"
+                        href={resolveFileUrl(leave.coverageAttachmentUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{ display: 'inline-block', fontSize: 11, color: 'primary.main', mt: '4px' }}
+                    >
+                        📎 Handover document
+                    </Box>
+                )}
             </Box>
         </Box>
     ) : null

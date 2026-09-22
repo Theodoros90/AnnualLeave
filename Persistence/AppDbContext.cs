@@ -258,6 +258,11 @@ public class AppDbContext : IdentityDbContext<
                 .HasForeignKey(al => al.DelegateId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // The handover for the delegate. Both nullable: an Admin's own leave
+            // names no delegate, and every row predating the columns has neither.
+            entity.Property(al => al.CoverageNote).HasMaxLength(1000);
+            entity.Property(al => al.CoverageAttachmentUrl).HasMaxLength(2048);
+
             // Restrict, not Cascade: a child's row carries the ledger proving how
             // much per-child leave was taken for them, so deleting the child must
             // not erase it. DeleteChild refuses while any leave references the row.

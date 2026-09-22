@@ -1,4 +1,4 @@
-using Application.AnnualLeaves.Commands;
+﻿using Application.AnnualLeaves.Commands;
 using Application.AnnualLeaves.DTOs;
 using Application.AnnualLeaves.Validators;
 using Domain;
@@ -9,8 +9,11 @@ namespace WorkTrack.Tests;
 
 /// <summary>
 /// Coverage (delegate) on a leave request: the colleague nominated to handle
-/// urgent matters while the employee is away. It is optional, must point at a
-/// real user, and can never be the requester themselves.
+/// urgent matters while the employee is away. It must point at a real user and
+/// can never be the requester themselves. Whether it may be left blank at all is
+/// <c>CoverageRule</c>'s question, covered in <see cref="CoverageRequiredTests"/>;
+/// the users seeded here hold no role, so the rule reads them as non-Admins and
+/// asks for one — these tests look only at the two shape checks.
 /// </summary>
 public class LeaveDelegateTests
 {
@@ -179,7 +182,9 @@ public class LeaveDelegateTests
         Assert.True(set.IsSuccess);
         Assert.Equal("u2", db.AnnualLeaves.Single(al => al.Id == "L1").DelegateId);
 
-        // An empty delegate means "no cover", not "keep whatever was there".
+        // An empty delegate means "no cover", not "keep whatever was there". The
+        // validator refuses this for an Employee (CoverageRequiredTests); the
+        // handler itself, reached here directly, still stores what it is given.
         var cleared = await handler.Handle(EditCmd("  "), CancellationToken.None);
         Assert.True(cleared.IsSuccess);
         Assert.Null(db.AnnualLeaves.Single(al => al.Id == "L1").DelegateId);

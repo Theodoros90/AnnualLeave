@@ -8,7 +8,8 @@ import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import { currentYearEntitlement } from '../../lib/leave-allowance'
 import { buildLeaveBalanceRows, type LeaveBalanceRow } from '../../lib/leave-balance-rows'
-import { createAnnualLeave, getAnnualLeaves, getAppSettings, getChildLeaveEntitlements, getEmployeeProfiles, getHolidays, getLeaveTypes, getTeammates, uploadLeaveEvidence } from '../../lib/api'
+import { createAnnualLeave, getAnnualLeaves, getAppSettings, getChildLeaveEntitlements, getEmployeeProfiles, getHolidays, getLeaveTypes, getTeammates, uploadCoverageHandover, uploadLeaveEvidence } from '../../lib/api'
+import { COVERAGE_NOTE_MAX_LENGTH, COVERAGE_REQUIRED_MESSAGE, isCoverageRequired } from '../../lib/coverage'
 import { isLeaveTypeOffered, isParentalLeaveType } from '../../lib/parental-leave'
 import { attachmentRequirement, isAttachmentBlockingSubmit, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
 import { earliestStartDate, maxConsecutiveError, noticeError } from '../../lib/leave-limits'
@@ -33,7 +34,7 @@ import type { Theme } from '@mui/material/styles'
  * a precomputed boolean: the schema has to exist before `useForm`, while such a
  * flag could only come from the form's own watched value.
  */
-function buildApplyLeaveSchema(perChildLeaveTypeIds: number[]) {
+function buildApplyLeaveSchema(perChildLeaveTypeIds: number[], coverageRequired: boolean) {
     return z
         .object({
             leaveTypeId: z.number().int().positive('Choose a leave type to continue.'),
@@ -45,9 +46,19 @@ function buildApplyLeaveSchema(perChildLeaveTypeIds: number[]) {
             endDate: z.string().min(1, 'Pick an end date on the calendar.'),
             reason: z.string().max(500, 'Reason must be 500 characters or fewer.').optional(),
             delegateId: z.string().optional(),
+            coverageNote: z
+                .string()
+                .max(COVERAGE_NOTE_MAX_LENGTH, `The handover note must be ${COVERAGE_NOTE_MAX_LENGTH} characters or fewer.`)
+                .optional(),
             childId: z.string().optional(),
         })
         .superRefine((data, ctx) => {
+            // Mirrors CoverageRule: mandatory for an Employee or a Manager. Also
+            // gates the submit button below, so this is the belt to its braces.
+            if (coverageRequired && !data.delegateId?.trim()) {
+                ctx.addIssue({ code: 'custom', path: ['delegateId'], message: COVERAGE_REQUIRED_MESSAGE })
+            }
+
             if (perChildLeaveTypeIds.includes(data.leaveTypeId) && !data.childId) {
                 ctx.addIssue({
                     code: 'custom',
@@ -83,12 +94,17 @@ const ALLOWED_MIME = [
     'image/jpeg', 'image/png', 'image/heic', 'image/webp',
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ]
 
+/* Word and Excel both read as 'doc': one icon, one label, and the server tells
+   them apart by their bytes (FileSignatureValidator). */
 function classifyFile(file: File): FileKind {
     if (file.type.startsWith('image/')) return 'img'
     if (file.type === 'application/pdf') return 'pdf'
-    if (file.type.includes('word') || /\.docx?$/i.test(file.name)) return 'doc'
+    if (file.type.includes('word') || file.type.includes('excel') || file.type.includes('spreadsheet')
+        || /\.(docx?|xlsx?)$/i.test(file.name)) return 'doc'
     return 'other'
 }
 
@@ -183,7 +199,14 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         () => activeLeaveTypes.filter((lt) => lt.perChildEntitlement).map((lt) => lt.id),
         [activeLeaveTypes],
     )
-    const schema = useMemo(() => buildApplyLeaveSchema(perChildLeaveTypeIds), [perChildLeaveTypeIds])
+    /* Whose leave this is decides whether cover is mandatory, and on this page
+       that is always the signed-in user — an admin filing for somebody else uses
+       AnnualLeaveForm. */
+    const coverageRequired = isCoverageRequired(user.roles)
+    const schema = useMemo(
+        () => buildApplyLeaveSchema(perChildLeaveTypeIds, coverageRequired),
+        [perChildLeaveTypeIds, coverageRequired],
+    )
 
     /* Maternity and Paternity Leave are offered on the employee's recorded gender
        and on their having a child young enough to qualify, so the ledger is read
@@ -248,6 +271,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
             endDate: '',
             reason: '',
             delegateId: '',
+            coverageNote: '',
             childId: '',
         },
     })
@@ -258,6 +282,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     const endDate = useWatch({ control, name: 'endDate' })
     const reason = useWatch({ control, name: 'reason' }) ?? ''
     const delegateId = useWatch({ control, name: 'delegateId' }) ?? ''
+    const coverageNote = useWatch({ control, name: 'coverageNote' }) ?? ''
     const childId = useWatch({ control, name: 'childId' }) ?? ''
 
     const [calMonth, setCalMonth] = useState<number>(today.getMonth())
@@ -267,6 +292,12 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     const [isDragOver, setIsDragOver] = useState(false)
     const [delegatePickerOpen, setDelegatePickerOpen] = useState(false)
     const [delegateSearch, setDelegateSearch] = useState('')
+    /* The handover document for the delegate. Staged like the evidence and
+       uploaded on submit — to its own endpoint, since the delegate may read this
+       back and must not thereby be able to read a doctor's note. */
+    const [handoverFile, setHandoverFile] = useState<StagedFile | null>(null)
+    const [handoverError, setHandoverError] = useState<string | null>(null)
+    const handoverInputRef = useRef<HTMLInputElement>(null)
     /* Whether the child picker currently has no real choice to offer — the ledger
        failed to load, no children are on file, or none are eligible. Submit is
        disabled while it is set, so nobody is left pressing a button the server is
@@ -276,7 +307,9 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
 
     const { data: profiles = [] } = useQuery({ queryKey: ['employeeProfiles'], queryFn: getEmployeeProfiles })
     const { data: allLeaves = [] } = useQuery({ queryKey: ['annualLeaves'], queryFn: getAnnualLeaves })
-    const { data: teammates = [] } = useQuery({ queryKey: ['teammates'], queryFn: getTeammates })
+    // Wrapped, not passed bare: getTeammates now takes an optional user id, and
+    // React Query would hand it the query context in that slot.
+    const { data: teammates = [] } = useQuery({ queryKey: ['teammates'], queryFn: () => getTeammates() })
     // Only for the leave-year start month, which a non-balance type's first-year
     // pro-rating is measured from — see `buildLeaveBalanceRows`.
     const { data: settings } = useQuery({ queryKey: ['appSettings'], queryFn: getAppSettings })
@@ -537,6 +570,9 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         ? delegateCandidates.find((t) => t.userId === delegateId) ?? null
         : null
     const delegateIsAway = !!selectedDelegate && awayUserIds.has(selectedDelegate.userId)
+    // Cover the rule insists on and nobody has been nominated for. On the id, not
+    // the resolved teammate, so a slow teammate list cannot read as "nobody".
+    const coverageMissing = coverageRequired && !delegateId.trim()
 
     function chooseDelegate(userId: string) {
         setValue('delegateId', userId, { shouldDirty: true, shouldValidate: true })
@@ -591,9 +627,15 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         // may run. Both are refusals the server will certainly make.
         && !noticeBreach
         && !lengthBreach
+        // Cover the server will refuse the request without (CoverageRule).
+        && !coverageMissing
 
     const uploadMutation = useMutation({
         mutationFn: (file: File) => uploadLeaveEvidence(file),
+    })
+
+    const uploadHandoverMutation = useMutation({
+        mutationFn: (file: File) => uploadCoverageHandover(file),
     })
 
     const submitMutation = useMutation({
@@ -603,6 +645,15 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                 const result = await uploadMutation.mutateAsync(attachment.file)
                 evidenceUrl = result.evidenceUrl
             }
+            const delegate = values.delegateId?.trim() || undefined
+            /* Only with somebody to hand over to: the server drops both fields
+               when no delegate is named, so there is no point uploading a file it
+               will not keep. */
+            let coverageAttachmentUrl: string | undefined
+            if (delegate && handoverFile) {
+                const result = await uploadHandoverMutation.mutateAsync(handoverFile.file)
+                coverageAttachmentUrl = result.coverageAttachmentUrl
+            }
             return createAnnualLeave({
                 employeeId: user.id,
                 leaveTypeId: values.leaveTypeId,
@@ -611,7 +662,9 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                 duration: values.duration,
                 reason: (values.reason ?? '').trim() || '—',
                 evidenceUrl,
-                delegateId: values.delegateId?.trim() || undefined,
+                delegateId: delegate,
+                coverageNote: delegate ? (values.coverageNote ?? '').trim() || undefined : undefined,
+                coverageAttachmentUrl,
                 /* Only for a type whose entitlement is per child. The server clears
                    it for any other type regardless, so there is no point handing it
                    a stale id to discard — and without it, a paternity request is
@@ -630,8 +683,8 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         submitMutation.mutate(values)
     })
 
-    const isPending = uploadMutation.isPending || submitMutation.isPending
-    const submitError = submitMutation.error ?? uploadMutation.error
+    const isPending = uploadMutation.isPending || uploadHandoverMutation.isPending || submitMutation.isPending
+    const submitError = submitMutation.error ?? uploadMutation.error ?? uploadHandoverMutation.error
 
     // Revoke preview object URL on unmount / change
     useEffect(() => {
@@ -639,6 +692,11 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
             if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
         }
     }, [attachment])
+    useEffect(() => {
+        return () => {
+            if (handoverFile?.previewUrl) URL.revokeObjectURL(handoverFile.previewUrl)
+        }
+    }, [handoverFile])
 
     /* Switching to a type that asks for no document hides step 5, and a file left
        staged behind it would still upload on submit with nothing on screen saying
@@ -658,29 +716,41 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         if (selectedType && !halfDayOffered) setValue('duration', 'Full', { shouldValidate: true })
     }, [selectedType, halfDayOffered, setValue])
 
-    function acceptFiles(fileList: FileList | null) {
-        if (!fileList || fileList.length === 0) return
-        const file = fileList[0] // backend stores a single evidence URL
-        setUploadError(null)
+    /* The size and type checks, shared by the evidence and the handover document —
+       one file each, since the server stores a single path for either. */
+    function stageFile(fileList: FileList | null): { error: string } | { staged: StagedFile } | null {
+        if (!fileList || fileList.length === 0) return null
+        const file = fileList[0]
 
         if (file.size > MAX_FILE_BYTES) {
-            setUploadError(`"${file.name}" is over 10 MB.`)
-            return
+            return { error: `"${file.name}" is over 10 MB.` }
         }
         const kind = classifyFile(file)
         const looksAllowed = ALLOWED_MIME.includes(file.type) || kind !== 'other'
         if (!looksAllowed) {
-            setUploadError(`"${file.name}" isn't an allowed file type.`)
+            return { error: `"${file.name}" isn't an allowed file type.` }
+        }
+        return {
+            staged: {
+                file,
+                name: file.name,
+                size: file.size,
+                kind,
+                previewUrl: kind === 'img' ? URL.createObjectURL(file) : null,
+            },
+        }
+    }
+
+    function acceptFiles(fileList: FileList | null) {
+        const result = stageFile(fileList)
+        if (!result) return
+        setUploadError(null)
+        if ('error' in result) {
+            setUploadError(result.error)
             return
         }
         if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
-        setAttachment({
-            file,
-            name: file.name,
-            size: file.size,
-            kind,
-            previewUrl: kind === 'img' ? URL.createObjectURL(file) : null,
-        })
+        setAttachment(result.staged)
     }
 
     function removeAttachment() {
@@ -688,6 +758,25 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         setAttachment(null)
         setUploadError(null)
         if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+
+    function acceptHandoverFiles(fileList: FileList | null) {
+        const result = stageFile(fileList)
+        if (!result) return
+        setHandoverError(null)
+        if ('error' in result) {
+            setHandoverError(result.error)
+            return
+        }
+        if (handoverFile?.previewUrl) URL.revokeObjectURL(handoverFile.previewUrl)
+        setHandoverFile(result.staged)
+    }
+
+    function removeHandoverFile() {
+        if (handoverFile?.previewUrl) URL.revokeObjectURL(handoverFile.previewUrl)
+        setHandoverFile(null)
+        setHandoverError(null)
+        if (handoverInputRef.current) handoverInputRef.current.value = ''
     }
 
     function pickDate(iso: string) {
@@ -931,9 +1020,24 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                     <Box sx={sectionTitleSx}>
                         <Box component="span" sx={sectionNumSx}>3</Box>
                         Coverage
-                        <Box component="span" sx={{ fontWeight: 400, color: 'text.disabled', fontSize: 12, ml: '6px' }}>(optional)</Box>
+                        {/* Mandatory for an Employee or a Manager — CoverageRule on
+                            the server, `lib/coverage.ts` here. Red only while it is
+                            still missing, the way step 5 treats a required document. */}
+                        <Box
+                            component="span"
+                            sx={{
+                                fontWeight: coverageMissing ? 600 : 400,
+                                color: coverageMissing ? 'error.main' : 'text.disabled',
+                                fontSize: 12,
+                                ml: '6px',
+                            }}
+                        >
+                            {coverageRequired ? '(required)' : '(optional)'}
+                        </Box>
                     </Box>
-                    <Box sx={sectionSubSx}>Nominate a colleague to handle urgent matters while you're away.</Box>
+                    <Box sx={sectionSubSx}>
+                        Nominate a colleague to handle urgent matters while you're away. They'll be emailed once your leave is approved, with any handover note and document you add here.
+                    </Box>
                     {selectedDelegate ? (
                         <Box
                             sx={{
@@ -981,6 +1085,104 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                             <Box component="span">⚠️</Box>
                             <Box component="span">
                                 {selectedDelegate?.displayName} is also off during these dates — consider nominating someone else.
+                            </Box>
+                        </Box>
+                    )}
+                    {errors.delegateId && <FieldError id="delegate-error">{errors.delegateId.message}</FieldError>}
+
+                    {/* The handover. Only once somebody is nominated: both are written
+                        to the delegate, and the server drops them for a request that
+                        names none. */}
+                    {selectedDelegate && (
+                        <Box sx={{ mt: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <Box>
+                                <Box component="label" htmlFor="coverage-note" sx={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'text.primary', mb: '4px' }}>
+                                    Handover note
+                                    <Box component="span" sx={{ fontWeight: 400, color: 'text.disabled', ml: '6px' }}>(optional)</Box>
+                                </Box>
+                                <Controller
+                                    name="coverageNote"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <Box
+                                            component="textarea"
+                                            id="coverage-note"
+                                            {...field}
+                                            rows={3}
+                                            maxLength={COVERAGE_NOTE_MAX_LENGTH}
+                                            placeholder={`What should ${selectedDelegate.displayName.split(' ')[0]} keep an eye on? Open tasks, who to call, where things are.`}
+                                            aria-describedby={errors.coverageNote ? 'coverage-note-error' : undefined}
+                                            sx={{
+                                                width: '100%', p: '10px 12px', fontSize: 13, lineHeight: 1.5, resize: 'vertical',
+                                                bgcolor: 'background.paper', color: 'text.primary',
+                                                border: '1px solid', borderColor: errors.coverageNote ? 'error.main' : 'divider', borderRadius: '8px', fontFamily: 'inherit',
+                                                '&:focus': { outline: 'none', borderColor: 'primary.main' },
+                                                '&::placeholder': { color: 'text.disabled' },
+                                            }}
+                                        />
+                                    )}
+                                />
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: '4px', fontSize: 11, color: 'text.secondary' }}>
+                                    <Box component="span">Sent to {selectedDelegate.displayName} only — not to your manager or the team.</Box>
+                                    <Box component="span" sx={{ color: coverageNote.length > COVERAGE_NOTE_MAX_LENGTH ? 'error.main' : 'text.disabled' }}>
+                                        {coverageNote.length}/{COVERAGE_NOTE_MAX_LENGTH}
+                                    </Box>
+                                </Box>
+                                {errors.coverageNote && <FieldError id="coverage-note-error">{errors.coverageNote.message}</FieldError>}
+                            </Box>
+
+                            <Box>
+                                <Box sx={{ fontSize: 12, fontWeight: 500, color: 'text.primary', mb: '4px' }}>
+                                    Handover document
+                                    <Box component="span" sx={{ fontWeight: 400, color: 'text.disabled', ml: '6px' }}>(optional)</Box>
+                                </Box>
+                                <input
+                                    ref={handoverInputRef}
+                                    type="file"
+                                    data-testid="handover-file-input"
+                                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,application/pdf,image/*"
+                                    style={{ display: 'none' }}
+                                    onChange={(e) => acceptHandoverFiles(e.target.files)}
+                                />
+                                {handoverFile ? (
+                                    <Box sx={{
+                                        display: 'flex', alignItems: 'center', gap: '10px',
+                                        p: '8px 12px', bgcolor: 'background.paper',
+                                        border: '1px solid', borderColor: 'divider', borderRadius: '8px',
+                                    }}>
+                                        <Box sx={fileIconSx(handoverFile.kind)}>
+                                            {handoverFile.kind === 'pdf' ? '📄' : handoverFile.kind === 'doc' ? '📝' : handoverFile.kind === 'img' ? '🖼️' : '📎'}
+                                        </Box>
+                                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                                            <Box sx={{ fontSize: 12, fontWeight: 500, color: 'text.primary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {handoverFile.name}
+                                            </Box>
+                                            <Box sx={{ fontSize: 11, color: 'text.secondary', mt: '2px' }}>
+                                                {formatBytes(handoverFile.size)} · attached to the email {selectedDelegate.displayName} gets
+                                            </Box>
+                                        </Box>
+                                        <Box component="button" type="button" onClick={removeHandoverFile} disabled={isPending} sx={inlineLinkSx}>Remove</Box>
+                                    </Box>
+                                ) : (
+                                    <Box
+                                        component="button"
+                                        type="button"
+                                        onClick={() => handoverInputRef.current?.click()}
+                                        sx={{
+                                            display: 'flex', gap: '10px', alignItems: 'center', p: '8px 12px', width: '100%',
+                                            bgcolor: 'action.hover', border: '1px dashed', borderColor: 'divider', borderRadius: '8px', cursor: 'pointer',
+                                            transition: 'all 0.15s', textAlign: 'left', fontFamily: 'inherit',
+                                            '&:hover': { bgcolor: softBg('primary'), borderColor: 'primary.main', borderStyle: 'solid' },
+                                        }}
+                                    >
+                                        <Box component="span" sx={{ fontSize: 16 }}>📎</Box>
+                                        <Box sx={{ flex: 1 }}>
+                                            <Box sx={{ fontSize: 12, fontWeight: 500, color: 'text.primary' }}>Attach a handover document</Box>
+                                            <Box sx={{ fontSize: 11, color: 'text.secondary', mt: '1px' }}>PDF, Word, Excel, JPG, or PNG · up to 10 MB · emailed to {selectedDelegate.displayName}</Box>
+                                        </Box>
+                                    </Box>
+                                )}
+                                {handoverError && <FieldError id="handover-error">{handoverError}</FieldError>}
                             </Box>
                         </Box>
                     )}
@@ -1081,6 +1283,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                         <input
                             ref={fileInputRef}
                             type="file"
+                            data-testid="evidence-file-input"
                             accept=".pdf,.jpg,.jpeg,.png,.heic,.webp,.doc,.docx,application/pdf,image/*"
                             style={{ display: 'none' }}
                             onChange={(e) => acceptFiles(e.target.files)}
@@ -1275,7 +1478,18 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                         <SummaryRow l="Working days" r={String(workingDays)} />
                         <SummaryRow l="Back at work" r={endDate ? nextWorkingDay(endDate, holidaySet) : '—'} />
                         <SummaryRow l="Days deducted" r={selectedAffectsBalance || ownAllowance ? String(daysDeducted) : '0 (not deducted)'} />
-                        <SummaryRow l="Coverage" r={selectedDelegate ? selectedDelegate.displayName : 'None'} muted={!selectedDelegate} />
+                        <SummaryRow
+                            l="Coverage"
+                            r={selectedDelegate ? selectedDelegate.displayName : coverageMissing ? 'Required' : 'None'}
+                            muted={!selectedDelegate && !coverageMissing}
+                            tone={coverageMissing ? 'error' : undefined}
+                        />
+                        {selectedDelegate && (handoverFile || coverageNote.trim()) && (
+                            <SummaryRow
+                                l="Handover"
+                                r={[coverageNote.trim() ? 'Note' : null, handoverFile ? '📎 1 file' : null].filter(Boolean).join(' · ')}
+                            />
+                        )}
                         {/* Nothing to summarise when the type asks for no document
                             and step 5 is not on the form. */}
                         {attachmentOffered && (
@@ -1424,6 +1638,10 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                         // the thing standing in the way.
                                         : attachmentBlocking && !!startDate && !!endDate
                                             ? 'Attach a document to continue'
+                                        // Same shape again: the missing cover is
+                                        // what stands in the way once the dates are in.
+                                        : coverageMissing && !!startDate && !!endDate
+                                            ? 'Choose a delegate to continue'
                                         : 'Pick dates to continue'}
                         </Box>
                         <Box
@@ -1465,7 +1683,9 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                     <Box sx={{ mt: '12px', maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         {visibleDelegates.length === 0 ? (
                             <Box sx={{ fontSize: 12, color: 'text.secondary', p: '18px 12px', textAlign: 'center' }}>
-                                {delegateCandidates.length === 0
+                                {delegateCandidates.length === 0 && coverageRequired
+                                    ? 'Nobody in your department is available to nominate. Coverage is required, so please ask your admin before filing this request.'
+                                    : delegateCandidates.length === 0
                                     ? 'No colleagues available to nominate.'
                                     : 'No colleagues match your search.'}
                             </Box>

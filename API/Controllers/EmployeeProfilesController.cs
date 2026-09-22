@@ -1,4 +1,4 @@
-using Application.EmployeeProfiles.Commands;
+﻿using Application.EmployeeProfiles.Commands;
 using Application.EmployeeProfiles.DTOs;
 using Application.EmployeeProfiles.Queries;
 using Domain;
@@ -28,14 +28,19 @@ public class EmployeeProfilesController : BaseApiController
     /// <summary>
     /// Colleagues in the caller's own department — names and job titles only.
     /// Backs the leave-coverage delegate picker, which every employee can use.
+    /// An Admin filing leave on somebody's behalf passes that person as
+    /// <paramref name="forUserId"/> to get their colleagues instead; anyone else
+    /// passing it gets their own list, since a Manager or an Employee has no
+    /// business filing for somebody else.
     /// </summary>
     [HttpGet("teammates")]
     [Authorize]
-    public async Task<ActionResult<List<TeammateDto>>> GetTeammates()
+    public async Task<ActionResult<List<TeammateDto>>> GetTeammates([FromQuery] string? forUserId = null)
     {
         return await Mediator.Send(new GetTeammateList.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            ForUserId = User.IsInRole(AppRoles.Admin) ? forUserId : null,
         });
     }
 

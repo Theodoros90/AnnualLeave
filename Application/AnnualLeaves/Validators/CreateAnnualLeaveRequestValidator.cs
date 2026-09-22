@@ -36,7 +36,17 @@ public class CreateAnnualLeaveRequestValidator : AbstractValidator<CreateAnnualL
                     await context.LeaveTypes.AnyAsync(lt => lt.Id == leaveTypeId && lt.IsActive, cancellationToken))
                 .WithMessage("Selected leave type is invalid or inactive.");
 
-            // Coverage (delegate) is optional; only validate it when one is nominated.
+            // Coverage is mandatory for an Employee or a Manager; CoverageRule says
+            // which, from the employee's stored role. The checks below only apply
+            // once somebody has been nominated.
+            RuleFor(x => x.AnnualLeave)
+                .CustomAsync(async (annualLeave, validationContext, cancellationToken) =>
+                {
+                    var error = await CoverageRule.CheckAsync(
+                        context, annualLeave.EmployeeId, annualLeave.DelegateId, cancellationToken);
+                    if (error is not null) validationContext.AddFailure(nameof(annualLeave.DelegateId), error);
+                });
+
             When(x => x.AnnualLeave is not null && !string.IsNullOrWhiteSpace(x.AnnualLeave.DelegateId), () =>
             {
                 RuleFor(x => x.AnnualLeave.DelegateId)

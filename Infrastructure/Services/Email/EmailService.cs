@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Domain.Interfaces;
 using Infrastructure.Configuration;
 using Infrastructure.Services.Email.Models;
@@ -39,11 +39,20 @@ public class EmailService : IEmailService
         _logger.LogInformation("EmailService initialized with provider: {Provider}", _providerType);
     }
 
-    public async Task<bool> SendEmailAsync(
+    public Task<bool> SendEmailAsync(
         string toEmail,
         string subject,
         string htmlBody,
         string? textBody = null,
+        CancellationToken cancellationToken = default) =>
+        SendEmailAsync(toEmail, subject, htmlBody, textBody, [], cancellationToken);
+
+    public async Task<bool> SendEmailAsync(
+        string toEmail,
+        string subject,
+        string htmlBody,
+        string? textBody,
+        IReadOnlyList<EmailFileAttachment> attachments,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(toEmail) || string.IsNullOrWhiteSpace(_mailSettings.EffectiveFromAddress))
@@ -65,7 +74,12 @@ public class EmailService : IEmailService
             To = [new EmailContact { Email = toEmail }],
             Subject = subject,
             HtmlContent = htmlBody,
-            TextContent = string.IsNullOrWhiteSpace(textBody) ? StripHtml(htmlBody) : textBody
+            TextContent = string.IsNullOrWhiteSpace(textBody) ? StripHtml(htmlBody) : textBody,
+            Attachments = attachments.Count == 0
+                ? null
+                : attachments
+                    .Select(a => new EmailAttachment { Name = a.FileName, Content = a.Content, ContentType = a.ContentType })
+                    .ToList(),
         };
 
         var result = await _provider.SendAsync(message, cancellationToken);

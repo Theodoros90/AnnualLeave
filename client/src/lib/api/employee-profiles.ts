@@ -8,8 +8,12 @@ export async function getEmployeeProfiles() {
 
 // Colleagues in the caller's own department. Unlike getEmployeeProfiles this is
 // readable by plain employees, so pickers can offer real people to choose from.
-export async function getTeammates() {
-    const response = await apiClient.get<Teammate[]>('/employeeprofiles/teammates')
+// `forUserId` asks for somebody else's colleagues instead — for an admin filing
+// leave on that person's behalf. The server honours it for an Admin only.
+export async function getTeammates(forUserId?: string) {
+    const response = await apiClient.get<Teammate[]>('/employeeprofiles/teammates', {
+        params: forUserId ? { forUserId } : undefined,
+    })
     return response.data
 }
 

@@ -963,6 +963,40 @@ function LeaveCard({
                         </Box>
                     )}
 
+                    {/* The handover left for the delegate. Shown to its author here;
+                        the delegate gets it by email once the leave is approved. */}
+                    {leave.coverageNote && (
+                        <Box sx={{ fontSize: 12, color: 'text.secondary', mt: '6px', lineHeight: 1.5 }}>
+                            <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>Handover: </Box>
+                            {leave.coverageNote}
+                        </Box>
+                    )}
+                    {leave.coverageAttachmentUrl && (
+                        <Box sx={{ display: 'flex', gap: '6px', mt: '10px', flexWrap: 'wrap' }}>
+                            <Box
+                                component="a"
+                                href={resolveFileUrl(leave.coverageAttachmentUrl)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                sx={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    p: '4px 10px 4px 6px', bgcolor: 'action.hover',
+                                    border: '1px solid', borderColor: 'divider', borderRadius: '14px',
+                                    fontSize: 11, color: 'text.primary', textDecoration: 'none',
+                                    transition: 'all 0.15s',
+                                    '&:hover': { bgcolor: softBg('primary'), borderColor: 'primary.main', color: 'info.dark' },
+                                }}
+                            >
+                                <Box component="span" sx={{
+                                    width: 18, height: 18, borderRadius: '50%',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: 10, bgcolor: softBg('primary'), color: 'primary.main',
+                                }}>📎</Box>
+                                Handover document
+                            </Box>
+                        </Box>
+                    )}
+
                     {leave.evidenceUrl && (
                         <Box sx={{ display: 'flex', gap: '6px', mt: '10px', flexWrap: 'wrap' }}>
                             <Box
@@ -1194,6 +1228,30 @@ function LeaveDetailsDialog({ leave, leaveTypeName, feedback, onClose }: {
                     <LeaveDetailRow label="Status" value={<StatusBadge status={status} />} />
                     {!isPlaceholderReason && <LeaveDetailRow label="Reason" value={leave.reason} />}
                     {leave.delegateName && <LeaveDetailRow label="Covered By" value={leave.delegateName} />}
+                    {leave.coverageNote && <LeaveDetailRow label="Handover Note" value={leave.coverageNote} />}
+                    {leave.coverageAttachmentUrl && (
+                        <LeaveDetailRow
+                            label="Handover Document"
+                            value={
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    component="a"
+                                    href={resolveFileUrl(leave.coverageAttachmentUrl)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    sx={{
+                                        fontSize: 12, textTransform: 'none',
+                                        borderColor: 'primary.main', color: 'primary.main',
+                                        py: '3px', px: 1.25,
+                                        '&:hover': { bgcolor: softBg('info'), borderColor: 'primary.main' },
+                                    }}
+                                >
+                                    Open File
+                                </Button>
+                            }
+                        />
+                    )}
                     {leave.evidenceUrl && leave.evidenceUrl.trim() !== '' && (
                         <LeaveDetailRow
                             label="Evidence"

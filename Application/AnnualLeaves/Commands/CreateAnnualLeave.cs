@@ -31,6 +31,10 @@ public class CreateAnnualLeave
             annualLeave.EmployeeProfileId = employeeProfile.Id;
             annualLeave.DepartmentId = employeeProfile.DepartmentId;
 
+            /* The note and the document are written to the delegate, so with nobody
+               nominated they go nowhere and are not kept. Whitespace is neither. */
+            CoverageHandover.Apply(annualLeave, request.AnnualLeave);
+
             var leaveType = await context.LeaveTypes
                 .AsNoTracking()
                 .FirstOrDefaultAsync(

@@ -42,6 +42,28 @@ export async function uploadLeaveEvidence(file: File) {
     return response.data
 }
 
+/**
+ * A handover document for the colleague covering the leave. Its own endpoint and
+ * purpose rather than `uploadLeaveEvidence`: the delegate may read this back and
+ * must not thereby be able to read a medical certificate.
+ */
+export async function uploadCoverageHandover(file: File) {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await apiClient.post<{ coverageAttachmentUrl: string; fileName: string }>(
+        '/annualleaves/coverage-upload',
+        formData,
+        {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        }
+    )
+
+    return response.data
+}
+
 export async function createAnnualLeave(request: CreateAnnualLeaveRequest) {
     const response = await apiClient.post<string>('/annualleaves', request)
     return response.data

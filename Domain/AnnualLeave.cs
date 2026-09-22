@@ -23,10 +23,32 @@ public class AnnualLeave : IAuditable
 
     /// <summary>
     /// Colleague nominated to cover urgent matters while the employee is away.
-    /// Optional — a request with no delegate is perfectly valid.
+    ///
+    /// Nullable in the column, required by the rule: <c>CoverageRule</c> refuses a
+    /// request from an Employee or a Manager that names nobody, on create and on
+    /// edit. An Admin's own leave is the one standing null — an Admin has no
+    /// department, so there is nobody to offer — and every row predating the rule
+    /// keeps whatever it had.
     /// </summary>
     public string? DelegateId { get; set; }
     public User? Delegate { get; set; }
+
+    /// <summary>
+    /// What the employee wants the delegate to know — the handover. Goes to the
+    /// delegate alone, in the coverage email, and is shown beside their name on
+    /// the leave. Unlike <see cref="Reason"/> it is written for a colleague, not
+    /// for the approver, so nothing here is promised private.
+    /// </summary>
+    public string? CoverageNote { get; set; }
+
+    /// <summary>
+    /// A handover document for the delegate, in the same <c>/api/files/{id}</c>
+    /// shape as <see cref="EvidenceUrl"/> but under its own
+    /// <c>StoredFilePurpose.CoverageHandover</c>, so who may read it is decided
+    /// separately from who may read evidence: the delegate can open this and not
+    /// a doctor's note. Attached to the delegate's coverage email as a file.
+    /// </summary>
+    public string? CoverageAttachmentUrl { get; set; }
     public string? EmployeeProfileId { get; set; }
     public EmployeeProfile? EmployeeProfile { get; set; }
     public int? DepartmentId { get; set; }

@@ -21,6 +21,8 @@ vi.mock('../../lib/api', () => ({
     getAdminUsers: vi.fn(),
     getChildLeaveEntitlements: vi.fn(),
     getLeaveTypes: vi.fn(),
+    getTeammates: vi.fn(),
+    uploadCoverageHandover: vi.fn(),
     uploadLeaveEvidence: vi.fn(),
 }))
 
@@ -60,6 +62,7 @@ const HALF_DAY_LEAVE: AnnualLeave = {
 
 beforeEach(() => {
     vi.clearAllMocks()
+    api.getTeammates.mockResolvedValue([])
     api.getLeaveTypes.mockResolvedValue([ANNUAL_LEAVE_TYPE, FULL_DAY_ONLY_TYPE] as never)
     api.getAdminUsers.mockResolvedValue([] as never)
     api.getChildLeaveEntitlements.mockResolvedValue(NO_CHILDREN)

@@ -27,7 +27,30 @@ public class EditAnnualLeaveRequestValidator : AbstractValidator<EditAnnualLeave
                     await context.LeaveTypes.AnyAsync(lt => lt.Id == leaveTypeId && lt.IsActive, cancellationToken))
                 .WithMessage("Selected leave type is invalid or inactive.");
 
-            // Coverage (delegate) is optional; only validate it when one is nominated.
+            // Coverage is mandatory for an Employee or a Manager, read from the
+            // stored leave's owner — the edit payload names no employee. An edit is a
+            // full replace, so dropping the delegate here is refused the same as
+            // never naming one on create.
+            RuleFor(x => x.AnnualLeave)
+                .CustomAsync(async (annualLeave, validationContext, cancellationToken) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(annualLeave.DelegateId)) return;
+
+                    var employeeId = await context.AnnualLeaves
+                        .AsNoTracking()
+                        .Where(al => al.Id == annualLeave.Id)
+                        .Select(al => al.EmployeeId)
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    // A leave that matches nothing is the handler's "not found", not
+                    // this rule's business.
+                    if (employeeId is null) return;
+
+                    var error = await CoverageRule.CheckAsync(
+                        context, employeeId, annualLeave.DelegateId, cancellationToken);
+                    if (error is not null) validationContext.AddFailure(nameof(annualLeave.DelegateId), error);
+                });
+
             When(x => x.AnnualLeave is not null && !string.IsNullOrWhiteSpace(x.AnnualLeave.DelegateId), () =>
             {
                 RuleFor(x => x.AnnualLeave.DelegateId)

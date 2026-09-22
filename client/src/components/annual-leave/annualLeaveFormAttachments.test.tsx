@@ -23,6 +23,8 @@ vi.mock('../../lib/api', () => ({
     getAdminUsers: vi.fn(),
     getChildLeaveEntitlements: vi.fn(),
     getLeaveTypes: vi.fn(),
+    getTeammates: vi.fn(),
+    uploadCoverageHandover: vi.fn(),
     uploadLeaveEvidence: vi.fn(),
 }))
 
@@ -58,6 +60,7 @@ const EVIDENCE_URL = '/api/files/8f2c1b6e-0000-4000-8000-000000000001'
 
 beforeEach(() => {
     vi.clearAllMocks()
+    api.getTeammates.mockResolvedValue([])
     api.getLeaveTypes.mockResolvedValue([EVIDENCE_TYPE, RELAXED_TYPE, AUTO_EVIDENCE_TYPE] as never)
     api.getAdminUsers.mockResolvedValue([] as never)
     api.getChildLeaveEntitlements.mockResolvedValue({

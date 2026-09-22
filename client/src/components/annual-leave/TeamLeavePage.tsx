@@ -526,6 +526,30 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                             <DetailRow label="Status" value={<StatusBadge status={viewLeave.status} />} />
                             {viewLeave.reason && <DetailRow label="Reason" value={viewLeave.reason} />}
                             {viewLeave.delegateName && <DetailRow label="Covered By" value={viewLeave.delegateName} />}
+                            {viewLeave.coverageNote && <DetailRow label="Handover Note" value={viewLeave.coverageNote} />}
+                            {viewLeave.coverageAttachmentUrl && (
+                                <DetailRow
+                                    label="Handover Document"
+                                    value={
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            component="a"
+                                            href={resolveFileUrl(viewLeave.coverageAttachmentUrl)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            download
+                                            sx={{
+                                                fontSize: 12, textTransform: 'none',
+                                                borderColor: 'primary.main', color: 'primary.main',
+                                                py: '3px', px: 1.25,
+                                            }}
+                                        >
+                                            Open File
+                                        </Button>
+                                    }
+                                />
+                            )}
                             {viewLeave.evidenceUrl && viewLeave.evidenceUrl.trim() !== '' && (
                                 <DetailRow
                                     label="Evidence"

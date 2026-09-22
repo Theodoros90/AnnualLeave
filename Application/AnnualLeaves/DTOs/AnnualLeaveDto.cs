@@ -34,6 +34,12 @@ public class AnnualLeaveDto
 
     public string DelegateName { get; set; } = string.Empty;
 
+    /// <summary>The handover note left for the delegate, if any.</summary>
+    public string? CoverageNote { get; set; }
+
+    /// <summary>The handover document left for the delegate, if any.</summary>
+    public string? CoverageAttachmentUrl { get; set; }
+
     public string Status { get; set; } = string.Empty;
 
 

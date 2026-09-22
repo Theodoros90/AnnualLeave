@@ -1,4 +1,4 @@
-namespace Application.Files;
+﻿namespace Application.Files;
 
 /// <summary>
 /// The relative path a stored file is served from. Both sides of the contract
@@ -16,4 +16,20 @@ public static class StoredFilePath
     public const string Prefix = "/api/files/";
 
     public static string For(string storedFileId) => Prefix + storedFileId;
+
+    /// <summary>
+    /// The id inside a <c>/api/files/{id}</c> path, or null for anything else —
+    /// blank, an absolute Cloudinary URL from before files moved into the
+    /// database, or a path with nothing after the prefix.
+    /// </summary>
+    public static string? TryParseId(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return null;
+
+        var trimmed = path.Trim();
+        if (!trimmed.StartsWith(Prefix, StringComparison.Ordinal)) return null;
+
+        var id = trimmed[Prefix.Length..];
+        return id.Length == 0 || id.Contains('/') ? null : id;
+    }
 }
