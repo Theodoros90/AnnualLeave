@@ -1,4 +1,5 @@
 using Application.Core;
+using Application.Files;
 using Domain;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
@@ -38,7 +39,7 @@ public class DeleteAdminUser
 
             await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
-            await CleanupUserDependenciesAsync(user.Id, cancellationToken);
+            await CleanupUserDependenciesAsync(user.Id, request.RequestingUserId, cancellationToken);
 
             var currentRoles = await userManager.GetRolesAsync(user);
             if (currentRoles.Count > 0)
@@ -71,7 +72,7 @@ public class DeleteAdminUser
                 },
                 message);
 
-        private async Task CleanupUserDependenciesAsync(string userId, CancellationToken cancellationToken)
+        private async Task CleanupUserDependenciesAsync(string userId, string requestingUserId, CancellationToken cancellationToken)
         {
             var userProfileId = await context.EmployeeProfiles
                 .Where(ep => ep.UserId == userId)
@@ -189,7 +190,72 @@ public class DeleteAdminUser
                 context.EmployeeProfiles.Remove(profile);
             }
 
+            await ReleaseUploadedFilesAsync(userId, requestingUserId, cancellationToken);
+
             await context.SaveChangesAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// Files this user uploaded. <c>StoredFile.UploadedById</c> is
+        /// <c>DeleteBehavior.Restrict</c> (see the note on it in <c>AppDbContext</c>),
+        /// so any left pointing at them fails the delete with a raw
+        /// <c>DbUpdateException</c> — which is how it surfaced in production: a 500
+        /// on anyone who had ever set a profile photo or attached a doctor's note,
+        /// while a developer box, whose demo accounts upload nothing, deleted them fine.
+        ///
+        /// A file only this user referred to — their own photo, evidence or handover
+        /// on their own leave, all removed above — goes with them. One a surviving
+        /// row still points at (evidence an admin uploaded onto somebody else's
+        /// leave) is handed to the admin performing the delete, who can already read
+        /// every file, and whose leave it is keeps reading it through their own leave.
+        /// Only ids are loaded: a stored file carries its bytes.
+        /// </summary>
+        private async Task ReleaseUploadedFilesAsync(string userId, string requestingUserId, CancellationToken cancellationToken)
+        {
+            var uploadedIds = await context.StoredFiles
+                .Where(f => f.UploadedById == userId)
+                .Select(f => f.Id)
+                .ToListAsync(cancellationToken);
+            if (uploadedIds.Count == 0)
+            {
+                return;
+            }
+
+            var paths = uploadedIds.Select(StoredFilePath.For).ToList();
+
+            var stillReferenced = await context.AnnualLeaves
+                .Where(al => al.EmployeeId != userId
+                    && ((al.EvidenceUrl != null && paths.Contains(al.EvidenceUrl))
+                        || (al.CoverageAttachmentUrl != null && paths.Contains(al.CoverageAttachmentUrl))))
+                .Select(al => new { al.EvidenceUrl, al.CoverageAttachmentUrl })
+                .ToListAsync(cancellationToken);
+
+            var keep = stillReferenced
+                .SelectMany(al => new[] { al.EvidenceUrl, al.CoverageAttachmentUrl })
+                .Select(StoredFilePath.TryParseId)
+                .Where(id => id is not null)
+                .ToHashSet();
+
+            // With nobody to hand them to they are deleted like the rest, and the
+            // surviving row is left pointing at a path that no longer resolves. Only
+            // a caller that passes no requester reaches this; the controller always does.
+            var canReassign = !string.IsNullOrWhiteSpace(requestingUserId)
+                && !string.Equals(requestingUserId, userId, StringComparison.Ordinal);
+
+            foreach (var id in uploadedIds)
+            {
+                var stub = new StoredFile { Id = id, UploadedById = userId };
+                if (canReassign && keep.Contains(id))
+                {
+                    var entry = context.StoredFiles.Attach(stub);
+                    stub.UploadedById = requestingUserId;
+                    entry.Property(f => f.UploadedById).IsModified = true;
+                }
+                else
+                {
+                    context.StoredFiles.Remove(stub);
+                }
+            }
         }
     }
 }

@@ -426,12 +426,20 @@ public class DbInitializer
     // Deletes the given seed accounts (and their dependent rows) if they exist.
     private static async Task RemoveSeedUsersAsync(AppDbContext context, UserManager<User> userManager, IEnumerable<string> emails)
     {
+        // Whoever inherits a file a surviving leave still points at — see
+        // ReleaseUploadedFiles. Null on a first-ever startup, when nothing has been
+        // uploaded yet either.
+        var adminId = await context.Users
+            .Where(u => u.Email == "admin@annualleave.com")
+            .Select(u => u.Id)
+            .FirstOrDefaultAsync();
+
         foreach (var email in emails)
         {
             var user = await userManager.FindByEmailAsync(email);
             if (user is null) continue;
 
-            await CleanupUserDependencies(context, user.Id, CancellationToken.None);
+            await CleanupUserDependencies(context, user.Id, adminId, CancellationToken.None);
 
             var currentRoles = await userManager.GetRolesAsync(user);
             if (currentRoles.Count > 0)
@@ -492,7 +500,7 @@ public class DbInitializer
     // cases that one handles, so the DemoData true→false transition failed on the
     // demo projects owned by manager1/manager2. Keep them in step, and prefer
     // fixing DeleteAdminUser first — a case missing there is a user-facing 500.
-    private static async Task CleanupUserDependencies(AppDbContext context, string userId, CancellationToken cancellationToken)
+    private static async Task CleanupUserDependencies(AppDbContext context, string userId, string? reassignFilesTo, CancellationToken cancellationToken)
     {
         var userProfileId = await context.EmployeeProfiles
             .Where(ep => ep.UserId == userId)
@@ -608,7 +616,58 @@ public class DbInitializer
             context.EmployeeProfiles.Remove(profile);
         }
 
+        await ReleaseUploadedFiles(context, userId, reassignFilesTo, cancellationToken);
+
         await context.SaveChangesAsync(cancellationToken);
+    }
+
+    // Mirror of DeleteAdminUser.ReleaseUploadedFilesAsync, which explains the rule:
+    // StoredFile.UploadedById is Restrict, a file only this user referred to goes
+    // with them, and one a surviving leave still points at is handed on instead.
+    // The path shape is Application.Files.StoredFilePath's, which Persistence
+    // cannot reference; the prefix is repeated here for that reason alone.
+    private static async Task ReleaseUploadedFiles(AppDbContext context, string userId, string? reassignTo, CancellationToken cancellationToken)
+    {
+        const string prefix = "/api/files/";
+
+        var uploadedIds = await context.StoredFiles
+            .Where(f => f.UploadedById == userId)
+            .Select(f => f.Id)
+            .ToListAsync(cancellationToken);
+        if (uploadedIds.Count == 0) return;
+
+        var paths = uploadedIds.Select(id => prefix + id).ToList();
+
+        var stillReferenced = await context.AnnualLeaves
+            .Where(al => al.EmployeeId != userId
+                && ((al.EvidenceUrl != null && paths.Contains(al.EvidenceUrl))
+                    || (al.CoverageAttachmentUrl != null && paths.Contains(al.CoverageAttachmentUrl))))
+            .Select(al => new { al.EvidenceUrl, al.CoverageAttachmentUrl })
+            .ToListAsync(cancellationToken);
+
+        var keep = stillReferenced
+            .SelectMany(al => new[] { al.EvidenceUrl, al.CoverageAttachmentUrl })
+            .Where(p => p is not null && p.StartsWith(prefix, StringComparison.Ordinal))
+            .Select(p => p![prefix.Length..])
+            .ToHashSet();
+
+        var canReassign = !string.IsNullOrWhiteSpace(reassignTo)
+            && !string.Equals(reassignTo, userId, StringComparison.Ordinal);
+
+        foreach (var id in uploadedIds)
+        {
+            var stub = new StoredFile { Id = id, UploadedById = userId };
+            if (canReassign && keep.Contains(id))
+            {
+                var entry = context.StoredFiles.Attach(stub);
+                stub.UploadedById = reassignTo!;
+                entry.Property(f => f.UploadedById).IsModified = true;
+            }
+            else
+            {
+                context.StoredFiles.Remove(stub);
+            }
+        }
     }
 
     private static async Task SeedAnnualLeaves(AppDbContext context)
