@@ -38,7 +38,41 @@ const MONTHS = [
     'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
-const TIMEZONES = ['UTC', 'UTC-5 (Eastern)', 'UTC-6 (Central)', 'UTC-7 (Mountain)', 'UTC-8 (Pacific)']
+// IANA ids, because the value is what the server converts with: every attendance
+// rule (late check-ins, the not-checked-in flag, the check-in trend's axis, the
+// daily report) reads WorkingHoursStart in this zone. The list used to be labels
+// such as "UTC-5 (Eastern)", which no host recognises, so every choice but UTC
+// quietly fell back to UTC. Extend the list rather than typing an offset.
+const TIMEZONES = [
+    'UTC',
+    'Europe/London', 'Europe/Dublin', 'Europe/Lisbon',
+    'Europe/Paris', 'Europe/Berlin', 'Europe/Madrid', 'Europe/Rome', 'Europe/Amsterdam',
+    'Europe/Brussels', 'Europe/Zurich', 'Europe/Vienna', 'Europe/Prague', 'Europe/Warsaw', 'Europe/Stockholm',
+    'Europe/Athens', 'Europe/Bucharest', 'Europe/Sofia', 'Europe/Kyiv', 'Europe/Helsinki',
+    'Asia/Nicosia', 'Europe/Istanbul', 'Europe/Moscow',
+    'Asia/Jerusalem', 'Asia/Beirut', 'Asia/Riyadh', 'Asia/Dubai',
+    'Asia/Karachi', 'Asia/Kolkata', 'Asia/Dhaka', 'Asia/Bangkok', 'Asia/Singapore', 'Asia/Hong_Kong',
+    'Asia/Shanghai', 'Asia/Manila', 'Asia/Tokyo', 'Asia/Seoul',
+    'Australia/Perth', 'Australia/Sydney', 'Pacific/Auckland',
+    'Africa/Cairo', 'Africa/Johannesburg', 'Africa/Lagos', 'Africa/Luanda', 'Africa/Nairobi',
+    'America/Sao_Paulo', 'America/Buenos_Aires', 'America/Mexico_City',
+    'America/New_York', 'America/Toronto', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Vancouver',
+]
+
+// "Europe/London (GMT+1)" reads better than the id alone, and the offset is the
+// one thing an admin picking between two nearby zones actually wants to know.
+// Intl is the same tz database the browser keeps its clock by; an id it does
+// not know falls back to the bare id rather than throwing during render.
+function timeZoneLabel(id: string): string {
+    try {
+        const part = new Intl.DateTimeFormat('en-GB', { timeZone: id, timeZoneName: 'shortOffset' })
+            .formatToParts(new Date())
+            .find((p) => p.type === 'timeZoneName')?.value
+        return part ? `${id} (${part})` : id
+    } catch {
+        return id
+    }
+}
 
 /* When the two year-end warnings go out, relative to the leave year end. These were
    AppSettings columns edited on this page, and the schedule preview below was the only
@@ -691,7 +725,11 @@ export default function AppSettingsPanel() {
                             <Select size="small" fullWidth value={form.timeZoneId}
                                 onChange={(e) => set('timeZoneId', e.target.value)}
                                 inputProps={{ 'aria-label': 'Timezone' }} sx={{ fontSize: 13 }}>
-                                {TIMEZONES.map((tz) => <MenuItem key={tz} value={tz} sx={{ fontSize: 13 }}>{tz}</MenuItem>)}
+                                {/* A stored id the list does not carry (a row saved before the list
+                                    was IANA, or a zone added by hand) stays selectable, so the select
+                                    does not open blank and a save does not silently change it. */}
+                                {(TIMEZONES.includes(form.timeZoneId) ? TIMEZONES : [form.timeZoneId, ...TIMEZONES]).map((tz) =>
+                                    <MenuItem key={tz} value={tz} sx={{ fontSize: 13 }}>{timeZoneLabel(tz)}</MenuItem>)}
                             </Select>
                         </Field>
                         {/* Labelled "Weekends" until now, while its own description said it

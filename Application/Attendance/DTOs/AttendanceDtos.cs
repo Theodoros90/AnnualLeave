@@ -46,8 +46,9 @@ public record TeamAttendanceDto(
     List<TeamWeekRowDto> Week);
 
 // History endpoint: per-day earliest-check-in time per team member over the
-// last N days. The check-in is expressed as minutes-from-midnight (UTC) so the
-// frontend can plot it on a numeric y-axis without timezone math.
+// last N days. The check-in is expressed as minutes-from-midnight in the org's
+// time zone (WorkingDaySchedule) so the frontend can plot it on a numeric
+// y-axis without timezone math, and "09:00" on that axis is the settings' 09:00.
 public record MemberCheckInDayDto(
     string Date,
     int? CheckInMinutesFromMidnight);

@@ -1,3 +1,4 @@
+using Application.Attendance.Support;
 using Application.Settings.Commands;
 using Application.Settings.Support;
 using FluentValidation;
@@ -34,6 +35,14 @@ public class UpdateAppSettingsValidator : AbstractValidator<UpdateAppSettings.Co
         RuleFor(x => x.WorkingHoursEnd)
             .Must(value => WorkingTimeFormat.TryNormalizeTime(value, out _))
             .WithMessage("Working hours end must be a valid time (HH:mm).");
+
+        // Every attendance rule converts into this zone (WorkingDaySchedule), and
+        // an id the host cannot resolve silently falls back to UTC there. The
+        // settings page used to offer labels such as "UTC-5 (Eastern)", which are
+        // not ids at all, so a choice on screen changed nothing underneath.
+        RuleFor(x => x.TimeZoneId)
+            .Must(WorkingDaySchedule.IsKnownTimeZone)
+            .WithMessage("Time zone must be a known IANA time zone id, such as Europe/London.");
 
         RuleFor(x => x.WeeklyHoursTarget)
             .InclusiveBetween(1, 168)

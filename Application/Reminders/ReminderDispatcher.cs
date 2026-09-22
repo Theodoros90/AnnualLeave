@@ -531,11 +531,10 @@ public class ReminderDispatcher(
             .ToListAsync(ct))
             .ToHashSet();
 
-        var timeZone = ResolveTimeZone(settings.TimeZoneId);
-        var workStart = TimeOnly.TryParse(settings.WorkingHoursStart, out var ws) ? ws : new TimeOnly(9, 0);
-        var workEnd = TimeOnly.TryParse(settings.WorkingHoursEnd, out var we) ? we : new TimeOnly(18, 0);
-        var scheduledMinutes = (int)(workEnd - workStart).TotalMinutes;
-        if (scheduledMinutes <= 0) scheduledMinutes = 9 * 60; // an end before the start is a typo, not a policy
+        // The same reading of "late" and of the working day's length as the
+        // attendance dashboards, so the morning's email and the screen agree.
+        var schedule = WorkingDaySchedule.From(settings);
+        var scheduledMinutes = schedule.ScheduledMinutes;
 
         var late = new List<string>();
         var notIn = new List<string>();
@@ -555,10 +554,8 @@ public class ReminderDispatcher(
 
             if (stateByProfileId.TryGetValue(person.ProfileId, out var state) && state.CheckInAt is { } checkInAt)
             {
-                var local = TimeZoneInfo.ConvertTimeFromUtc(AttendanceDay.AsUtc(checkInAt), timeZone);
-                var localTime = TimeOnly.FromDateTime(local);
-                if (localTime > workStart)
-                    late.Add($"{label} — checked in {localTime:HH:mm}, {(int)(localTime - workStart).TotalMinutes} min late");
+                if (schedule.IsLate(checkInAt))
+                    late.Add($"{label} — checked in {schedule.LocalTimeOf(checkInAt):HH:mm}, {schedule.MinutesLate(checkInAt)} min late");
 
                 if (state.CheckOutAt is null)
                     notOut.Add(label);
@@ -598,13 +595,6 @@ public class ReminderDispatcher(
     }
 
     private static readonly string[] WeekTokensMondayFirst = { "mon", "tue", "wed", "thu", "fri", "sat", "sun" };
-
-    private static TimeZoneInfo ResolveTimeZone(string? id)
-    {
-        if (string.IsNullOrWhiteSpace(id)) return TimeZoneInfo.Utc;
-        try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
-        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException) { return TimeZoneInfo.Utc; }
-    }
 
     private static string RenderDailyReportHtml(string greetingName, DailyReport r)
     {

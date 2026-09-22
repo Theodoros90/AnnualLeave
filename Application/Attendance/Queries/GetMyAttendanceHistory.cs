@@ -24,6 +24,9 @@ public class GetMyAttendanceHistory
     {
         public required string RequestingUserId { get; set; }
         public int Days { get; set; } = DefaultDays;
+
+        /// <summary>Test seam for the clock; the controller leaves it null.</summary>
+        public DateTime? NowUtc { get; init; }
     }
 
     public class Handler(AppDbContext context) : IRequestHandler<Query, Result<List<DayHistoryDto>>>
@@ -35,7 +38,8 @@ public class GetMyAttendanceHistory
             var profile = await AttendanceDay.ResolveProfileAsync(context, request.RequestingUserId, cancellationToken);
             if (profile is null) return AttendanceDay.NoProfile<List<DayHistoryDto>>();
 
-            var now = DateTime.UtcNow;
+            var now = request.NowUtc ?? DateTime.UtcNow;
+            var schedule = await WorkingDaySchedule.LoadAsync(context, cancellationToken);
             var today = AttendanceDay.UtcDayStart(now);
             var from = today.AddDays(-(days - 1));
 
@@ -57,7 +61,7 @@ public class GetMyAttendanceHistory
 
                 result.Add(new DayHistoryDto(
                     date.ToString("yyyy-MM-dd"),
-                    HistoryStatus(state),
+                    HistoryStatus(state, schedule),
                     AttendanceDay.AsUtcNullable(state.CheckInAt),
                     AttendanceDay.AsUtcNullable(state.CheckOutAt),
                     state.TotalBreakMinutes,
@@ -69,15 +73,16 @@ public class GetMyAttendanceHistory
 
         /// <summary>
         /// The history strip has its own vocabulary: a finished day is graded
-        /// complete or late on its check-in hour, and a day still open reads as
-        /// in-progress whether or not a break is running.
+        /// complete or late on its check-in against the org's working-hours start,
+        /// and a day still open reads as in-progress whether or not a break is
+        /// running.
         /// </summary>
-        private static string HistoryStatus(AttendanceDayState state) => state.Status switch
+        private static string HistoryStatus(AttendanceDayState state, WorkingDaySchedule schedule) => state.Status switch
         {
             AttendanceDayStatus.Out => "absent",
             AttendanceDayStatus.In => "in-progress",
             AttendanceDayStatus.Break => "in-progress",
-            AttendanceDayStatus.Done => state.CheckInAt.HasValue && state.CheckInAt.Value.Hour > 9
+            AttendanceDayStatus.Done => state.CheckInAt.HasValue && schedule.IsLate(state.CheckInAt.Value)
                 ? "late"
                 : "complete",
             _ => AttendanceDay.WireStatus(state.Status),
