@@ -289,6 +289,42 @@ describe('MyLeavePage per-child card', () => {
         expect(card('Maternity Leave').textContent).not.toContain('0 weeks')
     })
 
+    /* The total can differ by birth order — 22 weeks for the 1st and 2nd child,
+       26 from the 3rd. The sentence comes from the resolved policy the server
+       sends, so it is right even for an employee with one child, and each row is
+       labelled with its position only when that label changes the entitlement. */
+    it('states a policy that differs by birth order, and labels each row with its position', async () => {
+        const first = aChild({ childId: 'child-1', name: 'Elena', birthOrder: 1, totalDays: 110, totalWeeks: 22, remainingDays: 110 })
+        const third = aChild({ childId: 'child-3', name: 'Petros', birthOrder: 3, ageYears: 0, totalDays: 130, totalWeeks: 26, remainingDays: 130 })
+        api.getChildLeaveEntitlements.mockResolvedValue({
+            leaveTypeId: PATERNITY_LEAVE_TYPE.id,
+            leaveTypeName: PATERNITY_LEAVE_TYPE.name,
+            eligibleChildCount: 2,
+            totalWeeksFirstChild: 22,
+            totalWeeksSecondChild: 22,
+            totalWeeksThirdChildOnwards: 26,
+            totalRemainingDays: 240,
+            thisYearCapDays: 50,
+            thisYearRemainingDays: 50,
+            children: [first, third],
+        })
+        await renderPage(FATHER)
+
+        await waitFor(() => expect(card().textContent).toContain('22 weeks for the 1st and 2nd child · 26 weeks from the 3rd'))
+        expect(card().textContent).toContain('Elena · age 3 · 1st child')
+        expect(card().textContent).toContain('Petros · age 0 · 3rd child')
+        expect(card().textContent).toContain('130/130')
+    })
+
+    it('leaves the rows unlabelled when every child gets the same', async () => {
+        servePaternity([aChild({ birthOrder: 1 }), aChild({ childId: 'child-2', name: 'Petros', birthOrder: 2, ageYears: 0 })])
+        await renderPage(FATHER)
+
+        await waitFor(() => expect(within(card()).getByText(/Petros/)).toBeTruthy())
+        expect(card().textContent).not.toContain('1st child')
+        expect(card().textContent).not.toContain('2nd child')
+    })
+
     /* `lastEligibleDate` is a date-only value, which `Date` parses as UTC
        midnight — formatted in local time anywhere west of UTC it renders the day
        before, quietly shortening the child's eligibility by a day. */

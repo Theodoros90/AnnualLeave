@@ -20,7 +20,13 @@ internal static class PerChildLeaveWorld
     public const int PaternityTypeId = 1;
     public const int AnnualLeaveTypeId = 2;
 
-    public static async Task<AppDbContext> CreateAsync(int leaveYearStartMonth = 1)
+    /// <param name="configurePerChildType">
+    /// Adjusts the per-child type after its 18/5/15 defaults are set — a test of
+    /// the birth-order totals gives it 22 / 22 / 26 here.
+    /// </param>
+    public static async Task<AppDbContext> CreateAsync(
+        int leaveYearStartMonth = 1,
+        Action<LeaveType>? configurePerChildType = null)
     {
         var db = TestDb.Create();
 
@@ -46,7 +52,7 @@ internal static class PerChildLeaveWorld
             LeaveBalance = 25,
         });
 
-        db.LeaveTypes.Add(new LeaveType
+        var perChildType = new LeaveType
         {
             Id = PaternityTypeId,
             Name = "Paternity Leave",
@@ -59,7 +65,9 @@ internal static class PerChildLeaveWorld
             PerChildTotalWeeks = 18,
             PerChildWeeksPerYear = 5,
             ChildEligibleUntilAge = 15,
-        });
+        };
+        configurePerChildType?.Invoke(perChildType);
+        db.LeaveTypes.Add(perChildType);
 
         db.LeaveTypes.Add(new LeaveType
         {

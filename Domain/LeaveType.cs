@@ -69,8 +69,32 @@ public class LeaveType
        instead of waving them all through. The validator still refuses 0, but the
        safe direction is the default. */
     public bool PerChildEntitlement { get; set; }
-    /// <summary>Lifetime entitlement per eligible child, in weeks. 18 for paternity leave.</summary>
+    /// <summary>
+    /// Lifetime entitlement for the employee's <b>first</b> child, in weeks. 18 for
+    /// paternity leave. Also the figure every later child gets when the two columns
+    /// below are left blank — see <see cref="PerChildTotalWeeksFor"/>.
+    /// </summary>
     public int PerChildTotalWeeks { get; set; }
+
+    /* The total can depend on which child it is. Cypriot maternity leave is the
+       case that forced it: 22 weeks for the first child, 22 for the second and 26
+       from the third onwards. One column could only say "N weeks per child", so
+       the policy could not be entered at all.
+
+       Both are nullable and null means "the same as the first child", so every row
+       predating the columns — Paternity Leave's 18 among them — behaves exactly as
+       it did with no data migration. A stored 0 is treated the same way rather
+       than as "no leave for a second child": the validator refuses saving one,
+       and the fallback is the safe direction where the alternative would silently
+       refuse every request for a younger sibling.
+
+       "Which child" is birth order among the employee's declared children, oldest
+       first (PerChildLeaveCalculationService.BirthOrder). It is worked out on
+       every read, like the child's age, so nothing about it is stored. */
+    /// <summary>Lifetime weeks for the second child. Null: the same as the first.</summary>
+    public int? PerChildTotalWeeksSecondChild { get; set; }
+    /// <summary>Lifetime weeks for the third and every later child. Null: the same as the second.</summary>
+    public int? PerChildTotalWeeksThirdChildOnwards { get; set; }
     /// <summary>Cap per leave year per eligible child, in weeks. 5 for paternity leave.</summary>
     public int PerChildWeeksPerYear { get; set; }
     /// <summary>The age at which a child stops being eligible. 15 for paternity leave.</summary>
@@ -125,6 +149,24 @@ public class LeaveType
        stored. Off by default so every row predating the column keeps behaving as
        it did. */
     public bool ProRateFirstYear { get; set; }
+
+    /// <summary>
+    /// The lifetime per-child total, in weeks, for the child at
+    /// <paramref name="birthOrder"/> (1 = the eldest). A blank or 0 later column
+    /// falls back to the one before it, so 22 / null / 26 reads as 22, 22, 26 and
+    /// 18 / null / null as 18 for everyone.
+    /// </summary>
+    public int PerChildTotalWeeksFor(int birthOrder)
+    {
+        var second = PerChildTotalWeeksSecondChild is > 0 ? PerChildTotalWeeksSecondChild.Value : PerChildTotalWeeks;
+        var third = PerChildTotalWeeksThirdChildOnwards is > 0 ? PerChildTotalWeeksThirdChildOnwards.Value : second;
+        return birthOrder switch
+        {
+            <= 1 => PerChildTotalWeeks,
+            2 => second,
+            _ => third,
+        };
+    }
 
     public ICollection<AnnualLeave> AnnualLeaves { get; set; } = new List<AnnualLeave>();
 }

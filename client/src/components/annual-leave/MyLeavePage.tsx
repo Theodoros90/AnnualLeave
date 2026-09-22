@@ -12,7 +12,7 @@ import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { currentYearEntitlement } from '../../lib/leave-allowance'
+import { currentYearEntitlement, describePerChildTotals, ordinal } from '../../lib/leave-allowance'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import { iconForLeaveType } from './leave-icons'
 import {
@@ -715,6 +715,22 @@ function PerChildLeaveCard({ type, ledger }: PerChildLedger) {
        rows the reader is most likely to be looking at. */
     const reference = ledger.children.find((child) => child.isEligible) ?? ledger.children[0]
 
+    /* The policy as the server resolved it — weeks for the 1st child, the 2nd and
+       the 3rd onwards — so the sentence can say "22 weeks for the 1st and 2nd
+       child · 26 from the 3rd" even for an employee with one child. An API
+       predating those figures sends none, and the reference child's own total
+       is then the only thing to quote. */
+    const policy = ledger.totalWeeksFirstChild
+        ? {
+            first: ledger.totalWeeksFirstChild,
+            second: ledger.totalWeeksSecondChild || ledger.totalWeeksFirstChild,
+            third: ledger.totalWeeksThirdChildOnwards || ledger.totalWeeksSecondChild || ledger.totalWeeksFirstChild,
+        }
+        : undefined
+    // Worth labelling each row "1st child", "2nd child" only when the label
+    // changes what that row is entitled to.
+    const totalsDiffer = !!policy && !(policy.first === policy.second && policy.second === policy.third)
+
     return (
         <Box
             component="section"
@@ -745,14 +761,16 @@ function PerChildLeaveCard({ type, ledger }: PerChildLedger) {
                 would print "0 weeks per child" on the type that most needs the
                 sentence. */}
             <Box sx={{ fontSize: 11, color: 'text.secondary', mt: '4px', mb: '14px' }}>
-                {reference.totalWeeks > 0
-                    ? `${plural(reference.totalWeeks, 'week', 'weeks')} per child · up to ${plural(reference.thisYearCapDays, 'day', 'days')} a leave year`
-                    : `${plural(reference.totalDays, 'day', 'days')} per child · up to ${plural(reference.thisYearCapDays, 'day', 'days')} a leave year`}
+                {policy
+                    ? `${describePerChildTotals(policy)} · up to ${plural(reference.thisYearCapDays, 'day', 'days')} a leave year`
+                    : reference.totalWeeks > 0
+                        ? `${plural(reference.totalWeeks, 'week', 'weeks')} per child · up to ${plural(reference.thisYearCapDays, 'day', 'days')} a leave year`
+                        : `${plural(reference.totalDays, 'day', 'days')} per child · up to ${plural(reference.thisYearCapDays, 'day', 'days')} a leave year`}
             </Box>
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {ledger.children.map((child) => (
-                    <ChildBalanceRow key={child.childId} child={child} />
+                    <ChildBalanceRow key={child.childId} child={child} showBirthOrder={totalsDiffer} />
                 ))}
             </Box>
 
@@ -771,7 +789,7 @@ function PerChildLeaveCard({ type, ledger }: PerChildLedger) {
  * figures that no longer mean anything: the remaining-days column and the bar,
  * which would otherwise draw a full green entitlement nobody can book.
  */
-function ChildBalanceRow({ child }: { child: ChildLeaveEntitlement }) {
+function ChildBalanceRow({ child, showBirthOrder }: { child: ChildLeaveEntitlement; showBirthOrder: boolean }) {
     const pct = child.totalDays > 0 ? Math.min(100, (child.usedDays / child.totalDays) * 100) : 0
     const fillColor = pct >= 90 ? 'error.main' : pct >= 70 ? 'warning.main' : 'success.main'
 
@@ -785,6 +803,9 @@ function ChildBalanceRow({ child }: { child: ChildLeaveEntitlement }) {
                 <Box sx={{ fontSize: 12, fontWeight: 500, color: 'text.primary' }}>
                     {child.name}
                     <Box component="span" sx={{ color: 'text.secondary', fontWeight: 400 }}>{` · age ${child.ageYears}`}</Box>
+                    {showBirthOrder && child.birthOrder ? (
+                        <Box component="span" sx={{ color: 'text.secondary', fontWeight: 400 }}>{` · ${ordinal(child.birthOrder)} child`}</Box>
+                    ) : null}
                 </Box>
                 {child.isEligible && (
                     <Box sx={{ height: 5, bgcolor: 'action.hover', borderRadius: '3px', mt: '5px', overflow: 'hidden' }}>

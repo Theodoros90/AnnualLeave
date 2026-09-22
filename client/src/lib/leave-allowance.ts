@@ -204,11 +204,57 @@ export function allowanceForRequest(
  * `defaultAllowance` — it is 0 by migration — so quoting the usual "N days/year"
  * would render "— days/year" beside a type that grants 18 weeks per child.
  */
+/**
+ * The per-child lifetime totals as three resolved figures — weeks for the 1st
+ * child, the 2nd, and the 3rd onwards. Mirrors `LeaveType.PerChildTotalWeeksFor`
+ * on the server: a blank (or 0) later column is the one before it, so Paternity
+ * Leave's `18 / null / null` reads 18, 18, 18 and Maternity's `22 / null / 26`
+ * reads 22, 22, 26. The only place the two nullable columns are read.
+ */
+export function resolvePerChildTotals(type: Pick<LeaveType,
+    'perChildTotalWeeks' | 'perChildTotalWeeksSecondChild' | 'perChildTotalWeeksThirdChildOnwards'>) {
+    const first = type.perChildTotalWeeks
+    const second = type.perChildTotalWeeksSecondChild || first
+    const third = type.perChildTotalWeeksThirdChildOnwards || second
+    return { first, second, third }
+}
+
+/** 1 → "1st", 2 → "2nd", 3 → "3rd", 4 → "4th", 11 → "11th", 21 → "21st". */
+export function ordinal(n: number) {
+    const mod100 = n % 100
+    if (mod100 >= 11 && mod100 <= 13) return `${n}th`
+    switch (n % 10) {
+        case 1: return `${n}st`
+        case 2: return `${n}nd`
+        case 3: return `${n}rd`
+        default: return `${n}th`
+    }
+}
+
+function weeksLabel(weeks: number) {
+    return weeks === 1 ? '1 week' : `${weeks} weeks`
+}
+
+/**
+ * One sentence for a per-child policy: "18 weeks per child" when every child gets
+ * the same, otherwise the shortest true statement of how the totals differ —
+ * "22 weeks for the 1st and 2nd child · 26 from the 3rd" for the maternity case.
+ * Shared by the leave type's card and the ledger on My Leave, so the two cannot
+ * phrase one policy two ways.
+ */
+export function describePerChildTotals(totals: { first: number; second: number; third: number }) {
+    const { first, second, third } = totals
+    if (first === second && second === third) return `${weeksLabel(first)} per child`
+    if (first === second) return `${weeksLabel(first)} for the 1st and 2nd child · ${weeksLabel(third)} from the 3rd`
+    if (second === third) return `${weeksLabel(first)} for the 1st child · ${weeksLabel(second)} from the 2nd`
+    return `${first} / ${second} / ${third} weeks for the 1st / 2nd / 3rd+ child`
+}
+
 export function describeAllowance(type: LeaveType | undefined) {
     if (!type) return '—'
 
     if (type.perChildEntitlement) {
-        return `${type.perChildTotalWeeks} weeks per child · max ${type.perChildWeeksPerYear} weeks/year`
+        return `${describePerChildTotals(resolvePerChildTotals(type))} · max ${type.perChildWeeksPerYear} weeks/year`
     }
 
     const allowance = allowanceForLeaveType(type)

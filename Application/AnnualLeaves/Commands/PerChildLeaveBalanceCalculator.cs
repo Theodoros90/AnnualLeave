@@ -90,7 +90,15 @@ internal static class PerChildLeaveBalanceCalculator
         var approved = await ApprovedLeaveForChildAsync(context, childId, excludeLeaveId, cancellationToken);
 
         // ── Lifetime cap ───────────────────────────────────────────────────────
-        var totalDays = PerChildLeaveCalculationService.WeeksToBusinessDays(leaveType.PerChildTotalWeeks);
+        // Which total applies depends on which of the employee's children this is
+        // — 22 weeks for a first or second child and 26 from the third, say — so
+        // the siblings are read to place them. Oldest first, like the ledger.
+        var siblings = await context.Children
+            .AsNoTracking()
+            .Where(c => c.EmployeeProfileId == employeeProfile.Id)
+            .ToListAsync(cancellationToken);
+        var birthOrder = PerChildLeaveCalculationService.BirthOrder(siblings, childId);
+        var totalDays = PerChildLeaveCalculationService.WeeksToBusinessDays(leaveType.PerChildTotalWeeksFor(birthOrder));
         var usedDays = await UsedChargeableDaysAsync(context, approved, cancellationToken);
         var remainingDays = PerChildLeaveCalculationService.RemainingDays(totalDays, usedDays);
 

@@ -33,7 +33,7 @@ import {
     type UpsertLeaveTypeRequest,
 } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
-import { describeAllowance } from '../../lib/leave-allowance'
+import { describeAllowance, resolvePerChildTotals } from '../../lib/leave-allowance'
 import { fixedAvailability, resolveAvailability } from '../../lib/parental-leave'
 import { softBg } from '../../lib/theme-tokens'
 import type {
@@ -100,6 +100,18 @@ function isSpecial(t: LeaveType) {
 
 function gradientFor(colorKey: string) {
     return HEADER_GRADIENTS[colorKey] ?? HEADER_GRADIENTS.default
+}
+
+/* The card's allowance headline is sized for a short figure — "25" beside a
+   small "days/year" — so a per-child type puts its weeks there ("18", or "22–26"
+   when the total differs by birth order) and keeps the sentence for the line
+   beneath. Before this the whole sentence sat in the 28px headline and a
+   22 / 22 / 26 policy wrapped over four lines. */
+function perChildHeadline(t: LeaveType) {
+    const { first, second, third } = resolvePerChildTotals(t)
+    const lo = Math.min(first, second, third)
+    const hi = Math.max(first, second, third)
+    return { figure: lo === hi ? `${lo}` : `${lo}–${hi}`, differs: lo !== hi }
 }
 
 /* ════════════════════════════════════════════════════════════════════════ */
@@ -244,6 +256,11 @@ function LeaveTypesPanel() {
             maxCarryoverDays: t.supportsPerChildEntitlement ? 0 : t.maxCarryoverDays,
             perChildEntitlement: t.perChildEntitlement,
             perChildTotalWeeks: t.perChildTotalWeeks,
+            // Sent back as stored, null included — null is "same as the first
+            // child", and a toggle that turned it into 0 or dropped it would
+            // silently flatten a 22 / 22 / 26 policy back to 22 for everyone.
+            perChildTotalWeeksSecondChild: t.perChildTotalWeeksSecondChild ?? null,
+            perChildTotalWeeksThirdChildOnwards: t.perChildTotalWeeksThirdChildOnwards ?? null,
             perChildWeeksPerYear: t.perChildWeeksPerYear,
             childEligibleUntilAge: t.childEligibleUntilAge,
             accrualNotes: t.accrualNotes,
@@ -552,7 +569,14 @@ function LeaveTypeCard({ derived, onEdit, onToggle, onDelete }: {
                         Allowance
                     </Box>
                     <Box sx={{ fontSize: 28, fontWeight: 700, color: 'text.primary', lineHeight: 1 }}>
-                        {t.perChildEntitlement ? describeAllowance(t) : (
+                        {t.perChildEntitlement ? (
+                            <>
+                                {perChildHeadline(t).figure}
+                                <Box component="span" sx={{ fontSize: 14, color: 'text.secondary', fontWeight: 500, ml: '4px' }}>
+                                    weeks per child
+                                </Box>
+                            </>
+                        ) : (
                             <>
                                 {t.defaultAllowance}
                                 <Box component="span" sx={{ fontSize: 14, color: 'text.secondary', fontWeight: 500, ml: '4px' }}>
@@ -561,6 +585,16 @@ function LeaveTypeCard({ derived, onEdit, onToggle, onDelete }: {
                             </>
                         )}
                     </Box>
+                    {/* The rest of the per-child policy: the full sentence when the
+                        total differs by birth order, since the headline can only
+                        show the range; otherwise just the yearly cap. */}
+                    {t.perChildEntitlement && (
+                        <Box sx={{ fontSize: 11, color: 'text.secondary', mt: '4px' }}>
+                            {perChildHeadline(t).differs
+                                ? describeAllowance(t)
+                                : `Max ${t.perChildWeeksPerYear} weeks per child per leave year`}
+                        </Box>
+                    )}
                     {/* Three readings to keep apart, and a fourth case with nothing to
                         say: a per-child ledger is bounded by the child's age, not by
                         the leave year, so it does not roll over at all. */}
@@ -935,6 +969,15 @@ function LeaveTypeFormDialog(props: {
        The paternity policy is the default; maternity's real numbers are an admin's
        to set. */
     const [perChildTotalWeeks, setPerChildTotalWeeks] = useState(i?.perChildTotalWeeks || 18)
+    /* The total can differ by birth order — 22 weeks for the 1st and 2nd child, 26
+       from the 3rd is the maternity policy this exists for. A blank later column
+       means "the same as the one before it" (resolvePerChildTotals), so the
+       fields open pre-filled with that reading and the admin only has to change
+       the ones that differ. */
+    const storedTotals = i ? resolvePerChildTotals({ ...i, perChildTotalWeeks: i.perChildTotalWeeks || 18 }) : undefined
+    const [perChildTotalWeeksSecondChild, setPerChildTotalWeeksSecondChild] = useState(storedTotals?.second || 18)
+    const [perChildTotalWeeksThirdChildOnwards, setPerChildTotalWeeksThirdChildOnwards] = useState(storedTotals?.third || 18)
+    const smallestPerChildTotal = Math.min(perChildTotalWeeks, perChildTotalWeeksSecondChild, perChildTotalWeeksThirdChildOnwards)
     const [perChildWeeksPerYear, setPerChildWeeksPerYear] = useState(i?.perChildWeeksPerYear || 5)
     const [childEligibleUntilAge, setChildEligibleUntilAge] = useState(i?.childEligibleUntilAge || 15)
 
@@ -963,6 +1006,11 @@ function LeaveTypeFormDialog(props: {
             maxCarryoverDays: perChildEntitlement ? 0 : maxCarryoverDays === '' ? null : Number(maxCarryoverDays),
             perChildEntitlement,
             perChildTotalWeeks: Number(perChildTotalWeeks) || 0,
+            // Always sent as numbers: the fields are pre-filled, so a blank cannot
+            // reach here. `|| null` is only for a type that is not per-child, whose
+            // fields never rendered and whose columns should stay blank.
+            perChildTotalWeeksSecondChild: perChildEntitlement ? Number(perChildTotalWeeksSecondChild) || null : null,
+            perChildTotalWeeksThirdChildOnwards: perChildEntitlement ? Number(perChildTotalWeeksThirdChildOnwards) || null : null,
             perChildWeeksPerYear: Number(perChildWeeksPerYear) || 0,
             childEligibleUntilAge: Number(childEligibleUntilAge) || 0,
             accrualNotes: accrualNotes.trim(),
@@ -1089,10 +1137,21 @@ function LeaveTypeFormDialog(props: {
                         </Box>
                     )}
 
+                    {/* The lifetime total, by birth order. Three fields rather than
+                        one because the policy can differ by which child it is —
+                        22 / 22 / 26 weeks for maternity leave — and one "per child"
+                        figure could not say so. The yearly cap below is bounded by
+                        the smallest of the three, matching the server. */}
+                    {perChildEntitlement && (
+                        <Box sx={{ fontSize: 12, color: 'text.secondary', mt: -1 }}>
+                            Total per child, by birth order
+                        </Box>
+                    )}
+
                     {perChildEntitlement && (
                         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                             <TextField
-                                label="Total per child"
+                                label="1st child"
                                 type="number"
                                 value={perChildTotalWeeks}
                                 onChange={(e) => setPerChildTotalWeeks(Math.max(1, Number(e.target.value)))}
@@ -1102,11 +1161,36 @@ function LeaveTypeFormDialog(props: {
                                 fullWidth
                             />
                             <TextField
+                                label="2nd child"
+                                type="number"
+                                value={perChildTotalWeeksSecondChild}
+                                onChange={(e) => setPerChildTotalWeeksSecondChild(Math.max(1, Number(e.target.value)))}
+                                inputProps={{ min: 1, max: 260 }}
+                                slotProps={{ input: { endAdornment: <InputAdornment position="end">weeks</InputAdornment> } }}
+                                helperText={`${perChildTotalWeeksSecondChild * 5} business days`}
+                                fullWidth
+                            />
+                            <TextField
+                                label="3rd child onwards"
+                                type="number"
+                                value={perChildTotalWeeksThirdChildOnwards}
+                                onChange={(e) => setPerChildTotalWeeksThirdChildOnwards(Math.max(1, Number(e.target.value)))}
+                                inputProps={{ min: 1, max: 260 }}
+                                slotProps={{ input: { endAdornment: <InputAdornment position="end">weeks</InputAdornment> } }}
+                                helperText={`${perChildTotalWeeksThirdChildOnwards * 5} business days`}
+                                fullWidth
+                            />
+                        </Stack>
+                    )}
+
+                    {perChildEntitlement && (
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                            <TextField
                                 label="Max per year, per child"
                                 type="number"
                                 value={perChildWeeksPerYear}
                                 onChange={(e) => setPerChildWeeksPerYear(Math.max(1, Number(e.target.value)))}
-                                inputProps={{ min: 1, max: Math.min(52, perChildTotalWeeks) }}
+                                inputProps={{ min: 1, max: Math.min(52, smallestPerChildTotal) }}
                                 slotProps={{ input: { endAdornment: <InputAdornment position="end">weeks</InputAdornment> } }}
                                 helperText={`${perChildWeeksPerYear * 5} business days`}
                                 fullWidth

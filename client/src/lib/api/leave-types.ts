@@ -16,6 +16,9 @@ export interface UpsertLeaveTypeRequest {
     maxCarryoverDays: number | null
     perChildEntitlement: boolean
     perChildTotalWeeks: number
+    /** Null keeps the first child's figure for the 2nd / 3rd+ child. */
+    perChildTotalWeeksSecondChild: number | null
+    perChildTotalWeeksThirdChildOnwards: number | null
     perChildWeeksPerYear: number
     childEligibleUntilAge: number
     accrualNotes: string
