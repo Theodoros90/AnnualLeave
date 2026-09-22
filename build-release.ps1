@@ -35,6 +35,12 @@ $buildStarted = Get-Date
 Push-Location $client
 try {
     $env:NODE_OPTIONS = '--max-old-space-size=4096'   # the bundle needs a larger heap
+    # esbuild minifies chunks on every core at once, and on a 16 GB box with a
+    # 4 GB page file that ran the Windows commit limit dry (VirtualAlloc errno
+    # 1455, "fatal error: out of memory" from the Go runtime) while the dev
+    # servers, SQL Server and a browser were open. Two workers is a little
+    # slower and stays well inside it. Respects a value already set outside.
+    if (-not $env:GOMAXPROCS) { $env:GOMAXPROCS = '2' }
     npm run build
     Assert-NativeSuccess 'npm run build'
 }
