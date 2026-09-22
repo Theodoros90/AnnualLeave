@@ -20,6 +20,7 @@ import ApplyLeavePage from './ApplyLeavePage'
 vi.mock('../../lib/api', () => ({
     createAnnualLeave: vi.fn(),
     getAnnualLeaves: vi.fn(),
+    getAppSettings: vi.fn(),
     getChildLeaveEntitlements: vi.fn(),
     getEmployeeProfiles: vi.fn(),
     getHolidays: vi.fn(),
@@ -91,6 +92,7 @@ beforeEach(() => {
     api.getAnnualLeaves.mockResolvedValue([])
     api.getTeammates.mockResolvedValue([])
     api.getHolidays.mockResolvedValue([])
+    api.getAppSettings.mockResolvedValue({ leaveYearStartMonth: 1 } as never)
     api.getChildLeaveEntitlements.mockResolvedValue(ENTITLEMENTS)
     api.createAnnualLeave.mockResolvedValue('new-leave-id' as never)
 })
@@ -583,6 +585,122 @@ describe('ApplyLeavePage — the summary quotes the ledger the request draws on'
 
         const row = await screen.findByText('Balance after')
         await waitFor(() => expect(row.nextElementSibling?.textContent).toBe('23 / 25'))
+    })
+})
+
+/**
+ * A type that does not draw on the pooled annual balance still has an allowance
+ * of its own — Leave Types gives Military Leave 2 days a year — and the page
+ * used to say nothing about it: the card showed no figure at all, and the summary
+ * quoted the *annual* pool ("Balance after 11 / 13.5") beside a request that does
+ * not touch it, with "Days deducted 0 (unpaid)" under a paid type. My Leave and
+ * the Dashboard already measure such a type against its own allowance through
+ * `buildLeaveBalanceRows`; this is the apply page catching up.
+ *
+ * The server never enforces a non-balance allowance (see "Only the balance type's
+ * pro-rating is enforced" in CLAUDE.md), so going over it is a warning, never a
+ * disabled submit — the request is one the API will accept.
+ */
+describe('ApplyLeavePage — a non-balance type is measured against its own allowance', () => {
+    const MILITARY_LEAVE_TYPE = {
+        ...ANNUAL_LEAVE_TYPE, id: 6, name: 'Military Leave', colorKey: 'military',
+        affectsBalance: false, defaultAllowance: 2,
+    } as const
+
+    /** A type with no allowance at all: nothing to count down, so nothing to quote. */
+    const BEREAVEMENT_LEAVE_TYPE = {
+        ...ANNUAL_LEAVE_TYPE, id: 7, name: 'Bereavement', colorKey: 'bereavement',
+        affectsBalance: false, defaultAllowance: 0,
+    } as const
+
+    function summaryRow(label: string | RegExp) {
+        return screen.getByText(label).nextElementSibling?.textContent
+    }
+
+    beforeEach(() => {
+        api.getLeaveTypes.mockResolvedValue([ANNUAL_LEAVE_TYPE, MILITARY_LEAVE_TYPE, BEREAVEMENT_LEAVE_TYPE] as never)
+    })
+
+    async function renderWithMilitary() {
+        const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        render(
+            <StoreProvider>
+                <QueryClientProvider client={queryClient}>
+                    <ApplyLeavePage user={USER} />
+                </QueryClientProvider>
+            </StoreProvider>,
+        )
+        return await screen.findByRole('button', { name: /military leave/i })
+    }
+
+    it("shows the type's own remaining balance on its card", async () => {
+        const card = await renderWithMilitary()
+
+        expect(card.textContent).toMatch(/2\/2/)
+    })
+
+    it('counts leave already taken on that type, and nothing else, against it', async () => {
+        const year = new Date().getFullYear()
+        api.getAnnualLeaves.mockResolvedValue([
+            {
+                id: 'l1', employeeId: USER.id, leaveTypeId: MILITARY_LEAVE_TYPE.id, status: 'Approved',
+                startDate: `${year}-02-02`, endDate: `${year}-02-02`, totalDays: 1,
+            },
+            // A sick day is not a military day, and must not eat the 2.
+            {
+                id: 'l2', employeeId: USER.id, leaveTypeId: 99, status: 'Approved',
+                startDate: `${year}-02-03`, endDate: `${year}-02-03`, totalDays: 1,
+            },
+        ] as never)
+
+        const card = await renderWithMilitary()
+
+        await waitFor(() => expect(card.textContent).toMatch(/1\/2/))
+    })
+
+    it('charges the request to that allowance in the summary', async () => {
+        const card = await renderWithMilitary()
+        fireEvent.click(card)
+        pickDates()
+
+        await waitFor(() => expect(summaryRow('Balance after')).toBe('0 / 2'))
+        expect(summaryRow('Days deducted')).toBe('2')
+        expect(screen.queryByText(/unpaid/i)).not.toBeInTheDocument()
+        expect(screen.getByText(/deducted from your military leave allowance/i)).toBeInTheDocument()
+    })
+
+    it('warns when the request is longer than the allowance, but still lets it be filed', async () => {
+        const card = await renderWithMilitary()
+        fireEvent.click(card)
+
+        // Three consecutive weekdays: one more than the 2-day allowance.
+        const calendar = screen.getByText('Mon').parentElement!.parentElement!
+        const now = new Date()
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+        const isWeekday = (day: number) => {
+            const dow = new Date(now.getFullYear(), now.getMonth(), day).getDay()
+            return dow !== 0 && dow !== 6
+        }
+        let start = 1
+        while (!(isWeekday(start) && isWeekday(start + 1) && isWeekday(start + 2)) && start + 2 <= daysInMonth) start++
+        fireEvent.click(within(calendar).getByText(String(start)))
+        fireEvent.click(within(calendar).getByText(String(start + 2)))
+
+        await waitFor(() => expect(summaryRow('Balance after')).toBe('0 / 2'))
+        expect(screen.getByText(/over your military leave allowance/i)).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /submit for approval/i })).not.toBeDisabled()
+        // The pooled check is what disables submit, and this request never touched the pool.
+        expect(screen.queryByText(/not enough balance/i)).not.toBeInTheDocument()
+    })
+
+    it('never quotes the annual pool for a type with no allowance of its own', async () => {
+        await renderWithMilitary()
+        fireEvent.click(screen.getByRole('button', { name: /bereavement/i }))
+        pickDates()
+
+        await waitFor(() => expect(summaryRow('Days deducted')).toBe('0 (not deducted)'))
+        expect(summaryRow('Balance after')).not.toMatch(/25/)
+        expect(screen.getByRole('button', { name: /bereavement/i }).textContent).not.toMatch(/\//)
     })
 })
 
