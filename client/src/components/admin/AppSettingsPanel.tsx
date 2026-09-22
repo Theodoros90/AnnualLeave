@@ -374,7 +374,13 @@ export default function AppSettingsPanel() {
         staleTime: 24 * 60 * 60 * 1000, // 1 day
     })
 
-    const [form, setForm] = useState<AppSettings>(DEFAULT)
+    /* Seeded from the cache, not from DEFAULT. On a revisit react-query hands the
+       settings over synchronously, so `saved === prevSaved` on the very first render
+       and the sync below never runs — the form kept the defaults it was seeded with,
+       every Working Week field read 09:00 / 18:00 / UTC / Mon–Fri whatever was stored,
+       and Save Changes lit up offering to write those defaults over the real values.
+       DEFAULT is only for the first visit, while the request is still in flight. */
+    const [form, setForm] = useState<AppSettings>(saved ?? DEFAULT)
     const [savedGroup, setSavedGroup] = useState<SaveGroup | null>(null)
 
     // Sync the loaded settings into editable form state. Adjusted during render
