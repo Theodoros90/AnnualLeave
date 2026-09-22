@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { LeaveDurationValue } from '../half-day'
+import { COVERAGE_NOTE_MAX_LENGTH, COVERAGE_REQUIRED_MESSAGE } from '../coverage'
 
 const MS_PER_DAY = 86_400_000
 
@@ -13,11 +14,19 @@ const MS_PER_DAY = 86_400_000
  *   - childId required only when the selected leave type carries a per-child
  *     entitlement (paternity leave in practice) — an affordance only, since the
  *     server clears the id for any other type and is the one that enforces it
+ *   - delegateId required when `requireDelegate` — coverage is mandatory for an
+ *     Employee or a Manager (CoverageRule); the caller decides from whose leave
+ *     it is, since the payload names no role
+ *   - coverageNote max 1000 chars
  *
  * The overlap / leave-type-active / employee-exists checks stay server-side
  * (they need the database); this covers the purely client-checkable rules.
  */
-export function buildAnnualLeaveSchema(requireEmployee: boolean, perChildLeaveTypeIds: number[] = []) {
+export function buildAnnualLeaveSchema(
+    requireEmployee: boolean,
+    perChildLeaveTypeIds: number[] = [],
+    requireDelegate = false,
+) {
     return z
         .object({
             employeeId: requireEmployee
@@ -41,8 +50,16 @@ export function buildAnnualLeaveSchema(requireEmployee: boolean, perChildLeaveTy
                 .string()
                 .max(500, 'Reason must not exceed 500 characters.')
                 .refine((v) => v.trim().length > 0, 'Reason is required.'),
+            delegateId: z.string(),
+            coverageNote: z
+                .string()
+                .max(COVERAGE_NOTE_MAX_LENGTH, `The handover note must be ${COVERAGE_NOTE_MAX_LENGTH} characters or fewer.`),
         })
         .superRefine((val, ctx) => {
+            if (requireDelegate && val.delegateId.trim() === '') {
+                ctx.addIssue({ code: 'custom', path: ['delegateId'], message: COVERAGE_REQUIRED_MESSAGE })
+            }
+
             if (perChildLeaveTypeIds.includes(val.leaveTypeId) && !val.childId) {
                 ctx.addIssue({
                     code: 'custom',
@@ -71,4 +88,6 @@ export type AnnualLeaveFormValues = {
     duration: LeaveDurationValue
     leaveTypeId: number
     reason: string
+    delegateId: string
+    coverageNote: string
 }

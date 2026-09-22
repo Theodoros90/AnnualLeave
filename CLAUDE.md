@@ -106,7 +106,7 @@ that means when adding code:
 | `Child` | One declared child of an `EmployeeProfile`: `Name`, `DateOfBirth`. **Age and eligibility are never stored** — both are computed on every read (`PerChildLeaveCalculationService`), which is what makes a child aging out of paternity leave automatic. Deleting a child with leave against them is refused (`DeleteChild`, and the FK is `Restrict`): the row is what the per-child ledger is queried by, so removing it would erase the record of leave actually taken. An aged-out child is kept and reads as ineligible. Managed from **two** surfaces, both rendering `ChildrenSection`: the employee's own Edit profile (sidebar), which also asks the `HasChildren` Yes/No, and **Users → Edit User → Profile**, where an admin maintains them for an employee by passing that person's user id. `ChildAccessResolver` is the authority on who may touch whose — self and Admin read/write, Manager read-only within their department scope. The declaration is not asked on the admin surface (it is the employee's own statement) but is still recorded, because `CreateChild` sets `HasChildren = true` |
 | `ProjectComponent` | Org-wide catalogue of deliverables (DM, Lasernet, jDocs): `Name` (unique), `Icon`, `ColorKey`, `IsActive`. Projects declare theirs via `ProjectComponentAssignment`, and a `TimesheetEntry` logs against one — narrowed by its project the same way the activity is |
 | `ProjectType` | Org-wide catalogue of engagement kinds (Task, Issue, Inquiry, Support): `Name` (unique), `Icon`, `ColorKey`, `IsActive`. Projects carry any number via `ProjectTypeAssignment`, or none; a type projects still carry cannot be deleted. A `TimesheetEntry` also logs against one — narrowed to the types its project carries, and the field that narrows its project picker |
-| `StoredFile` | An uploaded file's bytes in the database: `Content` (varbinary(max)), `FileName`, `ContentType` (**detected**, never the caller's claim), `Sha256` (also the HTTP ETag), `SizeBytes`, `UploadedById`. `Purpose` (`ProfileImage`, `LeaveEvidence`) drives both what the upload accepts and who may read it back |
+| `StoredFile` | An uploaded file's bytes in the database: `Content` (varbinary(max)), `FileName`, `ContentType` (**detected**, never the caller's claim), `Sha256` (also the HTTP ETag), `SizeBytes`, `UploadedById`. `Purpose` (`ProfileImage`, `LeaveEvidence`, `CoverageHandover`) drives both what the upload accepts and who may read it back. Evidence and a handover document are kept apart on purpose: the delegate may open the handover, and must not thereby be able to open a doctor's note |
 
 Status enums: `AnnualLeaveStatus` (Pending, Approved, Rejected, Cancelled); `TimesheetStatus` (Draft=0, Submitted=1, Approved=2, Rejected=3, Resubmitted=4).
 
@@ -613,6 +613,69 @@ the approve button). Five things about it are deliberate:
 `client/src/components/annual-leave/TeamLeavePage.tsx` renders "Covered by X" under
 the employee's name on each row, not only in the view dialog, so a manager scanning
 next week's absences can see who is holding the fort without opening anything.
+
+**Coverage is mandatory for an Employee and a Manager, and the handover travels
+with it.** `Application/AnnualLeaves/Commands/CoverageRule.cs` refuses a request
+from either role that names no `DelegateId`, on create and on edit — called from
+the two validators, where the other delegate checks already live.
+`client/src/lib/coverage.ts` mirrors it so step 3 of `ApplyLeavePage` reads
+"(required)" and submit is held until somebody is nominated, and the edit dialog
+(`AnnualLeaveForm`) has a "Covered by" select — it used to carry the existing
+delegate through untouched with no way to set one, which the rule made untenable:
+a request filed before it has to be given a delegate the next time it is saved.
+Keep the two in step, the same way `AttachmentPolicyRule` and
+`attachment-policy.ts` are kept in step. Six things about it that are deliberate:
+
+- **An Admin's own leave is exempt.** An Admin has no department, so the picker,
+  which offers department colleagues, would offer them nobody, and a required
+  field with nothing to put in it is a form that cannot be submitted. The rule
+  reads the *employee's* stored role — the payload carries none — so an admin
+  filing on somebody's behalf is held to it, matching the other rules. The client
+  mirror reads roles unknown as *not* required (an admin editing somebody else's
+  request; the DTO carries no role) and lets the server answer: a mirror may
+  under-refuse, never over-refuse.
+- **A department with no other non-admin member cannot file leave.** That is the
+  rule as chosen, not an oversight; the empty picker says so and points at the
+  admin.
+- **The handover — `AnnualLeave.CoverageNote` (1000 chars) and
+  `CoverageAttachmentUrl` — is written to the delegate, so a request naming
+  nobody keeps neither.** `CoverageHandover.Apply` drops both on create and edit
+  when `DelegateId` is blank; without that, a full-replace edit that dropped the
+  delegate would strand a note nobody would ever see. Both forms only show the
+  fields once a delegate is chosen for the same reason.
+- **Both reach the delegate in the coverage email, and nobody else.**
+  `CoverageNotification.AnnounceAsync` adds the note as a detail block and the
+  document as a real file attachment; the department's round-robin message is
+  unchanged, and the approver's "new request" email still carries the delegate's
+  name only. `IEmailService` gained an attachments overload with a default
+  implementation (so fakes compile unchanged); `EmailService` fills
+  `EmailMessage.Attachments`, which SMTP already sent and Brevo now does too
+  (`TransactionalEmailRequest.Attachment`, base64). A handover file that no
+  longer resolves drops off the email rather than stopping it, and the loader
+  checks the stored file's *purpose*, so a crafted request pointing the handover
+  at somebody's evidence cannot get that file mailed out.
+- **The document has its own `StoredFilePurpose.CoverageHandover` and its own
+  endpoint (`POST /api/annualleaves/coverage-upload`).** `GetStoredFile` lets the
+  delegate named on the leave open it — the one reader evidence must never have —
+  plus the employee, the uploader, an Admin and an in-scope Manager. It accepts
+  Word and Excel as well as PDF and images: `FileSignatureValidator` learned the
+  four Office kinds, which share a container signature (ZIP, or OLE for the
+  legacy pair) and are told apart by a *marker* further in (`word/`, `xl/`, or the
+  UTF-16 stream name), so a plain ZIP renamed `.docx` is still refused. Evidence
+  accepts Word too now — the apply page had always advertised `.doc/.docx` there
+  and refused them on the round trip.
+- **An admin filing on behalf needs the *employee's* colleagues, not their own.**
+  `GetTeammateList.Query.ForUserId` does that, and the controller passes it
+  through for an Admin only. `getTeammates(forUserId?)` on the client therefore
+  takes an argument, and must be wrapped in a query function rather than passed
+  bare to `useQuery`, which would hand it the query context in that slot.
+
+Timing is unchanged: the delegate is told at **approval**, not at filing — see
+the first bullet of the previous section for why. A test that submits the apply
+page has to nominate somebody first; the apply-page test files do it in their
+render helpers (`nominateDelegate`), which also wait for the picker dialog to
+close, because MUI marks the rest of the page `aria-hidden` while it is open and
+role queries against the form then find nothing.
 
 **The employment start date is role-scoped, not universal.**
 `EmployeeProfile.EmploymentStartDate` is when somebody joined — which was recorded

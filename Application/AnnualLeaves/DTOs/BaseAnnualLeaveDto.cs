@@ -40,7 +40,27 @@ public class BaseAnnualLeaveDto
     [StringLength(2048)]
     public string? EvidenceUrl { get; set; }
 
-    /// <summary>Optional colleague nominated to cover while the employee is away.</summary>
+    /// <summary>
+    /// Colleague nominated to cover while the employee is away. Required for an
+    /// Employee or a Manager (<c>CoverageRule</c>), which the validators enforce
+    /// from the employee's stored role rather than an attribute here, since an
+    /// Admin's own request may leave it blank.
+    /// </summary>
     [StringLength(450)]
     public string? DelegateId { get; set; }
+
+    /// <summary>
+    /// What the delegate should know. Goes to them in the coverage email; the
+    /// handlers drop it when no delegate is named, since it is written to somebody.
+    /// </summary>
+    [StringLength(1000, ErrorMessage = "The handover note must be at most 1000 characters.")]
+    public string? CoverageNote { get; set; }
+
+    /// <summary>
+    /// A handover document for the delegate: the <c>/api/files/{id}</c> path the
+    /// coverage-upload endpoint returned. Dropped with the note when no delegate
+    /// is named.
+    /// </summary>
+    [StringLength(2048)]
+    public string? CoverageAttachmentUrl { get; set; }
 }

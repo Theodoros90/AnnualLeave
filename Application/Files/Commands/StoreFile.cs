@@ -37,8 +37,25 @@ public class StoreFile
             [FileSignatureValidator.FileKind.Jpeg, FileSignatureValidator.FileKind.Png],
             5 * 1024 * 1024),
 
+        // Word as well as images and PDF: the apply page has always offered
+        // .doc/.docx here, and refused them on the round trip until the validator
+        // could tell a Word file from any other ZIP.
         [StoredFilePurpose.LeaveEvidence] = new(
-            [FileSignatureValidator.FileKind.Jpeg, FileSignatureValidator.FileKind.Png, FileSignatureValidator.FileKind.Pdf],
+            [
+                FileSignatureValidator.FileKind.Jpeg, FileSignatureValidator.FileKind.Png, FileSignatureValidator.FileKind.Pdf,
+                FileSignatureValidator.FileKind.Docx, FileSignatureValidator.FileKind.Doc,
+            ],
+            10 * 1024 * 1024),
+
+        // A handover document for the colleague covering a leave: evidence's kinds
+        // plus Excel, since a handover is as likely to be a tracker as a memo. It
+        // is emailed to the delegate as a file, so the same 10 MB ceiling applies.
+        [StoredFilePurpose.CoverageHandover] = new(
+            [
+                FileSignatureValidator.FileKind.Jpeg, FileSignatureValidator.FileKind.Png, FileSignatureValidator.FileKind.Pdf,
+                FileSignatureValidator.FileKind.Docx, FileSignatureValidator.FileKind.Doc,
+                FileSignatureValidator.FileKind.Xlsx, FileSignatureValidator.FileKind.Xls,
+            ],
             10 * 1024 * 1024),
     };
 
@@ -80,7 +97,7 @@ public class StoreFile
             var detected = FileSignatureValidator.Detect(request.Content);
             if (detected is null)
             {
-                return Result<string>.Invalid("That file's contents are not a recognised image or PDF.");
+                return Result<string>.Invalid("That file's contents are not a recognised image, PDF, or Office document.");
             }
 
             if (!policy.AcceptedKinds.Contains(detected.Value))

@@ -1,4 +1,4 @@
-using Application.AnnualLeaves.Commands;
+﻿using Application.AnnualLeaves.Commands;
 using Application.AnnualLeaves.DTOs;
 using Application.AnnualLeaves.Queries;
 using API.Hubs;
@@ -174,6 +174,53 @@ public class AnnualLeavesController : BaseApiController
         return Ok(new
         {
             evidenceUrl = StoredFilePath.For(stored.Value),
+            fileName = file.FileName,
+        });
+    }
+
+    /// <summary>
+    /// A handover document for the colleague covering the leave. Its own purpose,
+    /// not <see cref="StoredFilePurpose.LeaveEvidence"/>: the delegate may read
+    /// this back and must not thereby be able to read a medical certificate.
+    /// </summary>
+    [HttpPost("coverage-upload")]
+    [Authorize(Policy = "AnnualLeaveCreate")]
+    [RequestSizeLimit(10_000_000)]
+    public async Task<ActionResult> UploadCoverageHandover([FromForm] IFormFile file, CancellationToken cancellationToken)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new { message = "Please select a handover file." });
+        }
+
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized(new { message = "User is not authenticated." });
+        }
+
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer, cancellationToken);
+
+        var stored = await Mediator.Send(
+            new StoreFile.Command
+            {
+                Content = buffer.ToArray(),
+                FileName = file.FileName,
+                DeclaredContentType = file.ContentType,
+                Purpose = StoredFilePurpose.CoverageHandover,
+                UploadedById = userId,
+            },
+            cancellationToken);
+
+        if (!stored.IsSuccess || stored.Value is null)
+        {
+            return HandleResult(stored);
+        }
+
+        return Ok(new
+        {
+            coverageAttachmentUrl = StoredFilePath.For(stored.Value),
             fileName = file.FileName,
         });
     }

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoreProvider } from '../../lib/mobx'
-import type { ChildLeaveEntitlementSummary, EmployeeProfile, UserInfo } from '../../lib/types'
+import type { ChildLeaveEntitlementSummary, EmployeeProfile, Teammate, UserInfo } from '../../lib/types'
 import ApplyLeavePage from './ApplyLeavePage'
 
 /**
@@ -26,6 +26,7 @@ vi.mock('../../lib/api', () => ({
     getHolidays: vi.fn(),
     getLeaveTypes: vi.fn(),
     getTeammates: vi.fn(),
+    uploadCoverageHandover: vi.fn(),
     uploadLeaveEvidence: vi.fn(),
 }))
 
@@ -73,12 +74,33 @@ beforeEach(() => {
     api.getLeaveTypes.mockResolvedValue([ANNUAL_LEAVE_TYPE, LONG_NOTICE_TYPE, ONE_DAY_TYPE] as never)
     api.getEmployeeProfiles.mockResolvedValue([PROFILE])
     api.getAnnualLeaves.mockResolvedValue([])
-    api.getTeammates.mockResolvedValue([])
+    api.getTeammates.mockResolvedValue([TEAMMATE])
     api.getHolidays.mockResolvedValue([])
     api.getAppSettings.mockResolvedValue({ leaveYearStartMonth: 1 } as never)
     api.getChildLeaveEntitlements.mockResolvedValue(NO_CHILDREN)
     api.createAnnualLeave.mockResolvedValue('new-leave-id' as never)
 })
+
+
+/**
+ * Coverage is mandatory for an Employee (CoverageRule), so every path to submit
+ * has to nominate somebody first — one colleague, chosen by the render helper.
+ */
+const TEAMMATE: Teammate = { userId: 'u-delegate', displayName: 'Maria Ioannou', jobTitle: 'Accountant', departmentId: 2 }
+
+/**
+ * Opens the coverage picker and nominates the one teammate the mock offers. The
+ * picker button is matched by its subtitle, since "Choose a delegate" is also how
+ * the submit button reads while cover is missing. Then waits for the picker
+ * dialog to have gone: while it is open MUI marks the rest of the page
+ * aria-hidden, and role queries against the form would find nothing.
+ */
+async function nominateDelegate() {
+    fireEvent.click(screen.getByRole('button', { name: /click to pick a teammate/i }))
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(TEAMMATE.displayName) }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await screen.findByLabelText(/handover note/i)
+}
 
 async function renderPage() {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -90,6 +112,7 @@ async function renderPage() {
         </StoreProvider>,
     )
     await screen.findByRole('button', { name: /brief leave/i })
+    await nominateDelegate()
 }
 
 /**

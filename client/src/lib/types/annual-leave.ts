@@ -17,8 +17,16 @@ export interface AnnualLeaveBase {
     leaveTypeId: number
     reason: string
     evidenceUrl?: string | null
-    /** User id of the colleague nominated to cover while the employee is away. */
+    /**
+     * User id of the colleague nominated to cover while the employee is away.
+     * Required for an Employee or a Manager (`CoverageRule` on the server,
+     * `lib/coverage.ts` here); an Admin's own request may leave it out.
+     */
     delegateId?: string | null
+    /** A handover note for the delegate. Mailed to them alone; dropped by the server when no delegate is named. */
+    coverageNote?: string | null
+    /** A handover document for the delegate: the path `uploadCoverageHandover` returned. */
+    coverageAttachmentUrl?: string | null
     childId?: string | null
 }
 
@@ -32,6 +40,9 @@ export interface AnnualLeave {
     evidenceUrl: string | null
     delegateId: string | null
     delegateName: string
+    /** Optional for an API predating the handover columns. */
+    coverageNote?: string | null
+    coverageAttachmentUrl?: string | null
     status: AnnualLeaveStatus
     createdAt: string
     approvedAt: string | null

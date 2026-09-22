@@ -28,6 +28,8 @@ vi.mock('../../lib/api', () => ({
     createAnnualLeave: vi.fn(),
     editAnnualLeave: vi.fn(),
     getAdminUsers: vi.fn(),
+    getTeammates: vi.fn(),
+    uploadCoverageHandover: vi.fn(),
     uploadLeaveEvidence: vi.fn(),
 }))
 
@@ -96,6 +98,7 @@ function summaryFor(leaveType: { id: number; name: string }, daysPerChild: numbe
 
 beforeEach(() => {
     vi.clearAllMocks()
+    api.getTeammates.mockResolvedValue([])
     api.getLeaveTypes.mockResolvedValue(LEAVE_TYPES as never)
     api.getEmployeeProfiles.mockResolvedValue([PROFILE])
     api.getAnnualLeaves.mockResolvedValue([])

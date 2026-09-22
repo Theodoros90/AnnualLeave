@@ -1,4 +1,4 @@
-namespace Infrastructure.Services.Email.Models;
+﻿namespace Infrastructure.Services.Email.Models;
 
 /// <summary>Payload for Brevo's POST /v3/smtp/email transactional endpoint.</summary>
 public class TransactionalEmailRequest
@@ -20,6 +20,21 @@ public class TransactionalEmailRequest
 
     /// <summary>Plain-text fallback for non-HTML clients.</summary>
     public string? TextContent { get; set; }
+
+    /// <summary>
+    /// Files to send. Brevo's field is singular ("attachment") and the content is
+    /// base64; the extension is what tells it the type, so the name must carry one.
+    /// </summary>
+    public List<BrevoAttachment>? Attachment { get; set; }
+}
+
+/// <summary>One file on a Brevo transactional email.</summary>
+public class BrevoAttachment
+{
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>The file's bytes, base64-encoded.</summary>
+    public string Content { get; set; } = string.Empty;
 }
 
 /// <summary>Brevo contact shape (name + email).</summary>

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoreProvider } from '../../lib/mobx'
-import type { EmployeeProfile, LeaveType, UserInfo } from '../../lib/types'
+import type { EmployeeProfile, LeaveType, Teammate, UserInfo } from '../../lib/types'
 import ApplyLeavePage from './ApplyLeavePage'
 
 /**
@@ -31,6 +31,7 @@ vi.mock('../../lib/api', () => ({
     getHolidays: vi.fn(),
     getLeaveTypes: vi.fn(),
     getTeammates: vi.fn(),
+    uploadCoverageHandover: vi.fn(),
     uploadLeaveEvidence: vi.fn(),
 }))
 
@@ -64,7 +65,7 @@ beforeEach(() => {
     vi.clearAllMocks()
     api.getEmployeeProfiles.mockResolvedValue([PROFILE])
     api.getAnnualLeaves.mockResolvedValue([])
-    api.getTeammates.mockResolvedValue([])
+    api.getTeammates.mockResolvedValue([TEAMMATE])
     api.getHolidays.mockResolvedValue([])
     api.getAppSettings.mockResolvedValue({ leaveYearStartMonth: 1 } as never)
     api.createAnnualLeave.mockResolvedValue('new-leave-id' as never)
@@ -72,6 +73,27 @@ beforeEach(() => {
 })
 
 /** Renders the page with a single leave type carrying `overrides`. */
+
+/**
+ * Coverage is mandatory for an Employee (CoverageRule), so every path to submit
+ * has to nominate somebody first — one colleague, chosen by the render helper.
+ */
+const TEAMMATE: Teammate = { userId: 'u-delegate', displayName: 'Maria Ioannou', jobTitle: 'Accountant', departmentId: 2 }
+
+/**
+ * Opens the coverage picker and nominates the one teammate the mock offers. The
+ * picker button is matched by its subtitle, since "Choose a delegate" is also how
+ * the submit button reads while cover is missing. Then waits for the picker
+ * dialog to have gone: while it is open MUI marks the rest of the page
+ * aria-hidden, and role queries against the form would find nothing.
+ */
+async function nominateDelegate() {
+    fireEvent.click(screen.getByRole('button', { name: /click to pick a teammate/i }))
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(TEAMMATE.displayName) }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await screen.findByLabelText(/handover note/i)
+}
+
 async function renderWithType(overrides: Partial<LeaveType> = {}) {
     const type = { ...BASE_TYPE, ...overrides }
     api.getLeaveTypes.mockResolvedValue([type] as never)
@@ -86,6 +108,7 @@ async function renderWithType(overrides: Partial<LeaveType> = {}) {
     )
     // The only type is auto-selected once the query settles.
     await screen.findByRole('button', { name: new RegExp(type.name, 'i') })
+    await nominateDelegate()
     return view
 }
 
@@ -132,7 +155,9 @@ function expectNoDocumentsSection() {
 
 /** The dropzone's input is hidden, so drive it directly. */
 function stageFile(container: HTMLElement) {
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    // By id, not "the file input": step 3's handover document has one too, and
+    // it sits earlier in the form.
+    const input = container.querySelector('input[data-testid="evidence-file-input"]') as HTMLInputElement
     const file = new File(['%PDF-1.4'], 'doctors-note.pdf', { type: 'application/pdf' })
     fireEvent.change(input, { target: { files: [file] } })
 }
@@ -238,6 +263,7 @@ describe('ApplyLeavePage — supporting documents follow the attachment policy',
         )
 
         fireEvent.click(await screen.findByRole('button', { name: /sick leave/i }))
+        await nominateDelegate()
         pickDates()
         stageFile(container)
         expect(await screen.findByText('doctors-note.pdf')).toBeInTheDocument()

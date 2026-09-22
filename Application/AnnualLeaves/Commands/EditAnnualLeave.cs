@@ -131,6 +131,9 @@ public class EditAnnualLeave
                 ? null
                 : request.AnnualLeave.DelegateId;
 
+            // Same rule as on create: a handover with nobody to hand over to is dropped.
+            CoverageHandover.Apply(annualLeave, request.AnnualLeave);
+
             var employeeProfile = await context.EmployeeProfiles
                 .FirstOrDefaultAsync(ep => ep.Id == annualLeave.EmployeeProfileId, cancellationToken);
 

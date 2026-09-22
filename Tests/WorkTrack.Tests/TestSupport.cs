@@ -1,4 +1,4 @@
-using Domain.Interfaces;
+﻿using Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Persistence;
@@ -25,7 +25,16 @@ internal static class TestDb
 }
 
 /// <summary>One message a <see cref="FakeEmailService"/> was asked to send.</summary>
-internal sealed record SentEmail(string Recipient, string Subject, string HtmlBody, string? TextBody);
+internal sealed record SentEmail(
+    string Recipient,
+    string Subject,
+    string HtmlBody,
+    string? TextBody,
+    IReadOnlyList<EmailFileAttachment> Attachments)
+{
+    public SentEmail(string Recipient, string Subject, string HtmlBody, string? TextBody)
+        : this(Recipient, Subject, HtmlBody, TextBody, []) { }
+}
 
 /// <summary>
 /// No-op email sender — reports success without sending anything, and keeps every
@@ -55,10 +64,19 @@ internal sealed class FakeEmailService : IEmailService
         string subject,
         string htmlBody,
         string? textBody = null,
+        CancellationToken cancellationToken = default) =>
+        SendEmailAsync(toEmail, subject, htmlBody, textBody, [], cancellationToken);
+
+    public Task<bool> SendEmailAsync(
+        string toEmail,
+        string subject,
+        string htmlBody,
+        string? textBody,
+        IReadOnlyList<EmailFileAttachment> attachments,
         CancellationToken cancellationToken = default)
     {
         SentCount++;
-        Sent.Add(new SentEmail(toEmail, subject, htmlBody, textBody));
+        Sent.Add(new SentEmail(toEmail, subject, htmlBody, textBody, attachments));
         LastRecipient = toEmail;
         LastSubject = subject;
         LastHtmlBody = htmlBody;

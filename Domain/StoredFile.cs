@@ -1,4 +1,4 @@
-namespace Domain;
+﻿namespace Domain;
 
 /// <summary>
 /// What a <see cref="StoredFile"/> was uploaded for. Drives both the upload
@@ -10,6 +10,14 @@ public enum StoredFilePurpose
 {
     ProfileImage = 0,
     LeaveEvidence = 1,
+
+    /// <summary>
+    /// A handover document the employee leaves for the colleague covering their
+    /// leave (<c>AnnualLeave.CoverageAttachmentUrl</c>). Its own purpose rather than
+    /// <see cref="LeaveEvidence"/> because the readers differ: the delegate may
+    /// open this, and must not thereby be able to open a medical certificate.
+    /// </summary>
+    CoverageHandover = 2,
 }
 
 /// <summary>

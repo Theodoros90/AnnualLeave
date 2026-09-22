@@ -1,4 +1,5 @@
-using Application.Core;
+﻿using Application.Core;
+using Application.Files;
 using Domain;
 using Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +28,13 @@ namespace Application.AnnualLeaves.Commands;
 /// apply form promises that the reason stays private; it goes to the manager
 /// deciding the request, not to the department.</item>
 /// </list>
+///
+/// The delegate's message also carries the handover — <see cref="AnnualLeave.CoverageNote"/>
+/// as text and <see cref="AnnualLeave.CoverageAttachmentUrl"/> as a file on the
+/// email. Only theirs: the department is told who is covering, not what the
+/// cover involves. A handover file that cannot be loaded (deleted, or a path that
+/// never resolved) drops off the email rather than stopping it; the note and the
+/// dates are the part that cannot wait.
 ///
 /// Every send happens after the caller has committed, matching the rule the
 /// existing notifications already follow: an email about a write that rolled back
@@ -65,10 +73,14 @@ public static class CoverageNotification
         var leaveTypeName = await ResolveLeaveTypeNameAsync(context, annualLeave, cancellationToken);
         var dateRange = FormatDateRange(annualLeave);
 
+        var handoverFile = await LoadHandoverAttachmentAsync(context, annualLeave, cancellationToken);
+
         var toDelegate = NotificationEmail
             .To(delegateContact.Name)
             .Sentence($"{employeeName} has nominated you to cover for them while they are away.")
             .Sentence($"They are on {NotificationEmail.Plain(leaveTypeName)} from {dateRange}.")
+            .Detail("Handover note", annualLeave.CoverageNote)
+            .Detail("Handover document", handoverFile?.FileName)
             .Closing("Please log in to the Annual Leave system to see the dates.")
             .Build();
 
@@ -77,6 +89,7 @@ public static class CoverageNotification
             $"You are covering for {employeeName}",
             toDelegate.Html,
             toDelegate.Text,
+            handoverFile is null ? [] : [handoverFile],
             cancellationToken);
 
         if (!notifyDepartment) return;
@@ -165,6 +178,25 @@ public static class CoverageNotification
 
     private static string FormatDateRange(AnnualLeave annualLeave) =>
         $"{annualLeave.StartDate:dd MMM yyyy} to {annualLeave.EndDate:dd MMM yyyy}";
+
+    /// <summary>
+    /// The handover document as an email attachment, or null when the leave has
+    /// none or the path no longer resolves to a stored file of the right purpose.
+    /// The purpose is checked so a crafted request pointing the handover at
+    /// somebody's evidence cannot get that file mailed out.
+    /// </summary>
+    private static async Task<EmailFileAttachment?> LoadHandoverAttachmentAsync(
+        AppDbContext context, AnnualLeave annualLeave, CancellationToken cancellationToken)
+    {
+        var fileId = StoredFilePath.TryParseId(annualLeave.CoverageAttachmentUrl);
+        if (fileId is null) return null;
+
+        return await context.StoredFiles
+            .AsNoTracking()
+            .Where(file => file.Id == fileId && file.Purpose == StoredFilePurpose.CoverageHandover)
+            .Select(file => new EmailFileAttachment(file.FileName, file.Content, file.ContentType))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
 
     /// <summary>
     /// A user's email and display name, or null when there is nothing to send to —

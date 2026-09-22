@@ -13,7 +13,8 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { AttachFile as AttachFileIcon, CalendarMonth as CalendarMonthIcon, OpenInNew as OpenInNewIcon } from '@mui/icons-material'
 import Box from '@mui/material/Box'
-import { createAnnualLeave, editAnnualLeave, getChildLeaveEntitlements, getLeaveTypes, getAdminUsers, uploadLeaveEvidence } from '../../lib/api'
+import { createAnnualLeave, editAnnualLeave, getChildLeaveEntitlements, getLeaveTypes, getAdminUsers, getTeammates, uploadCoverageHandover, uploadLeaveEvidence } from '../../lib/api'
+import { COVERAGE_NOTE_MAX_LENGTH, isCoverageRequired } from '../../lib/coverage'
 import { isLeaveTypeOffered } from '../../lib/parental-leave'
 import { attachmentRequirement, isAttachmentBlockingSubmit, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
 import { maxConsecutiveError, noticeError } from '../../lib/leave-limits'
@@ -54,6 +55,12 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
 
     const [evidenceUrl, setEvidenceUrl] = useState(leave?.evidenceUrl ?? '')
     const [evidenceFile, setEvidenceFile] = useState<File | null>(null)
+    /* The handover document for the delegate: the path already on the request,
+       and a file staged this session to replace it. Uploaded to its own endpoint —
+       the delegate may read it back, and must not thereby be able to read the
+       evidence beside it. */
+    const [coverageAttachmentUrl, setCoverageAttachmentUrl] = useState(leave?.coverageAttachmentUrl ?? '')
+    const [handoverFile, setHandoverFile] = useState<File | null>(null)
     // Whether the child picker currently has no real choice to offer (query
     // failed, no children on file, or none eligible). Reset below whenever it
     // isn't the thing actually shown, so it never lingers from a prior type or
@@ -76,13 +83,33 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
         [leaveTypes],
     )
 
+    /* Whether this dialog is filing the signed-in user's own request. Declared
+       here, ahead of the schema, because whose request it is decides whether cover
+       is mandatory; see also the leave-type filter below, which uses it too. */
+    const filesOwnRequest = leave
+        ? leave.employeeId === authStore.user?.id
+        : !isAdmin
+
+    /* Cover is mandatory for an Employee or a Manager — CoverageRule reads the
+       *employee's* stored role, so it depends on whose leave this is. Own request:
+       the signed-in user's roles. An admin filing on behalf: the dropdown offers
+       Employees and Managers only, so whoever is picked needs one (and the schema
+       already refuses a submit with nobody picked). An admin editing somebody
+       else's request: the leave carries no role, so the mirror stays quiet and the
+       server answers — a mirror may under-refuse, it must never over-refuse. */
+    const requireDelegate = filesOwnRequest
+        ? isCoverageRequired(authStore.user?.roles)
+        : requireEmployee
+
     const schema = useMemo(
-        () => buildAnnualLeaveSchema(requireEmployee, perChildLeaveTypeIds),
-        [requireEmployee, perChildLeaveTypeIds],
+        () => buildAnnualLeaveSchema(requireEmployee, perChildLeaveTypeIds, requireDelegate),
+        [requireEmployee, perChildLeaveTypeIds, requireDelegate],
     )
 
     const buildDefaults = (): AnnualLeaveFormValues => ({
         employeeId: '',
+        delegateId: leave?.delegateId ?? '',
+        coverageNote: leave?.coverageNote ?? '',
         childId: leave?.childId ?? '',
         startDate: leave ? toInputDate(leave.startDate) : '',
         endDate: leave ? toInputDate(leave.endDate) : '',
@@ -103,6 +130,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
 
     const watchedLeaveTypeId = watch('leaveTypeId')
     const watchedEmployeeId = watch('employeeId')
+    const watchedDelegateId = watch('delegateId')
     const watchedStartDate = watch('startDate')
     const watchedEndDate = watch('endDate')
     const watchedDuration = watch('duration')
@@ -200,15 +228,36 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
         enabled: isAdmin && !isEdit,
     })
 
-    /* Whether this dialog is filing the signed-in user's own request, which is the
-       only case the gender + eligible-child rule applies to. An admin creating on
-       behalf of someone, or editing someone else's request, sees every type: their
-       own gender and children say nothing about the employee the request is for,
-       and filtering on them would hide the very type they were asked to file. The
+    /* `filesOwnRequest` (declared above the schema) is also the only case the
+       gender + eligible-child rule applies to. An admin creating on behalf of
+       someone, or editing someone else's request, sees every type: their own
+       gender and children say nothing about the employee the request is for, and
+       filtering on them would hide the very type they were asked to file. The
        server still has the last word either way. */
-    const filesOwnRequest = leave
-        ? leave.employeeId === authStore.user?.id
-        : !isAdmin
+
+    /* Whose colleagues the coverage picker offers: the employee the leave is for.
+       Somebody else's list is asked for by id, which the server honours for an
+       Admin only. */
+    const coverageSubjectId = leave
+        ? leave.employeeId
+        : requireEmployee ? watchedEmployeeId : authStore.user?.id
+    const coverageForSomeoneElse = !!coverageSubjectId && coverageSubjectId !== authStore.user?.id
+    const { data: teammates = [] } = useQuery({
+        queryKey: ['teammates', coverageForSomeoneElse ? coverageSubjectId : 'me'],
+        queryFn: () => getTeammates(coverageForSomeoneElse ? coverageSubjectId : undefined),
+        enabled: !readOnly && !!coverageSubjectId,
+    })
+
+    /* The request's current delegate stays on the list even when the teammates
+       query does not return them — moved department, or the list has not landed
+       yet — so the select never opens on a blank. */
+    const delegateOptions = useMemo(() => {
+        const options = teammates.map((t) => ({ userId: t.userId, label: t.jobTitle ? `${t.displayName} · ${t.jobTitle}` : t.displayName }))
+        if (leave?.delegateId && !options.some((o) => o.userId === leave.delegateId)) {
+            options.unshift({ userId: leave.delegateId, label: leave.delegateName || 'Current delegate' })
+        }
+        return options
+    }, [teammates, leave?.delegateId, leave?.delegateName])
 
     /* Same query key the child picker uses for the signed-in user, so the two
        share one request. Skipped entirely when the rule does not apply. */
@@ -253,9 +302,17 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
         reset(buildDefaults())
         setEvidenceUrl(leave?.evidenceUrl ?? '')
         setEvidenceFile(null)
+        setCoverageAttachmentUrl(leave?.coverageAttachmentUrl ?? '')
+        setHandoverFile(null)
         setChildPickerBlocked(false)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, leave?.id])
+
+    /* A delegate belongs to the employee's department, so picking a different
+       employee invalidates whoever was chosen for the previous one. */
+    useEffect(() => {
+        if (requireEmployee) setValue('delegateId', '', { shouldValidate: false })
+    }, [requireEmployee, watchedEmployeeId, setValue])
 
     /* Switching to a type that asks for no document takes the upload off the
        dialog, and a file left staged behind it would still upload on Save with
@@ -306,8 +363,12 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
         mutationFn: (file: File) => uploadLeaveEvidence(file),
     })
 
-    const isPending = createMutation.isPending || editMutation.isPending || uploadEvidenceMutation.isPending
-    const error = createMutation.error ?? editMutation.error ?? uploadEvidenceMutation.error
+    const uploadHandoverMutation = useMutation({
+        mutationFn: (file: File) => uploadCoverageHandover(file),
+    })
+
+    const isPending = createMutation.isPending || editMutation.isPending || uploadEvidenceMutation.isPending || uploadHandoverMutation.isPending
+    const error = createMutation.error ?? editMutation.error ?? uploadEvidenceMutation.error ?? uploadHandoverMutation.error
     const dialogTitle = readOnly
         ? 'Leave Request Details'
         : isEdit ? 'Edit Leave Request' : isAdmin ? 'Assign Leave to User' : 'New Leave Request'
@@ -347,6 +408,21 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                 setEvidenceUrl(uploadResult.evidenceUrl)
             }
 
+            /* The handover goes to the delegate, so with nobody nominated the server
+               drops both fields — no point uploading a file it will not keep. */
+            const delegateId = values.delegateId.trim() || undefined
+            let nextCoverageAttachmentUrl = delegateId ? coverageAttachmentUrl.trim() || undefined : undefined
+            if (delegateId && handoverFile) {
+                const uploadResult = await uploadHandoverMutation.mutateAsync(handoverFile)
+                nextCoverageAttachmentUrl = uploadResult.coverageAttachmentUrl
+                setCoverageAttachmentUrl(uploadResult.coverageAttachmentUrl)
+            }
+            const coverage = {
+                delegateId,
+                coverageNote: delegateId ? values.coverageNote.trim() || undefined : undefined,
+                coverageAttachmentUrl: nextCoverageAttachmentUrl,
+            }
+
             if (isEdit && leave) {
                 await editMutation.mutateAsync({
                     id: leave.id,
@@ -360,9 +436,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                     childId: requiresChild ? values.childId : undefined,
                     reason: values.reason,
                     evidenceUrl: nextEvidenceUrl,
-                    // This form doesn't edit coverage — carry the existing delegate
-                    // through so an edit here never silently drops it.
-                    delegateId: leave.delegateId ?? undefined,
+                    ...coverage,
                 })
             } else {
                 await createMutation.mutateAsync({
@@ -373,6 +447,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                     childId: requiresChild ? values.childId : undefined,
                     reason: values.reason,
                     evidenceUrl: nextEvidenceUrl,
+                    ...coverage,
                     employeeId: isAdmin ? values.employeeId : (authStore.user?.id ?? ''),
                 })
             }
@@ -703,6 +778,144 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
                             />
                         )
                     })()}
+
+                    {/* Coverage. Mandatory for an Employee or a Manager (CoverageRule,
+                        mirrored by lib/coverage.ts), with a handover note and document
+                        that go to the delegate alone once the leave is approved. */}
+                    {readOnly ? (
+                        <>
+                            {!!leave?.delegateName && (
+                                <TextField
+                                    label="Covered by"
+                                    value={leave.delegateName}
+                                    fullWidth
+                                    disabled
+                                    InputProps={{ readOnly: true }}
+                                    helperText=" "
+                                />
+                            )}
+                            {!!leave?.coverageNote && (
+                                <TextField
+                                    label="Handover note"
+                                    value={leave.coverageNote}
+                                    multiline
+                                    rows={3}
+                                    fullWidth
+                                    disabled
+                                    InputProps={{ readOnly: true }}
+                                    helperText=" "
+                                />
+                            )}
+                            {!!leave?.coverageAttachmentUrl && (
+                                <Button
+                                    size="small"
+                                    href={resolveFileUrl(leave.coverageAttachmentUrl) ?? leave.coverageAttachmentUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    endIcon={<OpenInNewIcon fontSize="inherit" />}
+                                    sx={{ alignSelf: 'flex-start', px: 0, textTransform: 'none' }}
+                                >
+                                    View handover document
+                                </Button>
+                            )}
+                        </>
+                    ) : (
+                        <Stack spacing={2}>
+                            <Controller
+                                name="delegateId"
+                                control={control}
+                                render={({ field, fieldState }) => (
+                                    <TextField
+                                        label="Covered by"
+                                        select
+                                        value={field.value}
+                                        onChange={(e) => field.onChange(e.target.value)}
+                                        onBlur={field.onBlur}
+                                        inputRef={field.ref}
+                                        required={requireDelegate}
+                                        fullWidth
+                                        disabled={awaitingEmployeeSelection}
+                                        error={!!fieldState.error}
+                                        helperText={
+                                            fieldState.error?.message
+                                                ?? (awaitingEmployeeSelection
+                                                    ? 'Select an employee first.'
+                                                    : requireDelegate
+                                                        ? 'Required. They are emailed once the leave is approved.'
+                                                        : 'Optional. They are emailed once the leave is approved.')
+                                        }
+                                    >
+                                        <MenuItem value="">
+                                            {requireDelegate ? 'Choose a colleague' : 'Nobody'}
+                                        </MenuItem>
+                                        {delegateOptions.map((option) => (
+                                            <MenuItem key={option.userId} value={option.userId}>
+                                                {option.label}
+                                            </MenuItem>
+                                        ))}
+                                    </TextField>
+                                )}
+                            />
+
+                            {/* Only with somebody to hand over to — the server drops
+                                both for a request that names no delegate. */}
+                            {!!watchedDelegateId && (
+                                <>
+                                    <Controller
+                                        name="coverageNote"
+                                        control={control}
+                                        render={({ field, fieldState }) => (
+                                            <TextField
+                                                {...field}
+                                                label="Handover note"
+                                                multiline
+                                                rows={3}
+                                                fullWidth
+                                                inputProps={{ maxLength: COVERAGE_NOTE_MAX_LENGTH }}
+                                                error={!!fieldState.error}
+                                                helperText={fieldState.error?.message ?? 'Optional. Sent to the delegate only, not to the approver or the team.'}
+                                                placeholder="Open tasks, who to call, where things are."
+                                            />
+                                        )}
+                                    />
+                                    <Stack spacing={0.75}>
+                                        <Button component="label" variant="outlined" startIcon={<AttachFileIcon />} disabled={isPending} sx={{ alignSelf: 'flex-start' }}>
+                                            {handoverFile ? 'Change handover document' : coverageAttachmentUrl ? 'Replace handover document' : 'Attach handover document'}
+                                            <input
+                                                hidden
+                                                type="file"
+                                                data-testid="handover-file-input"
+                                                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                                                onChange={(event) => {
+                                                    const selectedFile = event.target.files?.[0] ?? null
+                                                    setHandoverFile(selectedFile)
+                                                }}
+                                            />
+                                        </Button>
+                                        {handoverFile ? (
+                                            <Typography variant="body2" color="text.secondary">
+                                                Selected file: {handoverFile.name}
+                                            </Typography>
+                                        ) : coverageAttachmentUrl ? (
+                                            <Button
+                                                size="small"
+                                                href={resolveFileUrl(coverageAttachmentUrl) ?? coverageAttachmentUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                endIcon={<OpenInNewIcon fontSize="inherit" />}
+                                                sx={{ alignSelf: 'flex-start', px: 0, textTransform: 'none' }}
+                                            >
+                                                View current handover document
+                                            </Button>
+                                        ) : null}
+                                        <Typography variant="caption" color="text.secondary">
+                                            Optional: PDF, Word, Excel, JPG, or PNG up to 10 MB, attached to the email the delegate gets.
+                                        </Typography>
+                                    </Stack>
+                                </>
+                            )}
+                        </Stack>
+                    )}
 
                     {/* Evidence. Off the dialog entirely for a type set to "No
                         attachment needed", unless the request already carries a

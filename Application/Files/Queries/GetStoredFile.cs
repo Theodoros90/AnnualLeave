@@ -1,4 +1,4 @@
-using Application.Core;
+﻿using Application.Core;
 using Domain;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +42,9 @@ public class GetStoredFile
 
                 StoredFilePurpose.LeaveEvidence =>
                     await CanReadEvidenceAsync(request, file, cancellationToken),
+
+                StoredFilePurpose.CoverageHandover =>
+                    await CanReadHandoverAsync(request, file, cancellationToken),
 
                 // A purpose this handler has no rule for is refused rather than
                 // defaulted open, so adding one to the enum cannot silently
@@ -115,6 +118,55 @@ public class GetStoredFile
 
             return await context.AnnualLeaves.AnyAsync(
                 al => al.EvidenceUrl == path
+                    && ((al.DepartmentId.HasValue && scope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
+                        || scope.DirectReportUserIds.Contains(al.EmployeeId)),
+                cancellationToken);
+        }
+
+        /// <summary>
+        /// A handover document is for the colleague it was left to, so the delegate
+        /// named on the leave may open it — which is the one reader evidence does
+        /// not have, and why the two purposes are kept apart. Otherwise the same
+        /// readers as evidence: the uploader, the employee the leave names, an
+        /// Admin, and a Manager who could open the leave itself.
+        /// </summary>
+        private async Task<bool> CanReadHandoverAsync(
+            Query request,
+            StoredFile file,
+            CancellationToken cancellationToken)
+        {
+            if (request.IsAdmin)
+            {
+                return true;
+            }
+
+            if (file.UploadedById == request.RequestingUserId)
+            {
+                return true;
+            }
+
+            var path = StoredFilePath.For(file.Id);
+
+            var namedOnTheLeave = await context.AnnualLeaves.AnyAsync(
+                al => al.CoverageAttachmentUrl == path
+                    && (al.EmployeeId == request.RequestingUserId || al.DelegateId == request.RequestingUserId),
+                cancellationToken);
+
+            if (namedOnTheLeave)
+            {
+                return true;
+            }
+
+            if (!request.IsManager)
+            {
+                return false;
+            }
+
+            var scope = await ManagerAccessScopeResolver.ResolveAsync(
+                context, request.RequestingUserId, cancellationToken);
+
+            return await context.AnnualLeaves.AnyAsync(
+                al => al.CoverageAttachmentUrl == path
                     && ((al.DepartmentId.HasValue && scope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
                         || scope.DirectReportUserIds.Contains(al.EmployeeId)),
                 cancellationToken);

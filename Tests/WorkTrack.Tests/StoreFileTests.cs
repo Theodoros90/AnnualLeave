@@ -22,6 +22,16 @@ public class StoreFileTests
     private static byte[] Jpeg() => Pad([0xFF, 0xD8, 0xFF, 0xE0]);
     private static byte[] Pdf() => Pad([0x25, 0x50, 0x44, 0x46, 0x2D]);
 
+    // The Office formats share a container signature (ZIP, or OLE for the legacy
+    // pair) and are told apart by a marker further in: an archive entry prefix,
+    // or a UTF-16 stream name. These carry the signature and the marker, the way
+    // a real file does; the plain ZIP carries the signature alone.
+    private static byte[] Docx() => Pad([0x50, 0x4B, 0x03, 0x04, .. "word/document.xml"u8]);
+    private static byte[] Xlsx() => Pad([0x50, 0x4B, 0x03, 0x04, .. "xl/workbook.xml"u8]);
+    private static byte[] Doc() => Pad([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, .. System.Text.Encoding.Unicode.GetBytes("WordDocument")]);
+    private static byte[] Xls() => Pad([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, .. System.Text.Encoding.Unicode.GetBytes("Workbook")]);
+    private static byte[] PlainZip() => Pad([0x50, 0x4B, 0x03, 0x04, .. "holiday-photos/"u8]);
+
     private static byte[] Pad(byte[] signature, int totalLength = 256)
     {
         var buffer = new byte[totalLength];
@@ -43,6 +53,85 @@ public class StoreFileTests
             Purpose = purpose,
             UploadedById = UploaderId,
         };
+
+    // ── Office documents ────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("handover.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")]
+    [InlineData("handover.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
+    [InlineData("handover.doc", "application/msword")]
+    [InlineData("handover.xls", "application/vnd.ms-excel")]
+    public async Task Accepts_a_Word_or_Excel_handover_document_and_serves_it_as_its_own_type(string fileName, string expectedContentType)
+    {
+        using var db = TestDb.Create();
+        var content = fileName switch
+        {
+            "handover.docx" => Docx(),
+            "handover.xlsx" => Xlsx(),
+            "handover.doc" => Doc(),
+            _ => Xls(),
+        };
+
+        var result = await Handler(db).Handle(
+            Command(content, fileName, StoredFilePurpose.CoverageHandover),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(expectedContentType, db.StoredFiles.Single().ContentType);
+    }
+
+    [Fact]
+    public async Task Rejects_a_plain_zip_renamed_to_docx()
+    {
+        using var db = TestDb.Create();
+
+        var result = await Handler(db).Handle(
+            Command(PlainZip(), "handover.docx", StoredFilePurpose.CoverageHandover),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(db.StoredFiles);
+    }
+
+    [Fact]
+    public async Task Rejects_a_Word_document_saved_with_an_Excel_extension()
+    {
+        using var db = TestDb.Create();
+
+        var result = await Handler(db).Handle(
+            Command(Docx(), "handover.xlsx", StoredFilePurpose.CoverageHandover),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(db.StoredFiles);
+    }
+
+    [Fact]
+    public async Task Accepts_Word_but_not_Excel_as_leave_evidence()
+    {
+        using var db = TestDb.Create();
+
+        var word = await Handler(db).Handle(
+            Command(Docx(), "note.docx", StoredFilePurpose.LeaveEvidence), CancellationToken.None);
+        var excel = await Handler(db).Handle(
+            Command(Xlsx(), "note.xlsx", StoredFilePurpose.LeaveEvidence), CancellationToken.None);
+
+        Assert.True(word.IsSuccess, word.Error);
+        Assert.False(excel.IsSuccess);
+    }
+
+    [Fact]
+    public async Task Rejects_an_Office_document_as_a_profile_image()
+    {
+        using var db = TestDb.Create();
+
+        var result = await Handler(db).Handle(
+            Command(Docx(), "avatar.docx", StoredFilePurpose.ProfileImage),
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(db.StoredFiles);
+    }
 
     // ── Signature validation ────────────────────────────────────────────────────
 

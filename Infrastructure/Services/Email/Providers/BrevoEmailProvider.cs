@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Infrastructure.Configuration;
@@ -135,6 +135,13 @@ public class BrevoEmailProvider : IEmailProvider
         if (message.Bcc?.Count > 0)
         {
             request.Bcc = message.Bcc.Select(c => new BrevoEmailContact { Name = c.Name, Email = c.Email }).ToList();
+        }
+
+        if (message.Attachments?.Count > 0)
+        {
+            request.Attachment = message.Attachments
+                .Select(a => new BrevoAttachment { Name = a.Name, Content = Convert.ToBase64String(a.Content) })
+                .ToList();
         }
 
         return request;
