@@ -69,14 +69,21 @@ public class GetChildLeaveEntitlements
 
             summary.LeaveTypeId = leaveType.Id;
             summary.LeaveTypeName = leaveType.Name;
+            summary.TotalWeeksFirstChild = leaveType.PerChildTotalWeeksFor(1);
+            summary.TotalWeeksSecondChild = leaveType.PerChildTotalWeeksFor(2);
+            summary.TotalWeeksThirdChildOnwards = leaveType.PerChildTotalWeeksFor(3);
 
             var children = await context.Children
                 .AsNoTracking()
                 .Where(c => c.EmployeeProfileId == profile.Id)
-                .OrderBy(c => c.DateOfBirth)
                 .ToListAsync(cancellationToken);
 
-            var totalDays = PerChildLeaveCalculationService.WeeksToBusinessDays(leaveType.PerChildTotalWeeks);
+            // Oldest first, the same order BirthOrder assigns, so the list reads
+            // 1, 2, 3 down the page.
+            children = children
+                .OrderBy(c => PerChildLeaveCalculationService.BirthOrder(children, c.Id))
+                .ToList();
+
             var yearCapDays = PerChildLeaveCalculationService.WeeksToBusinessDays(leaveType.PerChildWeeksPerYear);
 
             var startMonth = await LeaveYearQueries.GetLeaveYearStartMonthAsync(context, cancellationToken);
@@ -89,6 +96,12 @@ public class GetChildLeaveEntitlements
 
             foreach (var child in children)
             {
+                // The total is the leave type's figure for *this* child's position
+                // among their siblings — the same lookup the calculator enforces.
+                var birthOrder = PerChildLeaveCalculationService.BirthOrder(children, child.Id);
+                var totalDays = PerChildLeaveCalculationService.WeeksToBusinessDays(
+                    leaveType.PerChildTotalWeeksFor(birthOrder));
+
                 var approved = await PerChildLeaveBalanceCalculator.ApprovedLeaveForChildAsync(
                     context, child.Id, excludeLeaveId: null, cancellationToken);
 
@@ -129,6 +142,7 @@ public class GetChildLeaveEntitlements
                     IsEligible = isEligible,
                     LastEligibleDate = PerChildLeaveCalculationService.LastEligibleDate(
                         child.DateOfBirth, leaveType.ChildEligibleUntilAge),
+                    BirthOrder = birthOrder,
                     TotalDays = totalDays,
                     TotalWeeks = PerChildLeaveCalculationService.BusinessDaysToWeeks(totalDays),
                     UsedDays = usedDays,

@@ -20,6 +20,10 @@ public class LeaveTypeDto
     public int? MaxCarryoverDays { get; set; }
     public bool PerChildEntitlement { get; set; }
     public int PerChildTotalWeeks { get; set; }
+    /// <summary>Weeks for the second child; null means the same as the first.</summary>
+    public int? PerChildTotalWeeksSecondChild { get; set; }
+    /// <summary>Weeks from the third child onwards; null means the same as the second.</summary>
+    public int? PerChildTotalWeeksThirdChildOnwards { get; set; }
     public int PerChildWeeksPerYear { get; set; }
     public int ChildEligibleUntilAge { get; set; }
     public string AccrualNotes { get; set; } = string.Empty;

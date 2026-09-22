@@ -323,6 +323,10 @@ public class AppDbContext : IdentityDbContext<
             entity.Property(lt => lt.AvailableTo).HasDefaultValue(GenderAvailability.Both);
             entity.Property(lt => lt.PerChildEntitlement).HasDefaultValue(false);
             entity.Property(lt => lt.PerChildTotalWeeks).HasDefaultValue(0);
+            // Nullable on purpose: null is "the same as the first child", which is
+            // what every row predating the columns means. No default and no backfill.
+            entity.Property(lt => lt.PerChildTotalWeeksSecondChild);
+            entity.Property(lt => lt.PerChildTotalWeeksThirdChildOnwards);
             entity.Property(lt => lt.PerChildWeeksPerYear).HasDefaultValue(0);
             entity.Property(lt => lt.ChildEligibleUntilAge).HasDefaultValue(0);
         });

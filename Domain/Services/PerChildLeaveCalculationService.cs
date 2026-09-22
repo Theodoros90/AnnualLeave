@@ -60,6 +60,27 @@ public static class PerChildLeaveCalculationService
         => AgeOn(dateOfBirth, onDate) < maxAge;
 
     /// <summary>
+    /// Which of the employee's children this one is, oldest first: 1 for the
+    /// eldest. Decides which of the leave type's per-child totals applies
+    /// (<see cref="LeaveType.PerChildTotalWeeksFor"/>). Ties — twins — are broken
+    /// by when the row was declared and then by id, so the answer is stable from
+    /// one read to the next. Computed rather than stored, like the age: declaring
+    /// an older sibling later moves everybody's position, and a stored ordinal
+    /// would not follow. Returns 0 when the child is not among
+    /// <paramref name="siblings"/>.
+    /// </summary>
+    public static int BirthOrder(IEnumerable<Child> siblings, string childId)
+    {
+        var ordered = siblings
+            .OrderBy(c => c.DateOfBirth)
+            .ThenBy(c => c.CreatedAt)
+            .ThenBy(c => c.Id, StringComparer.Ordinal)
+            .ToList();
+        var index = ordered.FindIndex(c => c.Id == childId);
+        return index < 0 ? 0 : index + 1;
+    }
+
+    /// <summary>
     /// Floored at zero, mirroring
     /// <see cref="LeaveCalculationService.CalculateRemainingBalance"/> — including
     /// its decimal, so a half day taken against a child leaves that child's ledger

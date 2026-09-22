@@ -184,6 +184,31 @@ days and weekends and public holidays inside a request consume nothing.
 `UpsertLeaveTypeRequestValidator` refuses a type that sets both flags: counted in
 both, one day of leave would be charged twice.
 
+**The per-child total can differ by birth order.** `PerChildTotalWeeks` is the
+*first* child's figure; `PerChildTotalWeeksSecondChild` and
+`PerChildTotalWeeksThirdChildOnwards` are the second's and the third-and-later's.
+Cypriot maternity leave forced it — 22 weeks for the first child, 22 for the
+second, 26 from the third — which one "weeks per child" column could not say.
+Both later columns are **nullable, and null means "the same as the one before
+it"** (`LeaveType.PerChildTotalWeeksFor`, mirrored by `resolvePerChildTotals` in
+`client/src/lib/leave-allowance.ts`), so Paternity's `18 / null / null` reads 18
+for everyone and migration `AddPerChildTotalWeeksByBirthOrder` backfills
+nothing. A stored 0 reads the same way rather than as "nothing for a second
+child" — the validator refuses saving one, and the fallback is the direction that
+cannot silently refuse every request for a younger sibling. "Which child" is
+**birth order among the employee's declared children, oldest first**
+(`PerChildLeaveCalculationService.BirthOrder`, ties broken by `CreatedAt` then
+`Id`), computed on every read like the age and stored nowhere, so declaring an
+older sibling later moves everyone's position. `PerChildLeaveBalanceCalculator`
+enforces the figure for the request's child; `GetChildLeaveEntitlements` reports
+each child at their own total with a `BirthOrder`, plus the three resolved
+figures on the summary so My Leave can state the policy without a child at each
+position. The yearly cap is bounded by the **smallest** of the three. The dialog
+shows three pre-filled fields ("1st child", "2nd child", "3rd child onwards") and
+always sends numbers; the card's Enabled toggle sends the two columns back **as
+stored, null included** — flattening a null to 0 there would turn 22 / 22 / 26
+back into 22 for everyone.
+
 **`PerChildEntitlement` is not a free-standing setting — only Maternity and
 Paternity Leave may carry it** (`SystemLeaveTypes.PerChildEntitlementTypes`, also
 enforced by `UpsertLeaveTypeRequestValidator`). The ledger is keyed by

@@ -91,10 +91,27 @@ public class UpsertLeaveTypeRequestValidator : AbstractValidator<UpsertLeaveType
                 .InclusiveBetween(1, 260)
                 .WithMessage("Total per child must be between 1 and 260 weeks.");
 
+            /* The later children's totals are optional — null is "the same as the
+               first child" — but once given they follow the first one's range. A 0
+               is refused rather than read as "nothing for a second child": the
+               entity falls back on one anyway, so accepting it would save a figure
+               that means something other than what it says. */
+            RuleFor(x => x.PerChildTotalWeeksSecondChild)
+                .InclusiveBetween(1, 260)
+                .When(x => x.PerChildTotalWeeksSecondChild.HasValue)
+                .WithMessage("Total for the 2nd child must be between 1 and 260 weeks, or left blank to match the 1st.");
+
+            RuleFor(x => x.PerChildTotalWeeksThirdChildOnwards)
+                .InclusiveBetween(1, 260)
+                .When(x => x.PerChildTotalWeeksThirdChildOnwards.HasValue)
+                .WithMessage("Total from the 3rd child must be between 1 and 260 weeks, or left blank to match the 2nd.");
+
+            // Bounded by the smallest of the totals: a yearly cap above any child's
+            // lifetime total is a limit that child can never reach.
             RuleFor(x => x.PerChildWeeksPerYear)
                 .InclusiveBetween(1, 52)
                 .WithMessage("The yearly cap must be between 1 and 52 weeks.")
-                .LessThanOrEqualTo(x => x.PerChildTotalWeeks)
+                .LessThanOrEqualTo(x => SmallestPerChildTotal(x))
                 .WithMessage("The yearly cap cannot exceed the total per child.");
 
             RuleFor(x => x.ChildEligibleUntilAge)
@@ -107,5 +124,18 @@ public class UpsertLeaveTypeRequestValidator : AbstractValidator<UpsertLeaveType
                 .Equal(false)
                 .WithMessage("A per-child leave type keeps its own ledger and must not also affect the pooled balance.");
         });
+    }
+
+    /// <summary>
+    /// The lowest lifetime total any child could be given, with the same fallback
+    /// reading as <see cref="LeaveType.PerChildTotalWeeksFor"/>: a blank later
+    /// column is the one before it.
+    /// </summary>
+    private static int SmallestPerChildTotal(UpsertLeaveTypeRequest request)
+    {
+        var first = request.PerChildTotalWeeks;
+        var second = request.PerChildTotalWeeksSecondChild is > 0 ? request.PerChildTotalWeeksSecondChild.Value : first;
+        var third = request.PerChildTotalWeeksThirdChildOnwards is > 0 ? request.PerChildTotalWeeksThirdChildOnwards.Value : second;
+        return Math.Min(first, Math.Min(second, third));
     }
 }

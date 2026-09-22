@@ -34,6 +34,13 @@ export interface ChildLeaveEntitlement {
     ageYears: number
     isEligible: boolean
     lastEligibleDate: string
+    /**
+     * Which of the employee's children this is, oldest first: 1 for the eldest.
+     * It decides which of the leave type's totals `totalDays` was read from.
+     * Optional because an API predating it sends none.
+     */
+    birthOrder?: number
+    /** Lifetime entitlement for this child's birth order, in business days. */
     totalDays: number
     totalWeeks: number
     usedDays: number
@@ -56,6 +63,16 @@ export interface ChildLeaveEntitlementSummary {
     leaveTypeId: number | null
     leaveTypeName: string
     eligibleChildCount: number
+    /**
+     * The policy itself, resolved by the server (a blank later column reads as the
+     * one before it): weeks for the 1st child, the 2nd, and the 3rd onwards. Lets a
+     * screen say "22 weeks for the 1st and 2nd child, 26 from the 3rd" without a
+     * child at each position to quote it from. Optional because an API predating
+     * them sends none, in which case the first child's ledger row is the fallback.
+     */
+    totalWeeksFirstChild?: number
+    totalWeeksSecondChild?: number
+    totalWeeksThirdChildOnwards?: number
     totalRemainingDays: number
     thisYearCapDays: number
     thisYearRemainingDays: number

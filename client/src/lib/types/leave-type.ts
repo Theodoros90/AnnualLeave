@@ -27,8 +27,17 @@ export interface LeaveType {
     maxCarryoverDays: number | null
     /** When true this type's budget is per child, not per employee — see perChild* below. */
     perChildEntitlement: boolean
-    /** Lifetime weeks per eligible child. 18 for paternity leave. */
+    /** Lifetime weeks for the employee's first child. 18 for paternity leave. */
     perChildTotalWeeks: number
+    /**
+     * Lifetime weeks for the second child, and for the third and every later one.
+     * The total can differ by birth order — 22 / 22 / 26 weeks is the maternity
+     * policy that forced it. `null` (or absent, from an API predating the columns)
+     * means the same as the column before it, so `resolvePerChildTotals` in
+     * lib/leave-allowance.ts is how these are read; nothing should read them raw.
+     */
+    perChildTotalWeeksSecondChild?: number | null
+    perChildTotalWeeksThirdChildOnwards?: number | null
     /** Weeks per eligible child per leave year. 5 for paternity leave. */
     perChildWeeksPerYear: number
     /** The age at which a child stops being eligible. 15 for paternity leave. */

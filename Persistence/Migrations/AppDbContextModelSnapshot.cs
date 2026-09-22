@@ -512,6 +512,12 @@ namespace Persistence.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(0);
 
+                    b.Property<int?>("PerChildTotalWeeksSecondChild")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PerChildTotalWeeksThirdChildOnwards")
+                        .HasColumnType("int");
+
                     b.Property<int>("PerChildWeeksPerYear")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")

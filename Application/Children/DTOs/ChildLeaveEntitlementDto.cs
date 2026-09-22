@@ -15,7 +15,14 @@ public class ChildLeaveEntitlementDto
     public bool IsEligible { get; set; }
     public DateOnly LastEligibleDate { get; set; }
 
-    /// <summary>Lifetime entitlement in business days. 90 for 18 weeks.</summary>
+    /// <summary>
+    /// Which of the employee's children this is, oldest first: 1 for the eldest.
+    /// It decides which of the leave type's totals the figures below were read
+    /// from, and is computed on every read like the age.
+    /// </summary>
+    public int BirthOrder { get; set; }
+
+    /// <summary>Lifetime entitlement in business days, for this child's birth order. 90 for 18 weeks.</summary>
     public int TotalDays { get; set; }
     public decimal TotalWeeks { get; set; }
 
@@ -46,6 +53,16 @@ public class ChildLeaveEntitlementSummaryDto
     public string LeaveTypeName { get; set; } = string.Empty;
 
     public int EligibleChildCount { get; set; }
+
+    /* The policy itself, resolved — a blank later column reads as the one before
+       it — so a screen can say "22 weeks for the 1st and 2nd child, 26 from the
+       3rd" without a child at each position to quote it from. Read from here
+       rather than from the leave type's own columns because Maternity Leave is
+       seeded with them at 0 and the type-level figure would print "0 weeks". */
+    public int TotalWeeksFirstChild { get; set; }
+    public int TotalWeeksSecondChild { get; set; }
+    public int TotalWeeksThirdChildOnwards { get; set; }
+
     public decimal TotalRemainingDays { get; set; }
     public int ThisYearCapDays { get; set; }
     public decimal ThisYearRemainingDays { get; set; }

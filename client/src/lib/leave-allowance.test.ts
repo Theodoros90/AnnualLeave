@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { currentYearEntitlement, proRateFirstYearAllowance } from './leave-allowance'
+import {
+    currentYearEntitlement, describePerChildTotals, ordinal, proRateFirstYearAllowance, resolvePerChildTotals,
+} from './leave-allowance'
 
 /**
  * What one employee may take this leave year. The server computes it — pro-rated
@@ -66,5 +68,58 @@ describe('proRateFirstYearAllowance', () => {
 
     it('does not round an exact twelfth up', () => {
         expect(proRateFirstYearAllowance(24, '2026-07-01', 1, today)).toBe(12)
+    })
+})
+
+/**
+ * The per-child total by birth order, mirroring `LeaveType.PerChildTotalWeeksFor`
+ * on the server: a blank later column is the one before it. This is the only
+ * place the two nullable columns are read.
+ */
+describe('resolvePerChildTotals', () => {
+    it('reads a blank later column as the one before it', () => {
+        expect(resolvePerChildTotals({
+            perChildTotalWeeks: 18, perChildTotalWeeksSecondChild: null, perChildTotalWeeksThirdChildOnwards: null,
+        })).toEqual({ first: 18, second: 18, third: 18 })
+
+        expect(resolvePerChildTotals({
+            perChildTotalWeeks: 22, perChildTotalWeeksSecondChild: null, perChildTotalWeeksThirdChildOnwards: 26,
+        })).toEqual({ first: 22, second: 22, third: 26 })
+    })
+
+    it('treats a stored 0 and an absent column the same way as null', () => {
+        expect(resolvePerChildTotals({
+            perChildTotalWeeks: 20, perChildTotalWeeksSecondChild: 0, perChildTotalWeeksThirdChildOnwards: 0,
+        })).toEqual({ first: 20, second: 20, third: 20 })
+        expect(resolvePerChildTotals({ perChildTotalWeeks: 20 })).toEqual({ first: 20, second: 20, third: 20 })
+    })
+})
+
+describe('describePerChildTotals', () => {
+    it('is one figure when every child gets the same', () => {
+        expect(describePerChildTotals({ first: 18, second: 18, third: 18 })).toBe('18 weeks per child')
+        expect(describePerChildTotals({ first: 1, second: 1, third: 1 })).toBe('1 week per child')
+    })
+
+    it('states the maternity shape in one sentence', () => {
+        expect(describePerChildTotals({ first: 22, second: 22, third: 26 }))
+            .toBe('22 weeks for the 1st and 2nd child · 26 weeks from the 3rd')
+    })
+
+    it('states a step after the first child', () => {
+        expect(describePerChildTotals({ first: 18, second: 20, third: 20 }))
+            .toBe('18 weeks for the 1st child · 20 weeks from the 2nd')
+    })
+
+    it('lists all three when they all differ', () => {
+        expect(describePerChildTotals({ first: 18, second: 20, third: 26 }))
+            .toBe('18 / 20 / 26 weeks for the 1st / 2nd / 3rd+ child')
+    })
+})
+
+describe('ordinal', () => {
+    it('suffixes the way English does', () => {
+        expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal))
+            .toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '23rd', '101st', '111th'])
     })
 })

@@ -86,7 +86,11 @@ async function renderPanel() {
 it('quotes the per-child policy on the card instead of the meaningless 0 allowance', async () => {
     await renderPanel()
 
-    expect(screen.getByText('18 weeks per child · max 5 weeks/year')).toBeInTheDocument()
+    // The weeks take the headline slot the flat allowance would, with the unit
+    // beside them; the yearly cap is the line beneath.
+    expect(screen.getByText('18')).toBeInTheDocument()
+    expect(screen.getByText('weeks per child')).toBeInTheDocument()
+    expect(screen.getByText('Max 5 weeks per child per leave year')).toBeInTheDocument()
 })
 
 /*
@@ -103,7 +107,9 @@ it.each(['Maternity Leave', 'Paternity Leave'])('always shows the three per-chil
 
     fireEvent.click(screen.getByTitle('Edit'))
 
-    expect(screen.getByLabelText(/Total per child/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/1st child/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/2nd child/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/3rd child onwards/)).toBeInTheDocument()
     expect(screen.getByLabelText(/Max per year, per child/)).toBeInTheDocument()
     expect(screen.getByLabelText(/Eligible until age/)).toBeInTheDocument()
 
@@ -118,7 +124,8 @@ it('shows no per-child section at all for any other leave type', async () => {
 
     fireEvent.click(screen.getByTitle('Edit'))
 
-    expect(screen.queryByLabelText(/Total per child/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/1st child/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Total per child, by birth order')).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/Max per year, per child/)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/Eligible until age/)).not.toBeInTheDocument()
     expect(screen.queryByText('Per-child entitlement')).not.toBeInTheDocument()
@@ -170,7 +177,9 @@ it('falls back to a valid default rather than opening on a stored 0', async () =
 
     fireEvent.click(screen.getByTitle('Edit'))
 
-    expect(screen.getByLabelText(/Total per child/)).toHaveValue(18)
+    expect(screen.getByLabelText(/1st child/)).toHaveValue(18)
+    expect(screen.getByLabelText(/2nd child/)).toHaveValue(18)
+    expect(screen.getByLabelText(/3rd child onwards/)).toHaveValue(18)
     expect(screen.getByLabelText(/Max per year, per child/)).toHaveValue(5)
     expect(screen.getByLabelText(/Eligible until age/)).toHaveValue(15)
 })
@@ -678,4 +687,86 @@ it('sends the pro-rating switch unchanged when toggling a type from the card', a
         isActive: false,
         proRateFirstYear: true,
     })))
+})
+
+/*
+ * The lifetime total can differ by birth order -- 22 weeks for the 1st and 2nd
+ * child and 26 from the 3rd is the maternity policy that could not be entered
+ * with one "per child" field. The two later columns are nullable and null means
+ * "the same as the one before", so a stored 18 / null / null opens as 18, 18, 18
+ * and every field is pre-filled: the admin only changes the ones that differ.
+ */
+const MATERNITY_22_22_26 = leaveType({
+    id: 2,
+    name: 'Maternity Leave',
+    availableTo: 'Female',
+    perChildTotalWeeks: 22,
+    perChildTotalWeeksSecondChild: null,
+    perChildTotalWeeksThirdChildOnwards: 26,
+    perChildWeeksPerYear: 22,
+})
+
+it('opens the birth-order totals resolved, a blank later column reading as the one before it', async () => {
+    api.getLeaveTypes.mockResolvedValue([MATERNITY_22_22_26])
+    await renderPanel()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+
+    expect(screen.getByLabelText(/1st child/)).toHaveValue(22)
+    expect(screen.getByLabelText(/2nd child/)).toHaveValue(22)
+    expect(screen.getByLabelText(/3rd child onwards/)).toHaveValue(26)
+})
+
+it('saves a policy that differs by birth order', async () => {
+    api.getLeaveTypes.mockResolvedValue([leaveType({ name: 'Maternity Leave', availableTo: 'Female' })])
+    await renderPanel()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+    fireEvent.change(screen.getByLabelText(/1st child/), { target: { value: '22' } })
+    fireEvent.change(screen.getByLabelText(/2nd child/), { target: { value: '22' } })
+    fireEvent.change(screen.getByLabelText(/3rd child onwards/), { target: { value: '26' } })
+    fireEvent.change(screen.getByLabelText(/Max per year, per child/), { target: { value: '22' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledWith(PATERNITY.id, expect.objectContaining({
+        perChildEntitlement: true,
+        perChildTotalWeeks: 22,
+        perChildTotalWeeksSecondChild: 22,
+        perChildTotalWeeksThirdChildOnwards: 26,
+        perChildWeeksPerYear: 22,
+    })))
+})
+
+/*
+ * Same trap as the 18/5/15 case above: the card's switch is a full replace, so
+ * the two later columns have to travel back exactly as stored -- null included.
+ * Flattening a null to 0 or dropping it would silently turn 22 / 22 / 26 back
+ * into 22 for everyone the moment somebody flipped Enabled.
+ */
+it('sends the birth-order totals unchanged, null included, when toggling from the card', async () => {
+    api.getLeaveTypes.mockResolvedValue([MATERNITY_22_22_26])
+    await renderPanel()
+
+    fireEvent.click(screen.getAllByRole('switch')[0])
+
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledWith(MATERNITY_22_22_26.id, expect.objectContaining({
+        isActive: false,
+        perChildTotalWeeks: 22,
+        perChildTotalWeeksSecondChild: null,
+        perChildTotalWeeksThirdChildOnwards: 26,
+    })))
+})
+
+/*
+ * The headline is sized for a short figure, so a policy that differs by birth
+ * order shows its range there and spells itself out on the line beneath. The
+ * whole sentence used to sit in the 28px headline and wrapped over four lines.
+ */
+it('describes a policy that differs by birth order on the card', async () => {
+    api.getLeaveTypes.mockResolvedValue([MATERNITY_22_22_26])
+    await renderPanel()
+
+    expect(screen.getByText('22–26')).toBeInTheDocument()
+    expect(screen.getByText('weeks per child')).toBeInTheDocument()
+    expect(screen.getByText('22 weeks for the 1st and 2nd child · 26 weeks from the 3rd · max 22 weeks/year')).toBeInTheDocument()
 })

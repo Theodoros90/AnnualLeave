@@ -35,6 +35,8 @@ public class GetLeaveTypeList
                     MaxCarryoverDays = lt.MaxCarryoverDays,
                     PerChildEntitlement = lt.PerChildEntitlement,
                     PerChildTotalWeeks = lt.PerChildTotalWeeks,
+                    PerChildTotalWeeksSecondChild = lt.PerChildTotalWeeksSecondChild,
+                    PerChildTotalWeeksThirdChildOnwards = lt.PerChildTotalWeeksThirdChildOnwards,
                     PerChildWeeksPerYear = lt.PerChildWeeksPerYear,
                     ChildEligibleUntilAge = lt.ChildEligibleUntilAge,
                     AccrualNotes = lt.AccrualNotes,

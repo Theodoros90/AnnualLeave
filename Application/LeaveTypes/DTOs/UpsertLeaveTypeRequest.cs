@@ -41,8 +41,20 @@ public class UpsertLeaveTypeRequest
     /// </summary>
     public bool PerChildEntitlement { get; set; }
 
+    /// <summary>The first child's lifetime total, in weeks. 18 for paternity leave.</summary>
     [Range(0, 260)]
     public int PerChildTotalWeeks { get; set; }
+
+    /// <summary>
+    /// The second child's lifetime total, and the third-and-later one. Null keeps the
+    /// first child's figure, so a policy that is the same for every child sends
+    /// nothing here; one that is not — 22 / 22 / 26 weeks — sends all three.
+    /// </summary>
+    [Range(0, 260)]
+    public int? PerChildTotalWeeksSecondChild { get; set; }
+
+    [Range(0, 260)]
+    public int? PerChildTotalWeeksThirdChildOnwards { get; set; }
 
     [Range(0, 52)]
     public int PerChildWeeksPerYear { get; set; }
