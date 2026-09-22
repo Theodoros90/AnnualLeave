@@ -736,6 +736,16 @@ Two more traps worth knowing, both found the hard way:
   (`toggleActive` in `client/src/components/admin/LeaveTypesPanel.tsx`), not just
   `isActive`. Any new `LeaveType` column has to be added to that payload as well as
   the edit dialog's, or flipping the switch silently zeroes it.
+- **Every `Restrict` foreign key onto `User` has to be unpicked in `DeleteAdminUser`**
+  (`CleanupUserDependenciesAsync`) and in its mirror `DbInitializer.CleanupUserDependencies`,
+  or the delete dies in SQL Server with a raw `DbUpdateException` and the admin sees a
+  500. `StoredFile.UploadedById` was the one missed: it only bites once somebody has
+  uploaded something, so a developer box with untouched demo accounts deleted fine and
+  production could not delete anyone with a profile photo. The rule for a file is in
+  `ReleaseUploadedFilesAsync`: one only the leaver referred to goes with them, one a
+  surviving leave still points at is handed to the admin doing the deleting.
+  `DeleteUserStoredFileCleanupTests` runs the handler over SQLite so the constraint is
+  real; the in-memory provider would pass whatever the sweep forgot.
 
 ## Key Configuration
 
