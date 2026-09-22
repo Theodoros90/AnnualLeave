@@ -5,7 +5,7 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import {
-    getAnnualLeaves, getDepartments, getEmployeeProfiles, getHolidays,
+    getAnnualLeaves, getAppSettings, getDepartments, getEmployeeProfiles, getHolidays,
     getLeaveStatusHistories, getLeaveTypes, updateLeaveStatus,
 } from '../../lib/api'
 import { isAwaitingDocument } from '../../lib/attachment-policy'
@@ -118,6 +118,9 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
     const { data: leaves = [], isLoading } = useQuery({ queryKey: ['annualLeaves'], queryFn: getAnnualLeaves })
     const { data: leaveTypes = [] } = useQuery({ queryKey: ['leaveTypes'], queryFn: getLeaveTypes })
     const { data: profiles = [] } = useQuery({ queryKey: ['employeeProfiles'], queryFn: getEmployeeProfiles })
+    // The leave-year start month decides which leave year a first-year joiner's
+    // start date falls in, for a type that pro-rates its allowance.
+    const { data: settings } = useQuery({ queryKey: ['appSettings'], queryFn: getAppSettings })
     const { data: departmentList = [] } = useQuery({ queryKey: ['departments'], queryFn: getDepartments })
     const { data: histories = [] } = useQuery({ queryKey: ['leaveStatusHistories'], queryFn: getLeaveStatusHistories })
     const { data: holidays = [] } = useQuery({
@@ -571,6 +574,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
                     leave={l}
                     leaveTypeById={leaveTypeById}
                     profile={profileByUserId.get(l.employeeId)}
+                    leaveYearStartMonth={settings?.leaveYearStartMonth ?? 1}
                     isExpanded={expanded.has(l.id)}
                     isSelected={selected.has(l.id)}
                     isUrgent={isUrgent(l)}
@@ -597,6 +601,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
                     leave={l}
                     leaveTypeById={leaveTypeById}
                     profile={profileByUserId.get(l.employeeId)}
+                    leaveYearStartMonth={settings?.leaveYearStartMonth ?? 1}
                     isExpanded={expanded.has(l.id)}
                     isSelected={false}
                     isUrgent={false}
@@ -773,13 +778,14 @@ function SectionHeader({ title, subtitle, meta }: { title: string; subtitle?: st
 }
 
 function LeaveRow({
-    leave, leaveTypeById, profile, isExpanded, isSelected, isUrgent,
+    leave, leaveTypeById, profile, leaveYearStartMonth, isExpanded, isSelected, isUrgent,
     conflicts, history, lastHistory, leaves,
     onToggleExpand, onToggleSelect, onApprove, onReject, disabled, hideCheckbox,
 }: {
     leave: AnnualLeave
     leaveTypeById: Map<number, LeaveType>
     profile?: EmployeeProfile
+    leaveYearStartMonth: number
     isExpanded: boolean
     isSelected: boolean
     isUrgent: boolean
@@ -838,7 +844,13 @@ function LeaveRow({
             .reduce((sum, l) => sum + l.totalDays, 0)
     }, [leaves, leave.employeeId, leave.leaveTypeId])
 
-    const entitlement = allowanceForRequest(leaveType, profile)
+    // For a type that pro-rates its allowance, this year's figure for a first-year
+    // joiner; the server does not enforce non-balance allowances, so the mirror in
+    // lib/leave-allowance.ts is what scales it here.
+    const entitlement = allowanceForRequest(leaveType, profile, {
+        employmentStartDate: profile?.employmentStartDate,
+        leaveYearStartMonth,
+    })
     const balAfter = entitlement - usedThisYear - (leave.status === 'Pending' ? leave.totalDays : 0)
     const balPct = entitlement > 0 ? Math.min(100, (usedThisYear / entitlement) * 100) : 0
     const fillColor = balPct >= 95 ? 'error.main' : balPct >= 80 ? 'warning.main' : 'success.main'
@@ -864,8 +876,15 @@ function LeaveRow({
             ? `${typeName ?? 'This leave type'} has no allowance on record`
             : [
                 `${typeName ?? 'Leave'}: ${usedThisYear} of ${entitlement} ${allowanceUnit} used this year`,
+                // A figure below the type's own allowance is one of two things: this
+                // year's pro-rating for a first-year joiner, or (for annual leave on a
+                // database that predates "leave is configured once") a per-person
+                // entitlement. Say which, since an admin reconciling the two pages
+                // needs to know whether the difference expires at year end.
                 entitlement !== typeAllowance
-                    ? `Leave Types says ${typeAllowance} ${allowanceUnit} — overridden for this employee`
+                    ? leaveType?.proRateFirstYear
+                        ? `Pro-rated for the first year from ${typeAllowance} ${allowanceUnit}`
+                        : `Leave Types says ${typeAllowance} ${allowanceUnit} — overridden for this employee`
                     : null,
                 leaveType && !leaveType.affectsBalance
                     ? 'Tracked separately — not deducted from the annual balance'

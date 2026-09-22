@@ -1,8 +1,10 @@
 using Application.AdminUsers.DTOs;
 using Application.AdminUsers.Support;
+using Application.AnnualLeaves.Commands;
 using Application.Core;
 using Domain;
 using Domain.Interfaces;
+using Domain.Services;
 using MediatR;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -87,13 +89,19 @@ public class CreateAdminUser
                 DepartmentId = request.User.DepartmentId,
                 ManagerId = string.IsNullOrWhiteSpace(request.User.ManagerId) ? null : request.User.ManagerId,
                 JobTitle = string.IsNullOrWhiteSpace(request.User.JobTitle) ? null : request.User.JobTitle.Trim(),
-                // Recorded, not acted on: the entitlement below is stamped from the
-                // leave type's allowance in full, and is deliberately not pro-rated
-                // for somebody joining mid-year.
+                // The entitlement below is stamped from the leave type's allowance in
+                // full and is never pro-rated — every year after this one is a full
+                // year. Only the *balance* for the year they join in is, and only when
+                // the balance type asks for it (LeaveType.ProRateFirstYear).
                 EmploymentStartDate = request.User.EmploymentStartDate,
                 AnnualLeaveEntitlement = entitlement,
-                LeaveBalance = entitlement,
             };
+            var startMonth = await LeaveYearQueries.GetLeaveYearStartMonthAsync(context, cancellationToken);
+            employeeProfile.LeaveBalance = AnnualLeaveBalanceCalculator.EntitlementForLeaveYear(
+                employeeProfile,
+                LeaveCalculationService.GetLeaveYearKey(DateTime.UtcNow, startMonth),
+                startMonth,
+                await AnnualLeaveBalanceCalculator.ProRatesFirstYearAsync(context, cancellationToken));
 
             context.EmployeeProfiles.Add(employeeProfile);
             await context.SaveChangesAsync(cancellationToken);

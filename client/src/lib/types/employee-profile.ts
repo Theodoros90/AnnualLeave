@@ -10,6 +10,17 @@ export interface EmployeeProfile {
     departmentId: number | null
     managerId: string | null
     annualLeaveEntitlement: number
+    /**
+     * What this employee may take in the current leave year. The stored
+     * `annualLeaveEntitlement` except for somebody who joined during this leave
+     * year while the balance type pro-rates the first year, when it is the scaled
+     * figure. Computed by the server on every read, never stored, so next year
+     * reads whole on its own. The employee pages quote this through
+     * `currentYearEntitlement()` in `lib/leave-allowance.ts`; the carryover preview
+     * keeps the stored one, next year being a full year. Optional because an API
+     * built before the field sends none, which has to read as the stored figure.
+     */
+    currentYearEntitlement?: number
     leaveBalance: number
     jobTitle: string | null
     /**

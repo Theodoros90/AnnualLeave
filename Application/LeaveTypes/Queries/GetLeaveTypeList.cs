@@ -48,6 +48,7 @@ public class GetLeaveTypeList
                        that Both back and quietly reopened it. */
                     AvailableTo = lt.AvailableTo,
                     MinServiceMonths = lt.MinServiceMonths,
+                    ProRateFirstYear = lt.ProRateFirstYear,
                 })
                 .ToListAsync(cancellationToken);
         }

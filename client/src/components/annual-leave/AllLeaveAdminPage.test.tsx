@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AnnualLeave, EmployeeProfile, UserInfo } from '../../lib/types'
+import { proRateFirstYearAllowance } from '../../lib/leave-allowance'
 import AllLeaveAdminPage from './AllLeaveAdminPage'
 
 // The page states "how many requests are pending" in four places at once: the
@@ -501,5 +502,40 @@ describe('AllLeaveAdminPage — a required document holds approval', () => {
         const approvedIds = api.updateLeaveStatus.mock.calls.map(([id]) => id)
         expect(approvedIds).not.toContain(UNDOCUMENTED.id)
         expect(approvedIds).toEqual(expect.arrayContaining(PENDING.map((l) => l.id)))
+    })
+})
+
+/**
+ * A non-balance type with `proRateFirstYear` on is measured against its allowance
+ * scaled for a first-year joiner — the server never enforces these allowances, so
+ * the row is where the switch shows. The hover says the figure is pro-rated rather
+ * than calling it an override, which is a different thing (an entitlement set per
+ * person, which no longer exists).
+ */
+describe('AllLeaveAdminPage pro-rated first year', () => {
+    it("measures a pro-rated non-balance type against this year's scaled allowance", async () => {
+        const now = new Date()
+        const firstOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+        api.getLeaveTypes.mockResolvedValue([ANNUAL_LEAVE_TYPE, { ...SICK_LEAVE_TYPE, proRateFirstYear: true }] as never)
+        api.getEmployeeProfiles.mockResolvedValue([
+            ...PROFILES.filter((p) => p.userId !== 'emp-2a'),
+            profile({ id: 'pr1', userId: 'emp-2a', displayName: 'Employee 2A', departmentId: FINANCE.id, employmentStartDate: firstOfMonth }),
+        ])
+        api.getAnnualLeaves.mockResolvedValue([
+            leave({
+                id: 's3', employeeId: 'emp-2a', employeeName: 'Employee 2A',
+                leaveTypeId: SICK_LEAVE_TYPE.id,
+                startDate: sameYear(11, 3), endDate: sameYear(11, 5), totalDays: 3,
+            }),
+        ])
+        await renderPage()
+
+        // Whatever month the suite runs in, the helper says what 10 days pro-rates to.
+        const expected = proRateFirstYearAllowance(10, firstOfMonth, APP_SETTINGS.leaveYearStartMonth)
+        const cell = screen.getByText(`0/${expected} used`).parentElement!
+        expect(cell.getAttribute('title')).toBe(
+            `Sick Leave: 0 of ${expected} days/year used this year · `
+            + `Pro-rated for the first year from 10 days/year · `
+            + 'Tracked separately — not deducted from the annual balance')
     })
 })

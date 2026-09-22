@@ -259,6 +259,9 @@ function LeaveTypesPanel() {
             // the moment somebody flipped Enabled. `?? 0` for a response predating
             // the column, which the server reads as no minimum anyway.
             minServiceMonths: t.minServiceMonths ?? 0,
+            // Left out, flipping Enabled would quietly turn pro-rating off for the
+            // whole company. `?? false` for a response predating the column.
+            proRateFirstYear: t.proRateFirstYear ?? false,
         }
         updateMutation.mutate({ id: t.id, payload })
     }
@@ -624,6 +627,13 @@ function LeaveTypeCard({ derived, onEdit, onToggle, onDelete }: {
                         label={<>Available after <strong>{t.minServiceMonths} {t.minServiceMonths === 1 ? 'month' : 'months'} of service</strong></>}
                     />
                 )}
+                {t.proRateFirstYear && !t.perChildEntitlement && (
+                    <Rule
+                        ok={true}
+                        glyph="📐"
+                        label={<>First year <strong>pro-rated from the start date</strong> · remaining months ÷ 12</>}
+                    />
+                )}
             </Box>
 
             {/* Who the type is offered to: the enforced answer, resolved the same
@@ -893,6 +903,11 @@ function LeaveTypeFormDialog(props: {
     const [minNoticeDays, setMinNoticeDays] = useState<number>(i?.minNoticeDays ?? 0)
     const [maxConsecutiveDays, setMaxConsecutiveDays] = useState<number>(i?.maxConsecutiveDays ?? 0)
     const [minServiceMonths, setMinServiceMonths] = useState<number>(i?.minServiceMonths ?? 0)
+    /* Scales this type's own allowance for a mid-year joiner. Enforced by the
+       server for the balance type and mirrored on the balance rows for every
+       other; a per-child type has no yearly allowance to scale, the server refuses
+       the switch on one, and the dialog hides it. */
+    const [proRateFirstYear, setProRateFirstYear] = useState(i?.proRateFirstYear ?? false)
     const [halfDayAllowed, setHalfDayAllowed] = useState(i?.halfDayAllowed ?? false)
     /* Who the type is offered to. Read-only on the three built-in types, where it
        is what the type is rather than a setting (Annual Leave for everyone,
@@ -958,6 +973,7 @@ function LeaveTypeFormDialog(props: {
             // not the only thing standing between a stale row and a refusal.
             availableTo: fixedAvailableTo ?? availableTo,
             minServiceMonths: Number(minServiceMonths) || 0,
+            proRateFirstYear: perChildEntitlement ? false : proRateFirstYear,
         })
     }
 
@@ -1189,6 +1205,17 @@ function LeaveTypeFormDialog(props: {
                                 </Box>
                             )}
                         </Box>
+                        {!perChildEntitlement && (
+                            <Box>
+                                <FormControlLabel
+                                    control={<Switch checked={proRateFirstYear} onChange={(e) => setProRateFirstYear(e.target.checked)} />}
+                                    label="Pro-rate the first year"
+                                />
+                                <Box sx={{ fontSize: 11, color: 'text.secondary', ml: '32px', mt: '-4px' }}>
+                                    A mid-year joiner gets remaining months ÷ 12 of the allowance, rounded up to the next half day.
+                                </Box>
+                            </Box>
+                        )}
                         <FormControlLabel
                             control={<Switch checked={halfDayAllowed} onChange={(e) => setHalfDayAllowed(e.target.checked)} />}
                             label="Half-day allowed"

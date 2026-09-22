@@ -104,5 +104,27 @@ public class LeaveType
        they started today. */
     public int MinServiceMonths { get; set; }
 
+    /* Whether somebody joining part-way through a leave year gets that year's
+       allowance in proportion — remaining months over twelve, the joining month
+       counted in full, rounded up to the next half day
+       (LeaveCalculationService.ProRateFirstYearEntitlement). A September start on 23
+       days is 8, not 23. Any type with a flat allowance may set it, but only the
+       type flagged AffectsBalance is *enforced*: its allowance is what
+       EmployeeProfile.AnnualLeaveEntitlement is stamped from and what the balance
+       check measures against. On every other type the switch scales the figure the
+       client's balance rows quote (client/src/lib/leave-allowance.ts mirrors the
+       arithmetic for those), which is all a non-balance allowance ever was — the
+       server never refuses an eleventh sick day. A per-child type has no yearly
+       allowance to scale and the validator refuses the switch on one.
+
+       Nothing per person is written when this is on. The stored entitlement stays
+       the full allowance and the pro-rating is applied by AnnualLeaveBalanceCalculator
+       to the one leave year the start date falls in — which is why the second year
+       is full without a year-end job, and why flipping this switch is safe on a
+       database full of existing profiles: it changes what is enforced, not what is
+       stored. Off by default so every row predating the column keeps behaving as
+       it did. */
+    public bool ProRateFirstYear { get; set; }
+
     public ICollection<AnnualLeave> AnnualLeaves { get; set; } = new List<AnnualLeave>();
 }

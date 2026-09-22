@@ -416,3 +416,29 @@ describe('MyLeavePage pending requests', () => {
         expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
     })
 })
+
+/**
+ * The "of N annual leave" figure is what the employee may take *this* year, which
+ * for somebody who joined part-way through it — while the balance type pro-rates
+ * the first year — is less than the stored entitlement. The server works it out
+ * (`EmployeeProfileDto.currentYearEntitlement`), so the page quotes that rather
+ * than the stored 23 the API will not approve up to.
+ */
+describe('MyLeavePage pro-rated first year', () => {
+    it('quotes this year\'s pro-rated entitlement rather than the stored one', async () => {
+        api.getEmployeeProfiles.mockResolvedValue([{ ...PROFILE, annualLeaveEntitlement: 23, currentYearEntitlement: 8 }])
+        await renderPage()
+
+        const tile = screen.getByText('🌴 Days remaining').parentElement as HTMLElement
+        await waitFor(() => expect(tile.textContent).toContain('of 8 annual leave'))
+        expect(tile.textContent).toContain('8')
+    })
+
+    it('falls back to the stored entitlement when the API sends no current-year figure', async () => {
+        api.getEmployeeProfiles.mockResolvedValue([{ ...PROFILE, annualLeaveEntitlement: 23 }])
+        await renderPage()
+
+        const tile = screen.getByText('🌴 Days remaining').parentElement as HTMLElement
+        await waitFor(() => expect(tile.textContent).toContain('of 23 annual leave'))
+    })
+})

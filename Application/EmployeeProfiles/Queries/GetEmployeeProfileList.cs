@@ -1,5 +1,7 @@
+using Application.AnnualLeaves.Commands;
 using Application.EmployeeProfiles.DTOs;
 using Application.Core;
+using Domain.Services;
 using Domain;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -48,24 +50,40 @@ public class GetEmployeeProfileList
                 query = query.Where(ep => ep.UserId == request.RequestingUserId);
             }
 
-            return await query
+            var profiles = await query
                 .OrderBy(ep => ep.UserId)
-                .Select(ep => new EmployeeProfileDto
+                .Select(ep => new
                 {
-                    Id = ep.Id,
-                    UserId = ep.UserId,
+                    Profile = ep,
                     DisplayName = ep.User != null
                         ? (ep.User.DisplayName ?? ep.User.UserName ?? ep.UserId)
                         : ep.UserId,
-                    DepartmentId = ep.DepartmentId,
-                    ManagerId = ep.ManagerId,
-                    AnnualLeaveEntitlement = ep.AnnualLeaveEntitlement,
-                    LeaveBalance = ep.LeaveBalance,
-                    JobTitle = ep.JobTitle,
-                    EmploymentStartDate = ep.EmploymentStartDate,
-                    CreatedAt = ep.CreatedAt
                 })
                 .ToListAsync(cancellationToken);
+
+            // This year's figure is a projection over the start date and the balance
+            // type's switch, worked out here rather than stored — see the DTO.
+            var startMonth = await LeaveYearQueries.GetLeaveYearStartMonthAsync(context, cancellationToken);
+            var currentLeaveYearKey = LeaveCalculationService.GetLeaveYearKey(DateTime.UtcNow, startMonth);
+            var proRateFirstYear = await AnnualLeaveBalanceCalculator.ProRatesFirstYearAsync(context, cancellationToken);
+
+            return profiles
+                .Select(row => new EmployeeProfileDto
+                {
+                    Id = row.Profile.Id,
+                    UserId = row.Profile.UserId,
+                    DisplayName = row.DisplayName,
+                    DepartmentId = row.Profile.DepartmentId,
+                    ManagerId = row.Profile.ManagerId,
+                    AnnualLeaveEntitlement = row.Profile.AnnualLeaveEntitlement,
+                    CurrentYearEntitlement = AnnualLeaveBalanceCalculator.EntitlementForLeaveYear(
+                        row.Profile, currentLeaveYearKey, startMonth, proRateFirstYear),
+                    LeaveBalance = row.Profile.LeaveBalance,
+                    JobTitle = row.Profile.JobTitle,
+                    EmploymentStartDate = row.Profile.EmploymentStartDate,
+                    CreatedAt = row.Profile.CreatedAt
+                })
+                .ToList();
         }
     }
 }

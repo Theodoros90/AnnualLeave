@@ -20,6 +20,7 @@ import {
     getCompanyAttendance, getDepartments, getEmployeeProfiles, getLeaveTypes,
     getMyTimesheets, getTeamAttendance, getTeamAttendanceHistory, getTimesheets, rejectTimesheet, updateLeaveStatus,
 } from '../../lib/api'
+import { currentYearEntitlement } from '../../lib/leave-allowance'
 import { activityIcon } from '../../lib/hooks/useAttendance'
 import { useOfferedLeaveTypes } from '../../lib/hooks'
 import { buildLeaveBalanceRows, type LeaveBalanceRow } from '../../lib/leave-balance-rows'
@@ -151,7 +152,9 @@ function EmployeeDashboard({ user }: { user: UserInfo }) {
     const isLoading = isLoadingLeaves || isLoadingTs
 
     const myProfile = profiles.find((p) => p.userId === user.id)
-    const entitlement = myProfile?.annualLeaveEntitlement ?? 0
+    // This year's figure, pro-rated by the server for a mid-year joiner when the
+    // balance type asks for it — what the API will actually approve up to.
+    const entitlement = currentYearEntitlement(myProfile)
     const leaveTypeById = useMemo(() => new Map(leaveTypes.map((lt) => [lt.id, lt])), [leaveTypes])
 
     const currentYear = today.getFullYear()
@@ -172,8 +175,9 @@ function EmployeeDashboard({ user }: { user: UserInfo }) {
             approvedThisYear: myApprovedThisYear,
             entitlement,
             ledgerByTypeId,
+            firstYear: { employmentStartDate: myProfile?.employmentStartDate, leaveYearStartMonth: settings?.leaveYearStartMonth ?? 1 },
         }),
-        [offeredLeaveTypes, myApprovedThisYear, entitlement, ledgerByTypeId],
+        [offeredLeaveTypes, myApprovedThisYear, entitlement, ledgerByTypeId, myProfile?.employmentStartDate, settings?.leaveYearStartMonth],
     )
 
     const balanceUsed = useMemo(() =>

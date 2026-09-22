@@ -25,6 +25,8 @@ export interface UpsertLeaveTypeRequest {
     availableTo: GenderAvailability
     /** Months of service before the type is offered; 0 is no minimum. */
     minServiceMonths: number
+    /** Pro-rate a mid-year joiner's first leave year. Refused unless `affectsBalance`. */
+    proRateFirstYear: boolean
 }
 
 export async function getLeaveTypes() {

@@ -12,6 +12,7 @@ import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
+import { currentYearEntitlement } from '../../lib/leave-allowance'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import { iconForLeaveType } from './leave-icons'
 import {
@@ -158,7 +159,9 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
     }, [myLeaves])
 
     const myProfile = profiles.find((p) => p.userId === user.id)
-    const entitlement = myProfile?.annualLeaveEntitlement ?? 0
+    // This year's figure, pro-rated by the server for a mid-year joiner when the
+    // balance type asks for it — what the API will actually approve up to.
+    const entitlement = currentYearEntitlement(myProfile)
 
     const currentYear = new Date().getFullYear()
     const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
@@ -207,8 +210,9 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
             approvedThisYear,
             entitlement,
             ledgerByTypeId,
+            firstYear: { employmentStartDate: myProfile?.employmentStartDate, leaveYearStartMonth: settings?.leaveYearStartMonth ?? 1 },
         }),
-        [offeredLeaveTypes, approvedThisYear, entitlement, ledgerByTypeId],
+        [offeredLeaveTypes, approvedThisYear, entitlement, ledgerByTypeId, myProfile?.employmentStartDate, settings?.leaveYearStartMonth],
     )
 
     // Year usage timeline — aggregate working-day count per month (current calendar year)
