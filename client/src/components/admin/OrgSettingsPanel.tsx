@@ -22,9 +22,9 @@ import { SweetAlert } from '../ui'
 type ReminderMeta = { id: string; emoji: string; name: string; desc: string; tail: string }
 
 const REMINDERS_META: ReminderMeta[] = [
-    { id: 'pending-approvals', emoji: '⏳', name: 'Pending Approvals', desc: 'Get notified when leave or timesheets are awaiting review.', tail: "you'll receive a summary of pending leave requests and timesheets." },
+    { id: 'pending-approvals', emoji: '⏳', name: 'Pending Approvals', desc: 'Remind managers when leave or timesheets are awaiting their review.', tail: "each manager receives a summary of their department's pending leave requests and timesheets." },
     { id: 'late-submissions', emoji: '📋', name: 'Late Timesheet Submissions', desc: 'Remind team members to submit their timesheets.', tail: "team members who haven't submitted their timesheet will be reminded." },
-    { id: 'team-alerts', emoji: '👥', name: 'Team Alerts', desc: 'Notifications about absences, conflicts, or team issues.', tail: "you'll see alerts for team members not checked in, conflicts, or other issues." },
+    { id: 'daily-attendance-report', emoji: '📋', name: 'Daily Attendance Report', desc: "Each working morning, email admins a report on the previous working day: late check-ins, missed check-ins and check-outs, overtime, unsubmitted timesheets and who was on leave.", tail: "admins receive the previous working day's attendance report for all staff." },
     { id: 'low-balance', emoji: '🔔', name: 'Low Leave Balance', desc: 'Alert employees when their leave balance is running low.', tail: 'employees with fewer than 5 days remaining will be notified.' },
     { id: 'department-digest', emoji: '📊', name: 'Department Digest', desc: 'Weekly summary of department metrics and trends.', tail: "department managers receive a digest of their team's metrics." },
     { id: 'birthday-reminder', emoji: '🎂', name: 'Birthday Reminders', desc: 'Notify the team about upcoming employee birthdays.', tail: "you'll see any team members with birthdays that week." },

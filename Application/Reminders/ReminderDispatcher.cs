@@ -1,6 +1,8 @@
 using System.Net;
+using Application.Attendance.Support;
 using Domain;
 using Domain.Interfaces;
+using Domain.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Persistence;
@@ -13,12 +15,15 @@ namespace Application.Reminders;
 // reminder's recipients + message when asked.
 //
 // Currently implements the reminders backed by real data:
-//   • pending-approvals — managers/admins with leave/timesheets awaiting review
+//   • pending-approvals — managers with leave/timesheets awaiting review in their department (never Admins)
 //   • late-submissions  — employees sitting on an un-submitted (Draft) timesheet
 //   • low-balance       — employees whose remaining leave is below the threshold
 //   • birthday-reminder — admins/managers told of upcoming employee birthdays
-//   • check-in          — employees who have not yet checked in today
-//   • check-out         — employees still checked in (no check-out) today
+//   • check-in          — employees who have not yet checked in today (never Admins)
+//   • check-out         — employees still checked in (no check-out) today (never Admins)
+//   • daily-attendance-report — admins told, each working morning, who was late,
+//                         absent, still checked in, over hours, behind on a
+//                         timesheet or on leave the previous working day
 // Other ids are accepted but logged as not-implemented rather than failing.
 public class ReminderDispatcher(
     AppDbContext context,
@@ -37,6 +42,7 @@ public class ReminderDispatcher(
     public const string BirthdayReminder = "birthday-reminder";
     public const string CheckInReminder = "check-in";
     public const string CheckOutReminder = "check-out";
+    public const string DailyAttendanceReport = "daily-attendance-report";
 
     // Convenience overload (used by the on-demand test endpoint): loads settings.
     public async Task DispatchAsync(string reminderId, CancellationToken cancellationToken)
@@ -68,6 +74,9 @@ public class ReminderDispatcher(
             case CheckOutReminder:
                 await CheckOutReminderAsync(settings, cancellationToken);
                 break;
+            case DailyAttendanceReport:
+                await DailyAttendanceReportAsync(settings, cancellationToken);
+                break;
             default:
                 logger.LogInformation("Reminder '{Id}' has no dispatcher implementation; skipping.", reminderId);
                 break;
@@ -96,23 +105,19 @@ public class ReminderDispatcher(
             return;
         }
 
-        var admins = await GetUsersInRoleAsync(AppRoles.Admin, ct);
         var managers = await GetManagersWithDepartmentAsync(ct);
 
         var sent = 0;
         if (settings.EmailNotificationsEnabled)
         {
-            // Admins see the whole organisation.
-            foreach (var admin in admins)
-            {
-                if (await SendPendingSummaryAsync(admin.Email, admin.DisplayName, totalLeave, totalTimesheets, "the organisation", ct))
-                    sent++;
-            }
-
-            // Managers see only their own department's queue.
+            // Managers only, each seeing their own department's queue. Admins used
+            // to get an organisation-wide copy as well, but the people who action
+            // a submission are the managers, so that copy was a daily email about
+            // queues that were not the Admin's to clear. An Admin holds no
+            // department (the validators refuse one), so the join below cannot
+            // pick one up as a manager either.
             foreach (var mgr in managers)
             {
-                if (admins.Any(a => a.UserId == mgr.UserId)) continue; // don't double-email admin-managers
                 var deptLeave = pendingLeave.Count(d => d == mgr.DepartmentId);
                 var deptTimesheets = pendingTimesheets.Count(d => d == mgr.DepartmentId);
                 if (deptLeave == 0 && deptTimesheets == 0) continue;
@@ -401,13 +406,269 @@ public class ReminderDispatcher(
         logger.LogInformation("check-out: dispatched. Emails sent: {Sent}.", sent);
     }
 
+    // ── daily-attendance-report ──────────────────────────────────────────────
+    // Every Admin, each working morning, about the previous working day: who
+    // checked in late, who never checked in, who never checked out, who worked
+    // overtime, whose timesheet for the latest week past its deadline is still
+    // unsubmitted, and who was on leave. Nothing goes out on a non-working morning, and Monday's
+    // report covers Friday. Admins and deactivated accounts appear in none of
+    // the lists (AttendanceDay.ExcludeAdmins; a leaver is not expected in),
+    // matching the check-in reminders and the attendance dashboards.
+    //
+    // "Late" is the first check-in after WorkingHoursStart, compared in the
+    // org's TimeZoneId — the first consumer that setting has had. Attendance
+    // events are stored in UTC, so without the conversion 09:00 would mean 09:00
+    // UTC, two or three hours into a Cypriot morning. "Overtime" is worked time
+    // (AttendanceDayStateCalculator, so breaks are excluded) beyond the working
+    // day WorkingHoursStart..WorkingHoursEnd describes, and is judged only on a
+    // day that was checked out of — an open day would be measured to "now", the
+    // next morning. The company dashboard's flat "over 10 hours" is a different
+    // yardstick; this one follows the settings, as the late rule does.
+    private async Task DailyAttendanceReportAsync(AppSettings settings, CancellationToken ct)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (!await IsWorkingDayAsync(settings, today, ct))
+        {
+            logger.LogInformation("daily-attendance-report: today is not a working day; nothing sent.");
+            return;
+        }
+
+        var reportDay = await PreviousWorkingDayAsync(settings, today, ct);
+        if (reportDay is null)
+        {
+            logger.LogInformation("daily-attendance-report: no working day found in the preceding two weeks; nothing sent.");
+            return;
+        }
+
+        var admins = await GetUsersInRoleAsync(AppRoles.Admin, ct);
+        if (admins.Count == 0)
+        {
+            logger.LogInformation("daily-attendance-report: no admin with an email address; nothing sent.");
+            return;
+        }
+
+        var report = await BuildDailyAttendanceReportAsync(settings, reportDay.Value, ct);
+
+        var sent = 0;
+        if (settings.EmailNotificationsEnabled)
+        {
+            var subject = $"Jenus People: attendance report for {report.Day:ddd dd MMM yyyy}";
+            foreach (var admin in admins)
+            {
+                var html = RenderDailyReportHtml(admin.DisplayName ?? admin.Email, report);
+                var text = RenderDailyReportText(admin.DisplayName ?? admin.Email, report);
+                if (await SendEmailAsync(admin.Email, subject, html, text, ct))
+                    sent++;
+            }
+        }
+        else
+        {
+            logger.LogInformation("daily-attendance-report: email notifications disabled; skipping emails.");
+        }
+
+        logger.LogInformation("daily-attendance-report: dispatched for {Day}. Emails sent: {Sent}.", report.Day, sent);
+    }
+
+    private sealed record DailyReport(
+        DateOnly Day,
+        DateOnly TimesheetWeekStart,
+        List<string> Late,
+        List<string> NotCheckedIn,
+        List<string> NotCheckedOut,
+        List<string> Overtime,
+        List<string> TimesheetNotSubmitted,
+        List<string> OnLeave);
+
+    private async Task<DailyReport> BuildDailyAttendanceReportAsync(AppSettings settings, DateOnly day, CancellationToken ct)
+    {
+        var people = await AttendanceDay.ExcludeAdmins(context.EmployeeProfiles)
+            .Where(p => p.User != null && p.User.IsActive)
+            .OrderBy(p => p.User!.DisplayName)
+            .Select(p => new
+            {
+                ProfileId = p.Id,
+                p.UserId,
+                p.User!.DisplayName,
+                p.User.Email,
+                Department = p.Department != null ? p.Department.Name : null,
+            })
+            .ToListAsync(ct);
+
+        var dayStart = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var dayEnd = dayStart.AddDays(1);
+        var profileIds = people.Select(p => p.ProfileId).ToList();
+        var userIds = people.Select(p => p.UserId).ToList();
+
+        // Every event of the day, replayed through the same calculator the
+        // attendance screens use, so a break is not billed as work.
+        var events = await context.AttendanceEvents
+            .AsNoTracking()
+            .Where(e => profileIds.Contains(e.EmployeeProfileId) && e.At >= dayStart && e.At < dayEnd)
+            .ToListAsync(ct);
+        var nowUtc = DateTime.UtcNow;
+        var stateByProfileId = events
+            .GroupBy(e => e.EmployeeProfileId)
+            .ToDictionary(g => g.Key, g => AttendanceDayStateCalculator.Calculate(g, nowUtc));
+
+        var onLeave = (await context.AnnualLeaves
+            .Where(l => l.Status == AnnualLeaveStatus.Approved
+                        && l.StartDate < dayEnd && l.EndDate >= dayStart
+                        && userIds.Contains(l.EmployeeId))
+            .Select(l => new { l.EmployeeId, LeaveType = l.LeaveType != null ? l.LeaveType.Name : null })
+            .ToListAsync(ct))
+            .GroupBy(l => l.EmployeeId)
+            .ToDictionary(g => g.Key, g => g.First().LeaveType);
+
+        var weekStart = LatestTimesheetWeekPastDeadline(settings, DateTime.UtcNow);
+        var weekStartUtc = weekStart.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var submittedProfileIds = (await context.Timesheets
+            .Where(t => profileIds.Contains(t.EmployeeProfileId)
+                        && t.PeriodStart >= weekStartUtc && t.PeriodStart < weekStartUtc.AddDays(1)
+                        && (t.Status == TimesheetStatus.Submitted
+                            || t.Status == TimesheetStatus.Approved
+                            || t.Status == TimesheetStatus.Resubmitted))
+            .Select(t => t.EmployeeProfileId)
+            .ToListAsync(ct))
+            .ToHashSet();
+
+        var timeZone = ResolveTimeZone(settings.TimeZoneId);
+        var workStart = TimeOnly.TryParse(settings.WorkingHoursStart, out var ws) ? ws : new TimeOnly(9, 0);
+        var workEnd = TimeOnly.TryParse(settings.WorkingHoursEnd, out var we) ? we : new TimeOnly(18, 0);
+        var scheduledMinutes = (int)(workEnd - workStart).TotalMinutes;
+        if (scheduledMinutes <= 0) scheduledMinutes = 9 * 60; // an end before the start is a typo, not a policy
+
+        var late = new List<string>();
+        var notIn = new List<string>();
+        var notOut = new List<string>();
+        var overtime = new List<string>();
+        var noTimesheet = new List<string>();
+        var leave = new List<string>();
+
+        foreach (var person in people)
+        {
+            var who = string.IsNullOrWhiteSpace(person.DisplayName) ? person.Email ?? person.UserId : person.DisplayName;
+            var label = $"{who} ({person.Department ?? "No department"})";
+            var isOnLeave = onLeave.TryGetValue(person.UserId, out var leaveType);
+
+            if (isOnLeave)
+                leave.Add($"{label} — {leaveType ?? "Leave"}");
+
+            if (stateByProfileId.TryGetValue(person.ProfileId, out var state) && state.CheckInAt is { } checkInAt)
+            {
+                var local = TimeZoneInfo.ConvertTimeFromUtc(AttendanceDay.AsUtc(checkInAt), timeZone);
+                var localTime = TimeOnly.FromDateTime(local);
+                if (localTime > workStart)
+                    late.Add($"{label} — checked in {localTime:HH:mm}, {(int)(localTime - workStart).TotalMinutes} min late");
+
+                if (state.CheckOutAt is null)
+                    notOut.Add(label);
+                else if (state.WorkedMinutes > scheduledMinutes)
+                    overtime.Add($"{label} — {HoursAndMinutes(state.WorkedMinutes - scheduledMinutes)} over (worked {HoursAndMinutes(state.WorkedMinutes)})");
+            }
+            else if (!isOnLeave)
+            {
+                notIn.Add(label);
+            }
+
+            if (!submittedProfileIds.Contains(person.ProfileId))
+                noTimesheet.Add(label);
+        }
+
+        return new DailyReport(day, weekStart, late, notIn, notOut, overtime, noTimesheet, leave);
+    }
+
+    private static string HoursAndMinutes(int minutes) => $"{minutes / 60}h {minutes % 60:00}m";
+
+    // Monday of the most recent timesheet week whose submission deadline
+    // (TimesheetSubmissionDeadlineDay at TimesheetSubmissionDeadlineTime, UTC)
+    // has already passed. Midweek that is last week; once Friday 18:00 is gone
+    // it is this week — so the list is empty until a timesheet is actually due.
+    private static DateOnly LatestTimesheetWeekPastDeadline(AppSettings settings, DateTime nowUtc)
+    {
+        var today = DateOnly.FromDateTime(nowUtc);
+        var weekStart = today.AddDays(-(((int)today.DayOfWeek + 6) % 7)); // Monday
+        var deadlineOffset = Array.IndexOf(WeekTokensMondayFirst, (settings.TimesheetSubmissionDeadlineDay ?? "fri").Trim().ToLowerInvariant());
+        if (deadlineOffset < 0) deadlineOffset = 4; // Friday
+        var deadlineTime = TimeOnly.TryParse(settings.TimesheetSubmissionDeadlineTime, out var t) ? t : new TimeOnly(18, 0);
+
+        while (weekStart.AddDays(deadlineOffset).ToDateTime(deadlineTime, DateTimeKind.Utc) > nowUtc)
+            weekStart = weekStart.AddDays(-7);
+
+        return weekStart;
+    }
+
+    private static readonly string[] WeekTokensMondayFirst = { "mon", "tue", "wed", "thu", "fri", "sat", "sun" };
+
+    private static TimeZoneInfo ResolveTimeZone(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return TimeZoneInfo.Utc;
+        try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException) { return TimeZoneInfo.Utc; }
+    }
+
+    private static string RenderDailyReportHtml(string greetingName, DailyReport r)
+    {
+        static string Section(string heading, List<string> items, string? note = null) =>
+            $"<h3>{heading}</h3>"
+            + (note is null ? "" : $"<p>{WebUtility.HtmlEncode(note)}</p>")
+            + (items.Count == 0
+                ? "<p>Nobody</p>"
+                : "<ul>" + string.Join("", items.Select(i => $"<li>{WebUtility.HtmlEncode(i)}</li>")) + "</ul>");
+
+        return $"""
+<p>Hello {WebUtility.HtmlEncode(greetingName)},</p>
+<p>Attendance report for <strong>{r.Day:dddd dd MMMM yyyy}</strong>, covering all staff.</p>
+{Section("Late check-ins", r.Late)}
+{Section("Did not check in", r.NotCheckedIn)}
+{Section("Did not check out", r.NotCheckedOut)}
+{Section("Overtime", r.Overtime)}
+{Section("Timesheet not submitted", r.TimesheetNotSubmitted, $"Week of {r.TimesheetWeekStart:dd MMM yyyy}")}
+{Section("On leave", r.OnLeave)}
+""";
+    }
+
+    private static string RenderDailyReportText(string greetingName, DailyReport r)
+    {
+        static string Section(string heading, List<string> items) =>
+            $"{heading}:\n" + (items.Count == 0 ? "- Nobody" : string.Join("\n", items.Select(i => "- " + i)));
+
+        return string.Join("\n\n", new[]
+        {
+            $"Hello {greetingName},",
+            $"Attendance report for {r.Day:dddd dd MMMM yyyy}, covering all staff.",
+            Section("Late check-ins", r.Late),
+            Section("Did not check in", r.NotCheckedIn),
+            Section("Did not check out", r.NotCheckedOut),
+            Section("Overtime", r.Overtime),
+            Section($"Timesheet not submitted (week of {r.TimesheetWeekStart:dd MMM yyyy})", r.TimesheetNotSubmitted),
+            Section("On leave", r.OnLeave),
+        });
+    }
+
+    // The most recent working day strictly before 'today', looking back at most
+    // two weeks so a mis-configured calendar cannot loop forever.
+    private async Task<DateOnly?> PreviousWorkingDayAsync(AppSettings settings, DateOnly today, CancellationToken ct)
+    {
+        for (var back = 1; back <= 14; back++)
+        {
+            var candidate = today.AddDays(-back);
+            if (await IsWorkingDayAsync(settings, candidate, ct)) return candidate;
+        }
+        return null;
+    }
+
     // Shared attendance snapshot for the check-in/check-out reminders: every
     // employee with a usable email, plus the sets of who has checked in / out
     // today (keyed by EmployeeProfile.Id, as attendance events are) and who is
     // on approved leave today (keyed by user id, as AnnualLeave.EmployeeId is).
+    //
+    // Admins are dropped the same way the attendance dashboards drop them
+    // (AttendanceDay.ExcludeAdmins): an Admin may hold a profile, but the topbar
+    // hides the check-in widget for the role, so a reminder to check in is one
+    // they cannot act on and would receive every working morning.
     private async Task<AttendanceSnapshot> LoadAttendanceTodayAsync(CancellationToken ct)
     {
-        var employees = await context.EmployeeProfiles
+        var employees = await AttendanceDay.ExcludeAdmins(context.EmployeeProfiles)
             .Where(p => p.User != null && p.User.Email != null && p.User.Email != "")
             .Select(p => new EmployeeContact(p.Id, p.UserId, p.User!.Email!, p.User.DisplayName))
             .ToListAsync(ct);
@@ -443,18 +704,19 @@ public class ReminderDispatcher(
     // True when today (UTC calendar day, matching the attendance snapshot) is a
     // working day for the org: not a weekend per the configured WorkingDays, and
     // not a public holiday for the configured holiday country.
-    private async Task<bool> IsWorkingDayTodayAsync(AppSettings settings, CancellationToken ct)
-    {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+    private Task<bool> IsWorkingDayTodayAsync(AppSettings settings, CancellationToken ct) =>
+        IsWorkingDayAsync(settings, DateOnly.FromDateTime(DateTime.UtcNow), ct);
 
-        if (!IsConfiguredWorkingDay(settings, today.DayOfWeek))
+    private async Task<bool> IsWorkingDayAsync(AppSettings settings, DateOnly day, CancellationToken ct)
+    {
+        if (!IsConfiguredWorkingDay(settings, day.DayOfWeek))
             return false;
 
         if (!string.IsNullOrWhiteSpace(settings.HolidayCountryCode))
         {
-            var todayDate = today.ToDateTime(TimeOnly.MinValue);
+            var date = day.ToDateTime(TimeOnly.MinValue);
             var isHoliday = await context.PublicHolidays
-                .AnyAsync(h => h.CountryCode == settings.HolidayCountryCode && h.Date.Date == todayDate, ct);
+                .AnyAsync(h => h.CountryCode == settings.HolidayCountryCode && h.Date.Date == date, ct);
             if (isHoliday) return false;
         }
 
