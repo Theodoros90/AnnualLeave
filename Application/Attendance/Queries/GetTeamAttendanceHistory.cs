@@ -10,9 +10,11 @@ namespace Application.Attendance.Queries;
 
 /// <summary>
 /// Per-day earliest check-in time per team member over the last N days, for the
-/// "Team Health" line chart. Reported as minutes from midnight UTC so the chart
-/// plots a numeric y-axis without reconstructing timezones, and null for a day
-/// with no check-in (off, on leave, or a weekend).
+/// "Team Health" line chart. Reported as minutes from midnight in the org's time
+/// zone (<see cref="WorkingDaySchedule"/>) so the chart plots a numeric y-axis
+/// whose "09:00" is the 09:00 the working-hours setting means, and null for a day
+/// with no check-in (off, on leave, or a weekend). It used to be UTC minutes,
+/// which on a UTC+3 deployment drew every arrival three hours early.
 ///
 /// Note this scopes to direct reports only (ManagerId), unlike the team board,
 /// which also covers managed departments. Preserved as-is: the chart and the board
@@ -29,6 +31,9 @@ public class GetTeamAttendanceHistory
         public required string RequestingUserId { get; set; }
         public bool IsAdmin { get; set; }
         public int Days { get; set; } = DefaultDays;
+
+        /// <summary>Test seam for the clock; the controller leaves it null.</summary>
+        public DateTime? NowUtc { get; init; }
     }
 
     public class Handler(AppDbContext context) : IRequestHandler<Query, Result<TeamHistoryDto>>
@@ -55,7 +60,8 @@ public class GetTeamAttendanceHistory
 
             var profileIds = profiles.Select(p => p.Id).ToList();
 
-            var now = DateTime.UtcNow;
+            var now = request.NowUtc ?? DateTime.UtcNow;
+            var schedule = await WorkingDaySchedule.LoadAsync(context, cancellationToken);
             var today = AttendanceDay.UtcDayStart(now);
             var rangeStart = today.AddDays(-(days - 1));
             var rangeEnd = today.AddDays(1);
@@ -79,7 +85,7 @@ public class GetTeamAttendanceHistory
                 {
                     var day = today.AddDays(-i);
                     int? minutes = earliestPerDay.TryGetValue((profile.Id, day), out var at)
-                        ? at.Hour * 60 + at.Minute
+                        ? schedule.LocalMinutesFromMidnight(at)
                         : null;
 
                     dayList.Add(new MemberCheckInDayDto(day.ToString("yyyy-MM-dd"), minutes));

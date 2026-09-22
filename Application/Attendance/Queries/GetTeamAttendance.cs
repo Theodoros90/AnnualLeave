@@ -23,6 +23,9 @@ public class GetTeamAttendance
     {
         public required string RequestingUserId { get; set; }
         public bool IsAdmin { get; set; }
+
+        /// <summary>Test seam for the clock; the controller leaves it null.</summary>
+        public DateTime? NowUtc { get; init; }
     }
 
     public class Handler(AppDbContext context) : IRequestHandler<Query, Result<TeamAttendanceDto>>
@@ -53,7 +56,8 @@ public class GetTeamAttendance
                 .ToListAsync(cancellationToken);
 
             var profileIds = profiles.Select(p => p.Id).ToList();
-            var now = DateTime.UtcNow;
+            var now = request.NowUtc ?? DateTime.UtcNow;
+            var schedule = await WorkingDaySchedule.LoadAsync(context, cancellationToken);
 
             var todayByEmployee = await AttendanceDay.LoadDayEventsByEmployeeAsync(
                 context, profileIds, now, cancellationToken);
@@ -61,7 +65,7 @@ public class GetTeamAttendance
                 context, profileIds, now, cancellationToken);
 
             var members = profiles
-                .Select(p => BuildMember(p, AttendanceDay.StateFor(todayByEmployee, p.Id, now), onLeave))
+                .Select(p => BuildMember(p, AttendanceDay.StateFor(todayByEmployee, p.Id, now), onLeave, schedule))
                 .ToList();
 
             var week = await BuildWeekAsync(profiles, profileIds, now, cancellationToken);
@@ -72,7 +76,8 @@ public class GetTeamAttendance
         private static TeamMemberAttendanceDto BuildMember(
             EmployeeProfile profile,
             AttendanceDayState state,
-            HashSet<string> onLeave)
+            HashSet<string> onLeave,
+            WorkingDaySchedule schedule)
         {
             // Leave outranks attendance: someone on approved leave is reported as
             // away even if a stale event would otherwise place them at work.
@@ -82,7 +87,7 @@ public class GetTeamAttendance
                 {
                     // CheckInAt is guaranteed non-null for In and Break — the
                     // calculator cannot reach either status without one.
-                    AttendanceDayStatus.In => ("in", state.CheckInAt!.Value.Hour >= 10 ? "Late check-in" : "On track"),
+                    AttendanceDayStatus.In => ("in", schedule.IsLate(state.CheckInAt!.Value) ? "Late check-in" : "On track"),
                     AttendanceDayStatus.Break => ("break", state.IsAutoBreak ? "Idle" : "On break"),
                     AttendanceDayStatus.Done => ("out", $"Done at {state.CheckOutAt:HH:mm}"),
                     _ => ("out", "Not checked in"),

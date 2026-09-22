@@ -16,14 +16,19 @@ namespace Application.Attendance.Queries;
 public class GetCompanyAttendance
 {
     /// <summary>
-    /// Thresholds the dashboard judgements rest on. Named because they were bare
-    /// numbers scattered through one 200-line method — and because "late" meaning
-    /// 10:00 here while the personal history strip grades lateness at 09:00 is a
-    /// real inconsistency, easier to notice once both have names.
+    /// Thresholds the dashboard judgements rest on. "Late" itself is not one of
+    /// them any more: it comes from <see cref="WorkingDaySchedule"/>, the org's
+    /// working-hours start in its own time zone. It used to be a check-in at or
+    /// after 10:00 UTC against a nominal 09:00 UTC start, which on a UTC+3
+    /// deployment flagged nothing before one in the afternoon.
     /// </summary>
-    private const int LateCheckInHour = 10;
-    private const int NominalStartHour = 9;
     private const int OvertimeMinutes = 600;
+    /// <summary>
+    /// How long past the start an empty morning is left alone before it is
+    /// reported as an absence. Someone can be late; a whole hour with nothing is
+    /// a different kind of news.
+    /// </summary>
+    private const int NotCheckedInGraceMinutes = 60;
     // High enough that a day's feed is effectively complete, because Company
     // Attendance filters it client-side: a cap of 20 would let a department or
     // action filter report "no activity" while the day holds plenty. The
@@ -34,14 +39,20 @@ public class GetCompanyAttendance
 
     public class Query : IRequest<Result<CompanyAttendanceDto>>
     {
+        /// <summary>
+        /// The instant to judge the day at. A test seam: the controller leaves it
+        /// null and the handler reads the clock, but the issues and the activity
+        /// feed depend on the time of day and could not be asserted on otherwise.
+        /// </summary>
+        public DateTime? NowUtc { get; init; }
     }
 
     public class Handler(AppDbContext context) : IRequestHandler<Query, Result<CompanyAttendanceDto>>
     {
         public async Task<Result<CompanyAttendanceDto>> Handle(Query request, CancellationToken cancellationToken)
         {
-            var now = DateTime.UtcNow;
-            var todayStart = AttendanceDay.UtcDayStart(now);
+            var now = request.NowUtc ?? DateTime.UtcNow;
+            var schedule = await WorkingDaySchedule.LoadAsync(context, cancellationToken);
 
             var profiles = await AttendanceDay.ExcludeAdmins(
                     context.EmployeeProfiles
@@ -68,9 +79,9 @@ public class GetCompanyAttendance
             var avgMinutesAll = workedPeopleAll > 0 ? totals.Minutes / workedPeopleAll : 0;
 
             var recent = await BuildRecentActivityAsync(
-                profiles, profileIds, todayByEmployee, onLeave, now, cancellationToken);
+                profiles, profileIds, todayByEmployee, onLeave, schedule, now, cancellationToken);
 
-            var issues = BuildIssues(profiles, stateByProfileId, onLeave, departments, totals, now, todayStart);
+            var issues = BuildIssues(profiles, stateByProfileId, onLeave, departments, totals, schedule, now);
 
             return Result<CompanyAttendanceDto>.Success(new CompanyAttendanceDto(
                 totals.Total,
@@ -155,6 +166,7 @@ public class GetCompanyAttendance
             List<string> profileIds,
             Dictionary<string, List<AttendanceEvent>> todayByEmployee,
             HashSet<string> onLeave,
+            WorkingDaySchedule schedule,
             DateTime now,
             CancellationToken cancellationToken)
         {
@@ -177,7 +189,7 @@ public class GetCompanyAttendance
                 return new RecentActivityDto(
                     profile is null ? "Unknown" : AttendanceDay.DisplayNameOf(profile),
                     profile?.Department?.Name ?? "Unassigned",
-                    ActionName(e.Type, AttendanceDay.AsUtc(e.At)),
+                    ActionName(e.Type, AttendanceDay.AsUtc(e.At), schedule),
                     AttendanceDay.AsUtc(e.At),
                     minutesAgo);
             }).ToList();
@@ -185,7 +197,7 @@ public class GetCompanyAttendance
             // Synthetic "Not checked in" rows, added only once the morning is late
             // enough for an absence to mean anything. They carry no timestamp,
             // which is the only way a consumer can tell them from real events.
-            if (now.Hour >= LateCheckInHour)
+            if (schedule.IsPastStart(now, NotCheckedInGraceMinutes))
             {
                 var notChecked = profiles
                     .Where(p => !onLeave.Contains(p.Id) && !todayByEmployee.ContainsKey(p.Id))
@@ -203,9 +215,9 @@ public class GetCompanyAttendance
             return feed;
         }
 
-        private static string ActionName(AttendanceEventType type, DateTime atUtc) => type switch
+        private static string ActionName(AttendanceEventType type, DateTime atUtc, WorkingDaySchedule schedule) => type switch
         {
-            AttendanceEventType.CheckIn => atUtc.Hour >= LateCheckInHour ? "Late check-in" : "Checked in",
+            AttendanceEventType.CheckIn => schedule.IsLate(atUtc) ? "Late check-in" : "Checked in",
             AttendanceEventType.CheckOut => "Checked out",
             AttendanceEventType.BreakStart => "Started break",
             AttendanceEventType.AutoBreakStart => "Went idle",
@@ -219,24 +231,25 @@ public class GetCompanyAttendance
             HashSet<string> onLeave,
             List<DeptAttendanceDto> departments,
             Totals totals,
-            DateTime now,
-            DateTime todayStart)
+            WorkingDaySchedule schedule,
+            DateTime now)
         {
             var issues = new List<IssueDto>();
 
-            // 1) Departments with people who have not checked in.
-            if (now.Hour >= LateCheckInHour)
+            // 1) Departments with people who have not checked in, once the local
+            //    clock is an hour past the start.
+            if (schedule.IsPastStart(now, NotCheckedInGraceMinutes))
             {
                 foreach (var dept in departments.Where(d => d.Out > 0))
                 {
                     issues.Add(new IssueDto(
                         "danger",
                         $"{dept.Out} not checked in ({dept.Name})",
-                        $"No check-in by {now.Hour:D2}:00 · likely unscheduled absence"));
+                        $"No check-in by {schedule.StartPlus(NotCheckedInGraceMinutes)} · likely unscheduled absence"));
                 }
             }
 
-            // 2) Late check-ins, reported as minutes past the nominal start.
+            // 2) Late check-ins, reported as minutes past the configured start.
             var lateNames = new List<string>();
             foreach (var profile in profiles)
             {
@@ -244,9 +257,9 @@ public class GetCompanyAttendance
 
                 var state = stateByProfileId[profile.Id];
                 if (state.CheckInAt is not { } checkInAt) continue;
-                if (AttendanceDay.AsUtc(checkInAt).Hour < LateCheckInHour) continue;
+                if (!schedule.IsLate(checkInAt)) continue;
 
-                var lateMinutes = (int)(checkInAt - todayStart.AddHours(NominalStartHour)).TotalMinutes;
+                var lateMinutes = schedule.MinutesLate(checkInAt);
                 var department = profile.Department?.Name ?? "Unassigned";
                 lateNames.Add($"{AttendanceDay.DisplayNameOf(profile)} ({department}) · {lateMinutes} min late");
             }

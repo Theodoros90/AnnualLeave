@@ -714,6 +714,28 @@ Two more traps worth knowing, both found the hard way:
   account for any unrecognised email). `AccountController.Login` is the only
   sign-in path, and `MapIdentityApi` is deliberately not mapped;
   `Tests/WorkTrack.Tests/PublicRegistrationRemovedTests.cs` keeps it that way.
+- **Attendance lateness follows the Organization settings, in one place.**
+  `Application/Attendance/Support/WorkingDaySchedule.cs` reads
+  `AppSettings.WorkingHoursStart`/`WorkingHoursEnd` and converts every stored
+  UTC instant into `AppSettings.TimeZoneId` before comparing. A check-in is late
+  when its local time is a whole minute or more past the start; the company
+  dashboard's "not checked in" issue and synthetic feed rows wait a further
+  `NotCheckedInGraceMinutes` (60). Consumers: `GetCompanyAttendance` (issues and
+  activity feed), `GetTeamAttendance` (the "Late check-in" note),
+  `GetMyAttendanceHistory` (the `late` grade), `GetTeamAttendanceHistory` (the
+  check-in chart's minutes, now local) and the daily attendance report in
+  `ReminderDispatcher`. Before it, the four queries each hardcoded a UTC hour
+  (10:00 on the dashboard and board, 09:00 on the strip) while only the report
+  read the settings, so at UTC+3 nothing on screen was late before 13:00 and the
+  morning's absences were never flagged. Do not add a new clock hour anywhere in
+  `Application/Attendance/`; take the schedule. Two related traps: the
+  `TimeZoneId` must be an IANA id (`UpdateAppSettingsValidator` refuses
+  anything the host cannot resolve, and `WorkingDaySchedule` falls back to UTC
+  for one it cannot) — the settings page used to offer labels like
+  "UTC-5 (Eastern)" that no rule could use (migration
+  `NormalizeLegacyTimeZoneLabels` rewrote the four) — and every attendance query
+  carries a nullable `NowUtc` on its `Query`, a test seam the controllers leave
+  null, because the issues and the feed depend on the time of day.
 - **Account deactivation:** `User.IsActive` gates sign-in, enforced inside
   Identity by `API/Security/ActiveUserSignInManager.cs` (overrides
   `CanSignInAsync`), so no sign-in path can miss it. A refusal surfaces as
