@@ -52,6 +52,7 @@ internal static class AnnualLeaveBalanceCalculator
             return null;
 
         var startMonth = await LeaveYearQueries.GetLeaveYearStartMonthAsync(context, cancellationToken);
+        var proRateFirstYear = await ProRatesFirstYearAsync(context, cancellationToken);
         var holidays = await LeaveYearQueries.GetHolidaySetAsync(context, annualLeave.StartDate, annualLeave.EndDate, cancellationToken);
 
         foreach (var leaveYearKey in LeaveCalculationService.GetCoveredLeaveYears(
@@ -67,7 +68,7 @@ internal static class AnnualLeaveBalanceCalculator
                 context, annualLeave.EmployeeId, leaveYearKey, startMonth, excludeLeaveId, cancellationToken);
 
             var remainingBalance = LeaveCalculationService.CalculateRemainingBalance(
-                employeeProfile.AnnualLeaveEntitlement, usedDays);
+                EntitlementForLeaveYear(employeeProfile, leaveYearKey, startMonth, proRateFirstYear), usedDays);
             if (remainingBalance < requestedDays)
             {
                 var (lyStart, lyEnd) = LeaveCalculationService.GetLeaveYearBounds(leaveYearKey, startMonth);
@@ -86,14 +87,40 @@ internal static class AnnualLeaveBalanceCalculator
     {
         var startMonth = await LeaveYearQueries.GetLeaveYearStartMonthAsync(context, cancellationToken);
         var currentLeaveYearKey = LeaveCalculationService.GetLeaveYearKey(DateTime.UtcNow, startMonth);
+        var proRateFirstYear = await ProRatesFirstYearAsync(context, cancellationToken);
 
         var usedDays = await GetApprovedDaysForLeaveYearAsync(
             context, employeeProfile.UserId, currentLeaveYearKey, startMonth,
             excludeLeaveId: null, cancellationToken);
 
         employeeProfile.LeaveBalance = LeaveCalculationService.CalculateRemainingBalance(
-            employeeProfile.AnnualLeaveEntitlement, usedDays);
+            EntitlementForLeaveYear(employeeProfile, currentLeaveYearKey, startMonth, proRateFirstYear), usedDays);
     }
+
+    /// <summary>
+    /// What one employee may take in one leave year: the stored entitlement, or —
+    /// when the balance type pro-rates the first year — that entitlement scaled to
+    /// the months they were here for. The stored figure is never changed; a leave
+    /// year the start date does not fall in gets it whole.
+    /// </summary>
+    public static decimal EntitlementForLeaveYear(
+        EmployeeProfile employeeProfile, int leaveYearKey, int startMonth, bool proRateFirstYear)
+    {
+        if (!proRateFirstYear)
+            return employeeProfile.AnnualLeaveEntitlement;
+        return LeaveCalculationService.ProRateFirstYearEntitlement(
+            employeeProfile.AnnualLeaveEntitlement, employeeProfile.EmploymentStartDate, leaveYearKey, startMonth);
+    }
+
+    /// <summary>
+    /// The switch on the type the pooled balance is a budget for. There is one such
+    /// type in practice; any of them asking is enough, since a second one is not a
+    /// configuration the validator lets an admin express deliberately.
+    /// </summary>
+    public static async Task<bool> ProRatesFirstYearAsync(AppDbContext context, CancellationToken cancellationToken)
+        => await context.LeaveTypes
+            .AsNoTracking()
+            .AnyAsync(lt => lt.AffectsBalance && lt.ProRateFirstYear, cancellationToken);
 
     // ── DB helpers ─────────────────────────────────────────────────────────────
 

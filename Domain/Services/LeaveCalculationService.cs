@@ -146,6 +146,47 @@ public static class LeaveCalculationService
     public static decimal CalculateRemainingBalance(decimal entitlement, decimal usedDays)
         => Math.Max(0m, entitlement - usedDays);
 
+    /// <summary>
+    /// The first year's allowance for somebody who joined part-way through it:
+    /// remaining months of the leave year over twelve, the joining month counted in
+    /// full, rounded <em>up</em> to the next half day so a mid-year joiner is never
+    /// short-changed by the arithmetic. 23 days for a September start in a
+    /// January leave year is 23 × 4/12 = 7.67, which rounds to 8.
+    ///
+    /// A start date before the leave year — or none on file, which means nobody
+    /// entered it — is the full allowance. That is what makes every year after the
+    /// first full without a job or a re-stamp: the stored entitlement is never
+    /// pro-rated, only the figure this returns for one leave year is. A start after
+    /// the leave year has ended is 0: there is nothing to take from a year they had
+    /// not joined.
+    ///
+    /// Whether this applies at all is <c>LeaveType.ProRateFirstYear</c>; callers
+    /// read that switch and pass the raw entitlement through when it is off.
+    /// </summary>
+    public static decimal ProRateFirstYearEntitlement(
+        int entitlement,
+        DateOnly? employmentStart,
+        int leaveYearKey,
+        int startMonth)
+    {
+        if (employmentStart is null)
+            return entitlement;
+
+        var (lyStart, lyEnd) = GetLeaveYearBounds(leaveYearKey, startMonth);
+        var start = employmentStart.Value.ToDateTime(TimeOnly.MinValue);
+        if (start <= lyStart)
+            return entitlement;
+        if (start > lyEnd)
+            return 0m;
+
+        // Months from the joining month to the leave year's last month, inclusive.
+        var monthsIn = (start.Year - lyStart.Year) * 12 + (start.Month - lyStart.Month);
+        var remainingMonths = 12 - monthsIn;
+
+        var exact = entitlement * remainingMonths / 12m;
+        return Math.Ceiling(exact * 2) / 2;
+    }
+
     private static bool IsBusinessDay(DateTime date, IReadOnlySet<DateTime>? holidays)
     {
         if (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) return false;

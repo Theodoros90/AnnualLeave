@@ -1,3 +1,4 @@
+using Application.AnnualLeaves.Commands;
 using Application.Core;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -29,7 +30,14 @@ public class EditEmployeeProfile
             // Assigned unconditionally, like every field above it: the dialog shows
             // the start date, so a null arriving here is a promotion to Admin
             // clearing it rather than a client that forgot to send it.
+            var startDateMoved = employeeProfile.EmploymentStartDate != request.EmployeeProfile.EmploymentStartDate;
             employeeProfile.EmploymentStartDate = request.EmployeeProfile.EmploymentStartDate;
+
+            // The start date decides this year's pro-rated balance when the balance
+            // type asks for it, so a corrected date has to move the stored figure
+            // with it. The sync is a no-op when the switch is off.
+            if (startDateMoved)
+                await AnnualLeaveBalanceCalculator.SyncCurrentYearBalanceAsync(context, employeeProfile, cancellationToken);
 
             await context.SaveChangesAsync(cancellationToken);
 

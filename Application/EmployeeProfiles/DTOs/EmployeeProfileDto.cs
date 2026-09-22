@@ -9,6 +9,16 @@ public class EmployeeProfileDto
     public string? ManagerId { get; set; }
     public int AnnualLeaveEntitlement { get; set; }
 
+    /// <summary>
+    /// What this employee may take in the current leave year. Equal to
+    /// <see cref="AnnualLeaveEntitlement"/> except for somebody who joined during
+    /// this leave year while the balance type pro-rates the first year, when it is
+    /// the scaled figure. Computed on every read, never stored, so the year after
+    /// the hire reads whole on its own. The employee-facing pages quote this;
+    /// the year-end carryover preview keeps the stored one, next year being full.
+    /// </summary>
+    public decimal CurrentYearEntitlement { get; set; }
+
     /// <summary>Decimal because a half day costs 0.5 of it. 22.5 of 23 is a balance.</summary>
     public decimal LeaveBalance { get; set; }
     public string? JobTitle { get; set; }

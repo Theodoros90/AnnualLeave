@@ -28,6 +28,7 @@ public class LeaveTypeDto
     public bool HalfDayAllowed { get; set; }
     public GenderAvailability AvailableTo { get; set; }
     public int MinServiceMonths { get; set; }
+    public bool ProRateFirstYear { get; set; }
 
     /// <summary>
     /// Whether <see cref="AvailableTo"/> is fixed by what this type is — true for

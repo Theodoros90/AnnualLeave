@@ -1,4 +1,4 @@
-import { allowanceForLeaveType } from './leave-allowance'
+import { allowanceForLeaveTypeThisYear, type FirstYearContext } from './leave-allowance'
 import type { AnnualLeave, ChildLeaveEntitlementSummary, LeaveType } from './types'
 
 /**
@@ -32,6 +32,13 @@ interface BuildArgs {
     entitlement: number
     /** Per-child ledgers by leave type id, from `useOfferedLeaveTypes`. */
     ledgerByTypeId: Map<number, ChildLeaveEntitlementSummary | undefined>
+    /**
+     * The employee's start date and the leave-year start month, so a non-balance
+     * type with `proRateFirstYear` on can scale its own allowance for a first-year
+     * joiner. The pooled row does not use this: `entitlement` is already the
+     * server's figure for this year. Omitted, every type quotes its full allowance.
+     */
+    firstYear?: FirstYearContext
 }
 
 /**
@@ -60,6 +67,7 @@ export function buildLeaveBalanceRows({
     approvedThisYear,
     entitlement,
     ledgerByTypeId,
+    firstYear,
 }: BuildArgs): LeaveBalanceRow[] {
     const usedByTypeId = new Map<number, number>()
     for (const leave of approvedThisYear) {
@@ -95,7 +103,10 @@ export function buildLeaveBalanceRows({
            reporting a bare 0 beside annual leave's 23/23. Same rule as
            `allowanceForRequest`, which an admin's view of a request already uses. */
         const used = usedByTypeId.get(leaveType.id) ?? 0
-        const total = leaveType.affectsBalance ? entitlement : allowanceForLeaveType(leaveType)
+        // A non-balance type's allowance is never enforced by the server, so its
+        // pro-rating for a first-year joiner is mirrored here — the one place the
+        // switch shows for such a type.
+        const total = leaveType.affectsBalance ? entitlement : allowanceForLeaveTypeThisYear(leaveType, firstYear)
         return {
             id: leaveType.id,
             name: leaveType.name,

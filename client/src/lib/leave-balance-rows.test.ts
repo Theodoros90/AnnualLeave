@@ -155,3 +155,40 @@ describe('buildLeaveBalanceRows, pooled and per-type allowances', () => {
         expect(row).toMatchObject({ used: 14, total: 10, remaining: 0 })
     })
 })
+
+/**
+ * A non-balance type with `proRateFirstYear` on scales its own allowance for a
+ * first-year joiner — the server does not enforce these allowances, so the row is
+ * the only place the switch shows. The pooled row keeps the entitlement it was
+ * given, which is already the server's pro-rated figure.
+ */
+describe('buildLeaveBalanceRows pro-rated first year', () => {
+    const firstYear = { employmentStartDate: '2026-09-01', leaveYearStartMonth: 1, today: new Date(2026, 8, 22) }
+    const SICK_PRO_RATED: LeaveType = { ...SICK, proRateFirstYear: true }
+
+    it("scales a pro-rated type's allowance for this year's joiner", () => {
+        const rows = buildLeaveBalanceRows({
+            leaveTypes: [ANNUAL, SICK_PRO_RATED], approvedThisYear: [], entitlement: 8, ledgerByTypeId: new Map(), firstYear,
+        })
+
+        // 10 × 4/12 = 3.33 → 3.5; annual keeps the 8 the server already pro-rated.
+        expect(rows.find((r) => r.id === SICK.id)).toMatchObject({ total: 3.5, remaining: 3.5, tracked: true })
+        expect(rows.find((r) => r.id === ANNUAL.id)).toMatchObject({ total: 8 })
+    })
+
+    it('leaves a type with the switch off at its full allowance', () => {
+        const rows = buildLeaveBalanceRows({
+            leaveTypes: [SICK], approvedThisYear: [], entitlement: 8, ledgerByTypeId: new Map(), firstYear,
+        })
+
+        expect(rows[0]).toMatchObject({ total: 10 })
+    })
+
+    it('quotes the full allowance when the caller has no start date to scale by', () => {
+        const rows = buildLeaveBalanceRows({
+            leaveTypes: [SICK_PRO_RATED], approvedThisYear: [], entitlement: 8, ledgerByTypeId: new Map(),
+        })
+
+        expect(rows[0]).toMatchObject({ total: 10 })
+    })
+})

@@ -80,11 +80,16 @@ public class EmployeeProfile : ISoftDeletable, IAuditable
     /// time it is saved — the same trade <c>PersonFieldRules.ValidDateOfBirth</c>
     /// documents.
     ///
-    /// One thing reads it: <c>MinimumServiceRule</c>, which measures it against
-    /// <c>LeaveType.MinServiceMonths</c> to decide whether a type is offered yet. A
-    /// null passes there, for the reason above — nobody entered it, which is not
-    /// "started today". It does **not** pro-rate <see cref="AnnualLeaveEntitlement"/>,
-    /// which is stamped from the leave type's allowance and never set per person.
+    /// Two things read it. <c>MinimumServiceRule</c> measures it against
+    /// <c>LeaveType.MinServiceMonths</c> to decide whether a type is offered yet, and
+    /// <c>AnnualLeaveBalanceCalculator.EntitlementForLeaveYear</c> scales the first
+    /// leave year's balance from it when the balance type sets
+    /// <c>LeaveType.ProRateFirstYear</c>. A null passes both, for the reason above —
+    /// nobody entered it, which is not "started today". Neither writes
+    /// <see cref="AnnualLeaveEntitlement"/>, which is stamped from the leave type's
+    /// allowance in full and never set per person: the pro-rating is applied to one
+    /// leave year on every read and check, which is what makes the next year full
+    /// without a job.
     /// </summary>
     public DateOnly? EmploymentStartDate { get; set; }
 

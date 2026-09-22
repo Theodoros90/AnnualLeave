@@ -597,3 +597,85 @@ it('says on the card that a required document is needed before approval', async 
 
     expect(screen.getByText('Document required before approval')).toBeInTheDocument()
 })
+
+/*
+ * Pro-rating the first year. `proRateFirstYear` is the switch the balance
+ * calculator reads: on, a September joiner on 23 days is measured against 8 in
+ * their first leave year. It belongs only to the balance type — the server refuses
+ * it anywhere else — so the dialog offers it only beside "Affects leave balance".
+ * The card has to say it, and the Enabled toggle, a full replace, has to send it
+ * back unchanged or flipping the switch silently turns pro-rating off.
+ */
+const ANNUAL = leaveType({
+    id: 11, name: 'Annual Leave', perChildEntitlement: false, affectsBalance: true,
+    defaultAllowance: 23, proRateFirstYear: true,
+})
+
+it('says on the card when the first year is pro-rated, and nothing when it is not', async () => {
+    api.getLeaveTypes.mockResolvedValue([
+        ANNUAL,
+        leaveType({ id: 12, name: 'Sick Leave', perChildEntitlement: false, affectsBalance: false, proRateFirstYear: false }),
+    ])
+    await renderPanel()
+
+    expect(screen.getAllByText(/pro-rated from the start date/i)).toHaveLength(1)
+})
+
+it('offers the pro-rating switch prefilled from the type and saves what is chosen', async () => {
+    api.getLeaveTypes.mockResolvedValue([{ ...ANNUAL, proRateFirstYear: false }])
+    await renderPanel()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+    const proRate = screen.getByRole('switch', { name: /Pro-rate the first year/ })
+    expect(proRate).not.toBeChecked()
+
+    fireEvent.click(proRate)
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledTimes(1))
+    expect(api.updateLeaveType.mock.calls[0][1]).toMatchObject({ proRateFirstYear: true })
+})
+
+it('offers the pro-rating switch on a type that does not affect the balance, and sends it', async () => {
+    api.getLeaveTypes.mockResolvedValue([
+        leaveType({ id: 12, name: 'Sick Leave', perChildEntitlement: false, affectsBalance: false }),
+    ])
+    await renderPanel()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+    fireEvent.click(screen.getByRole('switch', { name: /Pro-rate the first year/ }))
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledTimes(1))
+    expect(api.updateLeaveType.mock.calls[0][1]).toMatchObject({ affectsBalance: false, proRateFirstYear: true })
+})
+
+it('hides the pro-rating switch on a per-child type, whose budget is bounded by the child\'s age', async () => {
+    api.getLeaveTypes.mockResolvedValue([leaveType({ id: 1, name: 'Paternity Leave' })])
+    await renderPanel()
+
+    fireEvent.click(screen.getByTitle('Edit'))
+
+    expect(screen.queryByRole('switch', { name: /Pro-rate the first year/ })).not.toBeInTheDocument()
+})
+
+it('says on the card when a non-balance type is pro-rated', async () => {
+    api.getLeaveTypes.mockResolvedValue([
+        leaveType({ id: 12, name: 'Sick Leave', perChildEntitlement: false, affectsBalance: false, proRateFirstYear: true }),
+    ])
+    await renderPanel()
+
+    expect(screen.getByText(/pro-rated from the start date/i)).toBeInTheDocument()
+})
+
+it('sends the pro-rating switch unchanged when toggling a type from the card', async () => {
+    api.getLeaveTypes.mockResolvedValue([ANNUAL])
+    await renderPanel()
+
+    fireEvent.click(screen.getAllByRole('switch')[0])
+
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledWith(ANNUAL.id, expect.objectContaining({
+        isActive: false,
+        proRateFirstYear: true,
+    })))
+})

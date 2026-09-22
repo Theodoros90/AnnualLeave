@@ -6,6 +6,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
+import { currentYearEntitlement } from '../../lib/leave-allowance'
 import { createAnnualLeave, getAnnualLeaves, getChildLeaveEntitlements, getEmployeeProfiles, getHolidays, getLeaveTypes, getTeammates, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered, isParentalLeaveType } from '../../lib/parental-leave'
 import { attachmentRequirement, isAttachmentBlockingSubmit, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
@@ -303,7 +304,9 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     const holidaySet = useMemo(() => new Set(holidayMap.keys()), [holidayMap])
 
     const myProfile = profiles.find((p) => p.userId === user.id)
-    const entitlement = myProfile?.annualLeaveEntitlement ?? 0
+    // This year's figure, pro-rated by the server for a mid-year joiner when the
+    // balance type asks for it — what the API will actually approve up to.
+    const entitlement = currentYearEntitlement(myProfile)
 
     const usedDays = useMemo(() => {
         const year = new Date().getFullYear()

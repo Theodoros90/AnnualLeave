@@ -27,6 +27,7 @@ public class UpdateLeaveType
 
             var wasRequiringApproval = leaveType.RequiresApproval;
             var previousAllowance = leaveType.DefaultAllowance;
+            var previouslyProRated = leaveType.ProRateFirstYear;
 
             /* A seeded type cannot be renamed — other code finds these by name, so a
                rename breaks it silently. Refused rather than quietly ignored: the edit
@@ -69,6 +70,18 @@ public class UpdateLeaveType
                     // after the days each of them has already taken.
                     affectedProfiles[employeeProfile.Id] = employeeProfile;
                 }
+            }
+
+            /* The pro-rating switch changes what this year's balance *is* for anyone
+               who joined during it, without touching the stored entitlement — so the
+               stored LeaveBalance has to be re-synced for everyone, the same way an
+               allowance move does. Which profiles it actually changes depends on
+               each start date, and the sync works that out. */
+            var proRatingFlipped = leaveType.AffectsBalance && leaveType.ProRateFirstYear != previouslyProRated;
+            if (proRatingFlipped && !allowanceMoved)
+            {
+                foreach (var employeeProfile in await context.EmployeeProfiles.ToListAsync(cancellationToken))
+                    affectedProfiles[employeeProfile.Id] = employeeProfile;
             }
 
             if (wasRequiringApproval && !leaveType.RequiresApproval && leaveType.IsActive)

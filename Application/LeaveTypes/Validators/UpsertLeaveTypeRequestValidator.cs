@@ -48,6 +48,16 @@ public class UpsertLeaveTypeRequestValidator : AbstractValidator<UpsertLeaveType
         // covers any sabbatical policy, and a larger number is a typed year.
         RuleFor(x => x.MinServiceMonths).InclusiveBetween(0, 120);
 
+        /* Pro-rating scales a type's own allowance for a mid-year joiner. Any type
+           with a flat allowance may ask for it — the balance type's is enforced by
+           AnnualLeaveBalanceCalculator, every other type's is the figure the balance
+           rows quote, which is all a non-balance allowance is. A per-child type has
+           no flat allowance: its budget is per child and bounded by the child's age,
+           not the leave year, so there is nothing for the switch to scale. */
+        RuleFor(x => x.ProRateFirstYear)
+            .Must((request, proRate) => !proRate || !request.PerChildEntitlement)
+            .WithMessage("A per-child leave type has no yearly allowance to pro-rate.");
+
         /* Who a built-in type is offered to is what the type is, not a setting on it:
            Annual Leave is the pool everyone's balance budgets, Maternity Leave is for
            women and Paternity Leave for men. The dialog shows the radios read-only

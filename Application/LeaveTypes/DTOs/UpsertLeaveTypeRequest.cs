@@ -74,4 +74,11 @@ public class UpsertLeaveTypeRequest
     /// </summary>
     [Range(0, 120)]
     public int MinServiceMonths { get; set; }
+
+    /// <summary>
+    /// Whether a mid-year joiner's first leave year of this type's allowance is
+    /// pro-rated from their start date. Enforced for the balance type, quoted for
+    /// every other; refused on a per-child type, which has no yearly allowance.
+    /// </summary>
+    public bool ProRateFirstYear { get; set; }
 }

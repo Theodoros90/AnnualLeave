@@ -16,10 +16,12 @@ import type { LeaveType } from './types'
  *     **A type with `perChildEntitlement` has no per-employee allowance at all** — its
  *     budget is per child and lives in `perChildTotalWeeks` / `perChildWeeksPerYear`,
  *     read through `describeAllowance`.
- *  2. `EmployeeProfile.annualLeaveEntitlement` — the per-employee override of the
- *     annual-leave budget, and the pool the API enforces on approval. A non-zero
- *     value beats the leave type's figure *for that person only*, which is how
- *     pro-rata and part-time entitlements are expressed.
+ *  2. `EmployeeProfile.annualLeaveEntitlement` — the stored copy of (1) on each
+ *     profile, and the pool the API enforces on approval. It is stamped from the
+ *     allowance and never edited per person, so the two only disagree while the
+ *     server is mid-way through re-stamping. A mid-year joiner's first year is not
+ *     expressed here either: `currentYearEntitlement` (below) is the server's
+ *     pro-rated figure for *this* year, and the stored entitlement stays whole.
  *
  * There was a third: `AppSettings.defaultAnnualEntitlement`, an org-wide number on
  * Leave Settings that was free to disagree with (1) and out of the box did — 20
@@ -108,6 +110,76 @@ export function employeeAnnualEntitlement(
 }
 
 /**
+ * What one employee may take in the current leave year — the server's pro-rated
+ * figure when the balance type asks for one, otherwise their stored entitlement.
+ * An API built before `currentYearEntitlement` sends none, and that has to read as
+ * the stored entitlement rather than 0: `?? ` and not `||`, because a genuine 0
+ * (a start date after this leave year ends) is a real answer.
+ */
+export function currentYearEntitlement(
+    profile: { annualLeaveEntitlement: number; currentYearEntitlement?: number } | undefined,
+) {
+    if (!profile) return 0
+    return profile.currentYearEntitlement ?? profile.annualLeaveEntitlement
+}
+
+/**
+ * What the caller knows about the employee's first year, for the types whose
+ * allowance the server does not compute for us. `today` is injectable for tests.
+ */
+export interface FirstYearContext {
+    employmentStartDate: string | null | undefined
+    leaveYearStartMonth: number
+    today?: Date
+}
+
+/**
+ * Mirror of `LeaveCalculationService.ProRateFirstYearEntitlement`, for a type
+ * whose allowance the server does not enforce and so never pro-rates for us —
+ * sick leave's own 10 days, say. The balance type's figure must come from the
+ * server (`currentYearEntitlement`), never from here, so the two cannot drift.
+ *
+ * Remaining months of the current leave year over twelve, the joining month
+ * counted in full whatever the day, rounded **up** to the next half day. A start
+ * before the leave year — or none on file, which means nobody entered it — is the
+ * full allowance; a start after it ends is 0. Keep in step with the C#.
+ */
+export function proRateFirstYearAllowance(
+    allowance: number,
+    employmentStartDate: string | null | undefined,
+    leaveYearStartMonth: number,
+    today: Date = new Date(),
+) {
+    if (!employmentStartDate) return allowance
+    const [y, m, d] = employmentStartDate.slice(0, 10).split('-').map(Number)
+    if (!y || !m || !d) return allowance
+    const start = new Date(y, m - 1, d)
+
+    const startMonth = Math.min(12, Math.max(1, leaveYearStartMonth || 1))
+    const key = today.getMonth() + 1 >= startMonth ? today.getFullYear() : today.getFullYear() - 1
+    const lyStart = new Date(key, startMonth - 1, 1)
+    const lyEnd = new Date(key + 1, startMonth - 1, 0) // last day of the month before the next leave year
+
+    if (start <= lyStart) return allowance
+    if (start > lyEnd) return 0
+
+    const monthsIn = (start.getFullYear() - lyStart.getFullYear()) * 12 + (start.getMonth() - lyStart.getMonth())
+    const remainingMonths = 12 - monthsIn
+    return Math.ceil((allowance * remainingMonths / 12) * 2) / 2
+}
+
+/**
+ * A leave type's own allowance as it applies to one employee this year: scaled
+ * for a first-year joiner when the type asks for it, otherwise as configured. For
+ * the balance type callers should prefer the server's `currentYearEntitlement`.
+ */
+export function allowanceForLeaveTypeThisYear(type: LeaveType | undefined, firstYear: FirstYearContext | undefined) {
+    const allowance = allowanceForLeaveType(type)
+    if (!type?.proRateFirstYear || type.perChildEntitlement || !firstYear) return allowance
+    return proRateFirstYearAllowance(allowance, firstYear.employmentStartDate, firstYear.leaveYearStartMonth, firstYear.today)
+}
+
+/**
  * The budget a single request is measured against: its own leave type's allowance,
  * except for annual leave, where the employee's own entitlement wins. Independent of
  * `affectsBalance` — a type that is not deducted from the pooled budget still has an
@@ -115,10 +187,16 @@ export function employeeAnnualEntitlement(
  */
 export function allowanceForRequest(
     type: LeaveType | undefined,
-    profile: { annualLeaveEntitlement: number } | undefined,
+    profile: { annualLeaveEntitlement: number; currentYearEntitlement?: number } | undefined,
+    firstYear?: FirstYearContext,
 ) {
-    const typeAllowance = allowanceForLeaveType(type)
-    return isAnnualLeaveType(type?.name) ? employeeAnnualEntitlement(profile, typeAllowance) : typeAllowance
+    if (isAnnualLeaveType(type?.name)) {
+        // The server's figure for this year when it sends one — already pro-rated
+        // where the balance type asks for it — otherwise the stored entitlement.
+        const own = profile?.currentYearEntitlement ?? profile?.annualLeaveEntitlement ?? 0
+        return own > 0 ? own : allowanceForLeaveType(type)
+    }
+    return allowanceForLeaveTypeThisYear(type, firstYear)
 }
 
 /**

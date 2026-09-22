@@ -51,6 +51,16 @@ export interface LeaveType {
      */
     minServiceMonths?: number
     /**
+     * Whether somebody joining part-way through a leave year gets that year's
+     * allowance in proportion: remaining months over twelve, joining month counted,
+     * rounded up to the next half day — a September start on 23 days is 8. Only the
+     * type flagged `affectsBalance` may set it; the server refuses it elsewhere.
+     * Enforced by the balance calculator and quoted back through
+     * `EmployeeProfile.currentYearEntitlement`; nothing on the client computes it.
+     * Optional because an API built before the column sends none, which reads as off.
+     */
+    proRateFirstYear?: boolean
+    /**
      * Whether `availableTo` is fixed by what the type is — Annual Leave for
      * everyone, Maternity Leave for women, Paternity Leave for men. Server-derived
      * from the name like `isSystem`; the dialog renders the radios read-only when it
