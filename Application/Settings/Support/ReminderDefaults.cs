@@ -15,7 +15,10 @@ public static class ReminderDefaults
     {
         new() { Id = "pending-approvals",  Enabled = true,  Time = "09:00", Frequency = "daily"  },
         new() { Id = "late-submissions",   Enabled = true,  Time = "16:00", Frequency = "weekly" },
-        new() { Id = "team-alerts",        Enabled = true,  Time = "08:00", Frequency = "daily"  },
+        // Replaced "team-alerts", which was catalogued and switched on but had no
+        // dispatcher behind it, so it sent nothing. Stored state under the old id
+        // is dropped by the merge below and this one appears with its defaults.
+        new() { Id = "daily-attendance-report", Enabled = true, Time = "08:00", Frequency = "daily" },
         new() { Id = "low-balance",        Enabled = false, Time = "09:00", Frequency = "weekly" },
         new() { Id = "department-digest",  Enabled = true,  Time = "10:00", Frequency = "weekly" },
         new() { Id = "birthday-reminder",  Enabled = false, Time = "08:30", Frequency = "daily"  },
