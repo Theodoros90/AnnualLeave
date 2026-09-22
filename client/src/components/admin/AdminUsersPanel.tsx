@@ -314,6 +314,71 @@ interface DerivedUser {
     isActive: boolean
 }
 
+/**
+ * One manager and the people who report to them. `manager` is null when the
+ * current filter dropped the manager's own row but kept some of their reports:
+ * the group then renders a caption naming them rather than pulling the excluded
+ * row back in.
+ */
+interface ManagerGroup {
+    key: string
+    managerName: string
+    manager: DerivedUser | null
+    reports: DerivedUser[]
+}
+
+interface GroupedUsers {
+    admins: DerivedUser[]
+    teams: ManagerGroup[]
+    /** Employees whose profile names no manager, or one who is not a manager here. */
+    unassigned: DerivedUser[]
+}
+
+const byName = (a: DerivedUser, b: DerivedUser) =>
+    (a.user.displayName ?? a.user.email).localeCompare(b.user.displayName ?? b.user.email)
+
+/**
+ * Reads the filtered list as an org chart: admins first, then each manager with
+ * their reports underneath, then anyone with no manager. A report's manager is
+ * the profile id on their own profile — the one the edit dialog derives from the
+ * department — so in practice each group is a department team.
+ *
+ * Groups are headed by every manager in `all`, not just the filtered ones, so a
+ * filter that keeps a report but drops the manager still files the report under
+ * a caption naming them. A group with nobody in it is left out.
+ */
+function groupByReportingLine(filtered: DerivedUser[], all: DerivedUser[]): GroupedUsers {
+    const managers = all.filter((d) => d.primaryRole === 'Manager' && d.profile).sort(byName)
+    const managerByProfileId = new Map(managers.map((m) => [m.profile!.id, m]))
+    const filteredIds = new Set(filtered.map((d) => d.user.id))
+
+    const admins = filtered.filter((d) => d.primaryRole === 'Admin').sort(byName)
+    const employees = filtered.filter((d) => d.primaryRole === 'Employee')
+
+    const reportsByManagerProfileId = new Map<string, DerivedUser[]>()
+    const unassigned: DerivedUser[] = []
+    for (const e of employees) {
+        const managerProfileId = e.profile?.managerId ?? null
+        if (managerProfileId && managerByProfileId.has(managerProfileId)) {
+            const list = reportsByManagerProfileId.get(managerProfileId) ?? []
+            list.push(e)
+            reportsByManagerProfileId.set(managerProfileId, list)
+        } else {
+            unassigned.push(e)
+        }
+    }
+
+    const teams: ManagerGroup[] = []
+    for (const m of managers) {
+        const reports = (reportsByManagerProfileId.get(m.profile!.id) ?? []).sort(byName)
+        const manager = filteredIds.has(m.user.id) ? m : null
+        if (!manager && reports.length === 0) continue
+        teams.push({ key: m.user.id, managerName: m.user.displayName || m.user.email, manager, reports })
+    }
+
+    return { admins, teams, unassigned: unassigned.sort(byName) }
+}
+
 interface ActivityItem {
     iconEl: string
     color: 'green' | 'amber' | 'blue' | 'red' | 'gray'
@@ -471,8 +536,13 @@ function AdminUsersPanel() {
                 (d.user.displayName ?? '').toLowerCase().includes(q)
             )
         }
-        return out.sort((a, b) => (a.user.displayName ?? a.user.email).localeCompare(b.user.displayName ?? b.user.email))
+        return out.sort(byName)
     }, [derivedAll, statusTab, roleFilter, deptFilter, searchText])
+
+    const grouped = useMemo(() => groupByReportingLine(filtered, derivedAll), [filtered, derivedAll])
+    // A lone section needs no heading — the Admins tab already says "Admins".
+    const showSectionHeadings =
+        [grouped.admins, grouped.teams, grouped.unassigned].filter((section) => section.length > 0).length > 1
 
     /* Mutations */
     const createMutation = useMutation({
@@ -649,6 +719,61 @@ function AdminUsersPanel() {
         if (!result.isConfirmed) return
         for (const id of ids) await setActiveMutation.mutateAsync({ id, isActive: false }).catch(() => {})
         setSelected(new Set())
+    }
+
+    /** One list row. The grouped list renders it in three places, so it lives here. */
+    function renderRow(d: DerivedUser) {
+        return (
+            <UserRow
+                key={d.user.id}
+                derived={d}
+                isSelected={selected.has(d.user.id)}
+                isExpanded={expanded.has(d.user.id)}
+                leaveHistories={leaveHistories}
+                timesheetHistories={timesheetHistories}
+                usersByName={userByName}
+                onToggleSelect={() => toggleSelected(d.user.id)}
+                onToggleExpand={() => toggleExpanded(d.user.id)}
+                onEdit={() => setEditData({ user: d.user, profile: d.profile })}
+                onConfirmEmail={() => confirmEmailMutation.mutate(d.user.id)}
+                confirmingEmail={confirmEmailMutation.isPending}
+                togglingActive={setActiveMutation.isPending}
+                onToggleActive={async () => {
+                    // Reactivating restores access rather than removing
+                    // it, so it does not ask; switching an account off
+                    // ends the person's working session, so it does.
+                    if (!d.isActive) {
+                        setActiveMutation.mutate({ id: d.user.id, isActive: true })
+                        return
+                    }
+                    const result = await SweetAlert.fire({
+                        title: `Deactivate ${d.user.displayName || d.user.email}?`,
+                        text: 'They will not be able to sign in, and any session they have open ends within a minute. Their data is kept, and you can switch them back on at any time.',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Yes, deactivate',
+                        cancelButtonText: 'Cancel',
+                        confirmButtonColor: '#F59E0B',
+                        reverseButtons: true,
+                    })
+                    if (result.isConfirmed) setActiveMutation.mutate({ id: d.user.id, isActive: false })
+                }}
+                onDelete={async () => {
+                    const result = await SweetAlert.fire({
+                        title: `Delete ${d.user.displayName || d.user.email}?`,
+                        text: 'This cannot be undone.',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Yes, delete',
+                        cancelButtonText: 'Cancel',
+                        confirmButtonColor: '#EF4444',
+                        reverseButtons: true,
+                    })
+                    if (result.isConfirmed) deleteMutation.mutate(d.user.id)
+                }}
+                disabled={deleteMutation.isPending}
+            />
+        )
     }
 
     if (isLoading) {
@@ -856,57 +981,46 @@ function AdminUsersPanel() {
                     No users match the current filters.
                 </Box>
             ) : (
-                filtered.map((d) => (
-                    <UserRow
-                        key={d.user.id}
-                        derived={d}
-                        isSelected={selected.has(d.user.id)}
-                        isExpanded={expanded.has(d.user.id)}
-                        leaveHistories={leaveHistories}
-                        timesheetHistories={timesheetHistories}
-                        usersByName={userByName}
-                        onToggleSelect={() => toggleSelected(d.user.id)}
-                        onToggleExpand={() => toggleExpanded(d.user.id)}
-                        onEdit={() => setEditData({ user: d.user, profile: d.profile })}
-                        onConfirmEmail={() => confirmEmailMutation.mutate(d.user.id)}
-                        confirmingEmail={confirmEmailMutation.isPending}
-                        togglingActive={setActiveMutation.isPending}
-                        onToggleActive={async () => {
-                            // Reactivating restores access rather than removing
-                            // it, so it does not ask; switching an account off
-                            // ends the person's working session, so it does.
-                            if (!d.isActive) {
-                                setActiveMutation.mutate({ id: d.user.id, isActive: true })
-                                return
-                            }
-                            const result = await SweetAlert.fire({
-                                title: `Deactivate ${d.user.displayName || d.user.email}?`,
-                                text: 'They will not be able to sign in, and any session they have open ends within a minute. Their data is kept, and you can switch them back on at any time.',
-                                icon: 'warning',
-                                showCancelButton: true,
-                                confirmButtonText: 'Yes, deactivate',
-                                cancelButtonText: 'Cancel',
-                                confirmButtonColor: '#F59E0B',
-                                reverseButtons: true,
-                            })
-                            if (result.isConfirmed) setActiveMutation.mutate({ id: d.user.id, isActive: false })
-                        }}
-                        onDelete={async () => {
-                            const result = await SweetAlert.fire({
-                                title: `Delete ${d.user.displayName || d.user.email}?`,
-                                text: 'This cannot be undone.',
-                                icon: 'warning',
-                                showCancelButton: true,
-                                confirmButtonText: 'Yes, delete',
-                                cancelButtonText: 'Cancel',
-                                confirmButtonColor: '#EF4444',
-                                reverseButtons: true,
-                            })
-                            if (result.isConfirmed) deleteMutation.mutate(d.user.id)
-                        }}
-                        disabled={deleteMutation.isPending}
-                    />
-                ))
+                <>
+                    {grouped.admins.length > 0 && (
+                        <>
+                            {showSectionHeadings && <SectionHeading>Admins</SectionHeading>}
+                            {grouped.admins.map(renderRow)}
+                        </>
+                    )}
+                    {grouped.teams.length > 0 && (
+                        <>
+                            {showSectionHeadings && <SectionHeading>Managers &amp; teams</SectionHeading>}
+                            {grouped.teams.map((team) => (
+                                <Box key={team.key}>
+                                    {team.manager ? renderRow(team.manager) : (
+                                        <Box sx={{ fontSize: 11, color: 'text.secondary', px: '16px', pb: '6px' }}>
+                                            Reports to {team.managerName}
+                                        </Box>
+                                    )}
+                                    {team.reports.length > 0 && (
+                                        <Box
+                                            role="group"
+                                            aria-label={`${team.managerName}'s team`}
+                                            sx={{
+                                                ml: { xs: '16px', md: '32px' }, pl: '14px', mb: '8px',
+                                                borderLeft: '2px solid', borderColor: 'divider',
+                                            }}
+                                        >
+                                            {team.reports.map(renderRow)}
+                                        </Box>
+                                    )}
+                                </Box>
+                            ))}
+                        </>
+                    )}
+                    {grouped.unassigned.length > 0 && (
+                        <>
+                            {showSectionHeadings && <SectionHeading>No manager assigned</SectionHeading>}
+                            {grouped.unassigned.map(renderRow)}
+                        </>
+                    )}
+                </>
             )}
 
             {/* Dialogs */}
@@ -1019,7 +1133,7 @@ function UserRow({
         : role === 'Manager' ? 'warning.main' : 'primary.main'
 
     return (
-        <Box sx={{
+        <Box data-testid="user-row" data-user-id={u.id} sx={{
             bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider',
             borderLeft: `3px solid ${accentColor}`,
             borderRadius: '10px', mb: '8px',
@@ -1414,6 +1528,17 @@ const roleStyles: Record<'Admin' | 'Manager' | 'Employee', { bg: SxColor; fg: st
 
 const roleIcons: Record<'Admin' | 'Manager' | 'Employee', string> = {
     Admin: '👑', Manager: '👥', Employee: '👤',
+}
+
+/** A caption over one section of the grouped list: Admins, Managers & teams, No manager assigned. */
+function SectionHeading({ children }: { children: React.ReactNode }) {
+    return (
+        <Box component="h3" sx={{
+            m: 0, mt: '6px', mb: '8px', px: '2px',
+            fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
+            color: 'text.secondary',
+        }}>{children}</Box>
+    )
 }
 
 /** The role badge, shared by the list row and the Edit dialog's header. */

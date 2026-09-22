@@ -1806,3 +1806,104 @@ describe('AdminUsersPanel — employment start date', () => {
         })
     })
 })
+
+/* The list is an org chart read top to bottom, not an alphabet: admins first,
+   then each manager with the people who report to them hanging underneath, then
+   anyone whose profile names no manager. A report's manager is the profile id
+   the edit dialog derives from the department, so the groups are the department
+   teams in practice. */
+describe('AdminUsersPanel — the list is grouped by who reports to whom', () => {
+    const user = (id: string, displayName: string, role: string) => ({
+        id, userName: `${id}@example.test`, email: `${id}@example.test`, displayName,
+        imageUrl: '', emailConfirmed: true, isActive: true, roles: [role],
+    })
+    const profile = (userId: string, managerId: string | null) => ({
+        id: `p-${userId}`, userId, displayName: userId, departmentId: DEPARTMENT.id, managerId,
+        annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01',
+    })
+
+    beforeEach(() => {
+        // Alphabetically Anna would come first and Zed last; the grouping has to win.
+        api.getAdminUsers.mockResolvedValue([
+            user('anna', 'Anna Report', 'Employee'),
+            user('mia', 'Mia Manager', 'Manager'),
+            user('dora', 'Dora Loner', 'Employee'),
+            user('bob', 'Bob Manager', 'Manager'),
+            user('carl', 'Carl Report', 'Employee'),
+            user('zed', 'Zed Admin', 'Admin'),
+        ] as never)
+        api.getEmployeeProfiles.mockResolvedValue([
+            profile('anna', 'p-mia'),
+            profile('mia', null),
+            profile('dora', null),
+            profile('bob', null),
+            profile('carl', 'p-bob'),
+            profile('zed', null),
+        ] as never)
+    })
+
+    function rowOrder() {
+        return screen.getAllByTestId('user-row').map((row) => row.getAttribute('data-user-id'))
+    }
+
+    it('lists admins, then each manager followed by their reports, then anyone without a manager', async () => {
+        renderPanel()
+        await screen.findByText('Zed Admin')
+
+        expect(rowOrder()).toEqual(['zed', 'bob', 'carl', 'mia', 'anna', 'dora'])
+    })
+
+    it('nests a report inside a group named after their manager', async () => {
+        renderPanel()
+        await screen.findByText('Anna Report')
+
+        const team = screen.getByRole('group', { name: "Mia Manager's team" })
+        expect(within(team).getByText('Anna Report')).toBeInTheDocument()
+        expect(within(team).queryByText('Carl Report')).not.toBeInTheDocument()
+        expect(within(team).queryByText('Mia Manager')).not.toBeInTheDocument()
+    })
+
+    it('labels the three sections when more than one of them has rows', async () => {
+        renderPanel()
+        await screen.findByText('Zed Admin')
+
+        expect(screen.getByRole('heading', { name: 'Admins' })).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: 'Managers & teams' })).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: 'No manager assigned' })).toBeInTheDocument()
+    })
+
+    it('drops the section labels when only one section has rows', async () => {
+        renderPanel()
+        fireEvent.click(await screen.findByRole('button', { name: /^Admins/ }))
+
+        expect(screen.getByText('Zed Admin')).toBeInTheDocument()
+        // The Admins tab is still there; the section heading under the tabs is not.
+        expect(screen.queryByRole('heading', { name: 'Admins' })).not.toBeInTheDocument()
+        expect(screen.queryByRole('heading', { name: 'Managers & teams' })).not.toBeInTheDocument()
+    })
+
+    // A filter that keeps the report but drops the manager must not pull the
+    // manager's row back in — the caption names them instead.
+    it('captions the reports when the filter drops their manager', async () => {
+        renderPanel()
+        fireEvent.click(await screen.findByRole('button', { name: /^Employees/ }))
+
+        expect(screen.queryByText('Mia Manager')).not.toBeInTheDocument()
+        expect(screen.getByText('Reports to Mia Manager')).toBeInTheDocument()
+        const team = screen.getByRole('group', { name: "Mia Manager's team" })
+        expect(within(team).getByText('Anna Report')).toBeInTheDocument()
+        expect(rowOrder()).toEqual(['carl', 'anna', 'dora'])
+    })
+
+    it('files a report whose manager no longer exists under no manager', async () => {
+        api.getEmployeeProfiles.mockResolvedValue([
+            profile('anna', 'p-nobody'),
+            profile('mia', null), profile('dora', null), profile('bob', null), profile('carl', 'p-bob'), profile('zed', null),
+        ] as never)
+        renderPanel()
+        await screen.findByText('Anna Report')
+
+        expect(rowOrder()).toEqual(['zed', 'bob', 'carl', 'mia', 'anna', 'dora'])
+        expect(screen.queryByRole('group', { name: "Mia Manager's team" })).not.toBeInTheDocument()
+    })
+})
