@@ -20,6 +20,7 @@ import ApplyLeavePage from './ApplyLeavePage'
 vi.mock('../../lib/api', () => ({
     createAnnualLeave: vi.fn(),
     getAnnualLeaves: vi.fn(),
+    getAppSettings: vi.fn(),
     getChildLeaveEntitlements: vi.fn(),
     getEmployeeProfiles: vi.fn(),
     getHolidays: vi.fn(),
@@ -74,6 +75,7 @@ beforeEach(() => {
     api.getAnnualLeaves.mockResolvedValue([])
     api.getTeammates.mockResolvedValue([])
     api.getHolidays.mockResolvedValue([])
+    api.getAppSettings.mockResolvedValue({ leaveYearStartMonth: 1 } as never)
     api.getChildLeaveEntitlements.mockResolvedValue(NO_CHILDREN)
     api.createAnnualLeave.mockResolvedValue('new-leave-id' as never)
 })

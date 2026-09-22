@@ -7,7 +7,8 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import CircularProgress from '@mui/material/CircularProgress'
 import { currentYearEntitlement } from '../../lib/leave-allowance'
-import { createAnnualLeave, getAnnualLeaves, getChildLeaveEntitlements, getEmployeeProfiles, getHolidays, getLeaveTypes, getTeammates, uploadLeaveEvidence } from '../../lib/api'
+import { buildLeaveBalanceRows, type LeaveBalanceRow } from '../../lib/leave-balance-rows'
+import { createAnnualLeave, getAnnualLeaves, getAppSettings, getChildLeaveEntitlements, getEmployeeProfiles, getHolidays, getLeaveTypes, getTeammates, uploadLeaveEvidence } from '../../lib/api'
 import { isLeaveTypeOffered, isParentalLeaveType } from '../../lib/parental-leave'
 import { attachmentRequirement, isAttachmentBlockingSubmit, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
 import { earliestStartDate, maxConsecutiveError, noticeError } from '../../lib/leave-limits'
@@ -276,6 +277,9 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     const { data: profiles = [] } = useQuery({ queryKey: ['employeeProfiles'], queryFn: getEmployeeProfiles })
     const { data: allLeaves = [] } = useQuery({ queryKey: ['annualLeaves'], queryFn: getAnnualLeaves })
     const { data: teammates = [] } = useQuery({ queryKey: ['teammates'], queryFn: getTeammates })
+    // Only for the leave-year start month, which a non-balance type's first-year
+    // pro-rating is measured from — see `buildLeaveBalanceRows`.
+    const { data: settings } = useQuery({ queryKey: ['appSettings'], queryFn: getAppSettings })
 
     // Holidays for the displayed calendar year (and the selection year if different)
     const { data: holidaysCurrentYear = [] } = useQuery({
@@ -308,12 +312,44 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     // balance type asks for it — what the API will actually approve up to.
     const entitlement = currentYearEntitlement(myProfile)
 
-    const usedDays = useMemo(() => {
+    const approvedThisYear = useMemo(() => {
         const year = new Date().getFullYear()
-        return allLeaves
-            .filter((l) => l.employeeId === user.id && l.status === 'Approved' && new Date(l.startDate).getFullYear() === year)
-            .reduce((sum, l) => sum + l.totalDays, 0)
+        return allLeaves.filter((l) =>
+            l.employeeId === user.id && l.status === 'Approved' && new Date(l.startDate).getFullYear() === year)
     }, [allLeaves, user.id])
+
+    /* One balance per offered type — the same rows My Leave and the Dashboard show,
+       so the card here and the panel there cannot disagree. Every type is measured
+       against the ledger it actually draws on: the pooled entitlement for the type
+       flagged `affectsBalance`, the per-child ledger for a per-child type, and its
+       own `defaultAllowance` for everything else. That last case is the one this
+       page used to get wrong — a type outside the pool was treated as having no
+       budget at all, so Military Leave's 2 days a year showed nowhere on its card
+       and the summary quoted the *annual* pool beside a request that never touched
+       it. `tracked` is false for a type whose allowance is 0, which has nothing to
+       count down. */
+    const balanceRows = useMemo(
+        () => buildLeaveBalanceRows({
+            leaveTypes: offeredLeaveTypes,
+            approvedThisYear,
+            entitlement,
+            ledgerByTypeId: entitlementsByTypeId,
+            firstYear: { employmentStartDate: myProfile?.employmentStartDate, leaveYearStartMonth: settings?.leaveYearStartMonth ?? 1 },
+        }),
+        [offeredLeaveTypes, approvedThisYear, entitlement, entitlementsByTypeId, myProfile?.employmentStartDate, settings?.leaveYearStartMonth],
+    )
+    const rowByTypeId = useMemo(() => new Map(balanceRows.map((row) => [row.id, row])), [balanceRows])
+
+    /* Pooled usage: only leave charged to the pooled budget, which is what the API
+       deducts. It used to sum every approved day whatever the type, so a sick day
+       came off the annual figure on screen while the server left it alone. A row
+       predating `leaveTypeId` is counted — it was annual leave before types existed. */
+    const usedDays = useMemo(() => {
+        const affectsBalance = new Set(activeLeaveTypes.filter((lt) => lt.affectsBalance).map((lt) => lt.id))
+        return approvedThisYear
+            .filter((l) => l.leaveTypeId == null || affectsBalance.has(l.leaveTypeId))
+            .reduce((sum, l) => sum + l.totalDays, 0)
+    }, [approvedThisYear, activeLeaveTypes])
 
     // Pick a sensible default leave type once data loads. From the offered list,
     // so the page never opens on a type it is about to stop showing.
@@ -343,6 +379,23 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     const daysDeducted = chargeableDays(workingDays, duration)
     const balanceAfter = selectedAffectsBalance ? currentBalance - daysDeducted : currentBalance
     const balancePct = entitlement > 0 ? Math.min(100, ((usedDays + (selectedAffectsBalance ? daysDeducted : 0)) / entitlement) * 100) : 0
+
+    /* The third ledger the summary can quote: a non-balance type's own allowance
+       (sick leave's 10 days, Military Leave's 2). It is `tracked` only when the
+       type sets one; a type with a 0 allowance has nothing to count down and the
+       panel says so rather than falling through to the annual pool. The server
+       never enforces this allowance — see "Only the balance type's pro-rating is
+       enforced" in CLAUDE.md — so exceeding it is a warning below, never a disabled
+       submit: the request is one the API will accept, and blocking it here would
+       refuse what the server allows. A mirror may under-refuse; it must never
+       over-refuse. */
+    const selectedRow = rowByTypeId.get(leaveTypeId)
+    const ownAllowance = !selectedAffectsBalance && !requiresChild && selectedRow?.tracked ? selectedRow : undefined
+    const ownBalanceAfter = ownAllowance ? ownAllowance.remaining - daysDeducted : null
+    const ownPct = ownAllowance && ownAllowance.total > 0
+        ? Math.min(100, ((ownAllowance.used + daysDeducted) / ownAllowance.total) * 100)
+        : null
+    const isOverOwnAllowance = ownBalanceAfter !== null && ownBalanceAfter < 0
     const notice = daysNotice(startDate)
 
     /* The type's own two limits, replacing a pair of guesses. "Short notice" used
@@ -722,8 +775,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                 key={lt.id}
                                 type={lt}
                                 selected={lt.id === leaveTypeId}
-                                entitlement={entitlement}
-                                used={usedDays}
+                                row={rowByTypeId.get(lt.id)}
                                 onSelect={() => setValue('leaveTypeId', lt.id, { shouldValidate: true, shouldDirty: true })}
                             />
                         ))}
@@ -1205,7 +1257,15 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                         </Box>
                         <Box sx={{ fontSize: 32, fontWeight: 700, lineHeight: 1 }}>{summaryBig}</Box>
                         <Box sx={{ fontSize: 12, opacity: 0.9, mt: '6px' }}>
-                            {workingDays === 0 ? 'Pick your dates to see deduction' : selectedAffectsBalance ? 'will be deducted from your balance' : 'unpaid — no deduction'}
+                            {workingDays === 0
+                                ? 'Pick your dates to see deduction'
+                                : selectedAffectsBalance
+                                    ? 'will be deducted from your balance'
+                                    : ownAllowance
+                                        ? `will be deducted from your ${selectedType?.name ?? ''} allowance`
+                                        : selectedType && !selectedType.paid
+                                            ? 'unpaid — not deducted from any balance'
+                                            : 'not deducted from any balance'}
                         </Box>
                     </Box>
 
@@ -1214,7 +1274,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                         <SummaryRow l="End date" r={formatDate(endDate)} />
                         <SummaryRow l="Working days" r={String(workingDays)} />
                         <SummaryRow l="Back at work" r={endDate ? nextWorkingDay(endDate, holidaySet) : '—'} />
-                        <SummaryRow l="Days deducted" r={selectedAffectsBalance ? String(daysDeducted) : '0 (unpaid)'} />
+                        <SummaryRow l="Days deducted" r={selectedAffectsBalance || ownAllowance ? String(daysDeducted) : '0 (not deducted)'} />
                         <SummaryRow l="Coverage" r={selectedDelegate ? selectedDelegate.displayName : 'None'} muted={!selectedDelegate} />
                         {/* Nothing to summarise when the type asks for no document
                             and step 5 is not on the form. */}
@@ -1236,22 +1296,31 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                 fontWeight: 600,
                                 color: isInsufficient || isOverPerChildCap
                                     ? 'error.main'
-                                    : balanceAfter <= 3 && selectedAffectsBalance ? 'warning.main' : 'text.primary',
+                                    : isOverOwnAllowance || (balanceAfter <= 3 && selectedAffectsBalance) ? 'warning.main'
+                                        : !selectedAffectsBalance && !requiresChild && !ownAllowance ? 'text.disabled'
+                                            : 'text.primary',
                             }}>
+                                {/* Each type against the ledger it draws on. A type with no
+                                    allowance of its own has nothing to quote, and the
+                                    annual pool is not a stand-in for it. */}
                                 {perChildBalanceAfter ?? (selectedAffectsBalance
                                     ? `${balanceAfter} / ${entitlement}`
-                                    : `${currentBalance} / ${entitlement}`)}
+                                    : ownAllowance
+                                        ? `${Math.max(0, ownBalanceAfter ?? 0)} / ${ownAllowance.total}`
+                                        : 'No allowance to track')}
                             </Box>
                         </Box>
-                        <Box sx={{ height: 6, bgcolor: 'divider', borderRadius: '3px', overflow: 'hidden', mt: '6px' }}>
-                            <Box sx={{
-                                height: '100%', borderRadius: '3px',
-                                width: `${perChildPct ?? balancePct}%`,
-                                bgcolor: (perChildPct ?? balancePct) >= 100
-                                    ? 'error.main'
-                                    : (perChildPct ?? balancePct) >= 80 ? 'warning.main' : 'success.main',
-                            }} />
-                        </Box>
+                        {(selectedAffectsBalance || requiresChild || ownAllowance) && (
+                            <Box sx={{ height: 6, bgcolor: 'divider', borderRadius: '3px', overflow: 'hidden', mt: '6px' }}>
+                                <Box sx={{
+                                    height: '100%', borderRadius: '3px',
+                                    width: `${perChildPct ?? ownPct ?? balancePct}%`,
+                                    bgcolor: (perChildPct ?? ownPct ?? balancePct) >= 100
+                                        ? 'error.main'
+                                        : (perChildPct ?? ownPct ?? balancePct) >= 80 ? 'warning.main' : 'success.main',
+                                }} />
+                            </Box>
+                        )}
                     </Box>
 
                     {isInsufficient && (
@@ -1266,6 +1335,13 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                             {selectedChild.name} has {perChildRemaining} day{perChildRemaining === 1 ? '' : 's'} left;
                             {' '}this request is {workingDays} business day{workingDays === 1 ? '' : 's'}.
                             Shorten it, or pick another child.
+                        </Warning>
+                    )}
+                    {isOverOwnAllowance && ownAllowance && (
+                        <Warning tone="warn">
+                            <strong>Over your {selectedType?.name} allowance.</strong>{' '}
+                            You have {ownAllowance.remaining} day{ownAllowance.remaining === 1 ? '' : 's'} of {ownAllowance.total} left this year
+                            {' '}and this request is {daysDeducted}. You can still file it; your manager decides.
                         </Warning>
                     )}
                     {!isInsufficient && selectedAffectsBalance && balanceAfter <= 3 && workingDays > 0 && (
@@ -1454,17 +1530,20 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
 /* ---------- subcomponents ---------- */
 
 function LeaveTypeCard({
-    type, selected, entitlement, used, onSelect,
+    type, selected, row, onSelect,
 }: {
     type: LeaveType
     selected: boolean
-    entitlement: number
-    used: number
+    /** The type's own balance row, whichever ledger it draws on; undefined until the types settle. */
+    row: LeaveBalanceRow | undefined
     onSelect: () => void
 }) {
-    const tracksBalance = type.affectsBalance
-    const remaining = Math.max(0, entitlement - used)
-    const pct = entitlement > 0 ? Math.min(100, (used / entitlement) * 100) : 0
+    // "Your remaining balance is shown on each" — every type with an allowance to
+    // count down, not only the one deducted from the pool.
+    const tracksBalance = !!row?.tracked && row.total > 0
+    const remaining = row?.remaining ?? 0
+    const total = row?.total ?? 0
+    const pct = total > 0 ? Math.min(100, ((row?.used ?? 0) / total) * 100) : 0
     const low = pct >= 80
 
     return (
@@ -1485,14 +1564,14 @@ function LeaveTypeCard({
             <Box sx={{ fontSize: 13, fontWeight: 600, color: 'text.primary', mb: '4px' }}>{type.name}</Box>
             <Box sx={{ fontSize: 11, color: 'text.secondary', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
                 <Box component="span">{descForLeaveType(type.name)}</Box>
-                {tracksBalance && entitlement > 0 && (
+                {tracksBalance && (
                     <Box component="span">
                         <Box component="strong" sx={{ color: 'text.primary', fontWeight: 700 }}>{remaining}</Box>
-                        /{entitlement}
+                        /{total}
                     </Box>
                 )}
             </Box>
-            {tracksBalance && entitlement > 0 && (
+            {tracksBalance && (
                 <Box sx={{ height: 3, bgcolor: 'divider', borderRadius: '2px', mt: '6px', overflow: 'hidden' }}>
                     <Box sx={{
                         height: '100%',
