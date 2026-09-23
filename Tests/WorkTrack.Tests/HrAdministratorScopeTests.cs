@@ -382,4 +382,34 @@ public class HrAdministratorScopeTests
         Assert.True(history.IsSuccess, history.Error);
         Assert.Equal(["Anna A"], history.Value!.Members.Select(m => m.EmployeeName).ToList());
     }
+
+    [Fact]
+    public async Task Teammates_on_behalf_are_listed_only_for_someone_inside_the_scope()
+    {
+        using var db = SeedWorld();
+        db.Users.Add(new User { Id = "ua2", UserName = "ua2", Email = "ua2@t.local", DisplayName = "Alex A" });
+        db.EmployeeProfiles.Add(new EmployeeProfile { Id = "pa2", UserId = "ua2", DepartmentId = A });
+        await db.SaveChangesAsync();
+        var handler = new Application.EmployeeProfiles.Queries.GetTeammateList.Handler(db);
+
+        var inside = await handler.Handle(new Application.EmployeeProfiles.Queries.GetTeammateList.Query { RequestingUserId = Hr, ForUserId = "ua" }, CancellationToken.None);
+        var outside = await handler.Handle(new Application.EmployeeProfiles.Queries.GetTeammateList.Query { RequestingUserId = Hr, ForUserId = "ub" }, CancellationToken.None);
+
+        Assert.Equal(["Alex A"], inside.Select(t => t.DisplayName).ToList());
+        Assert.Empty(outside);
+    }
+
+    [Fact]
+    public async Task Profiles_children_and_evidence_follow_the_scope()
+    {
+        using var db = SeedWorld();
+
+        var profiles = await new Application.EmployeeProfiles.Queries.GetEmployeeProfileList.Handler(db).Handle(
+            new Application.EmployeeProfiles.Queries.GetEmployeeProfileList.Query { RequestingUserId = Hr, IsAdmin = false, IsManager = true }, CancellationToken.None);
+        Assert.Equal(new[] { "hr", "ua" }, profiles.Select(p => p.UserId).OrderBy(x => x));
+
+        var childOutside = await Application.Children.Support.ChildAccessResolver.ResolveAsync(
+            db, Hr, "ub", isAdmin: false, isManager: true, forWrite: false, CancellationToken.None);
+        Assert.False(childOutside.IsSuccess);
+    }
 }

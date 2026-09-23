@@ -1,4 +1,5 @@
-﻿using Application.EmployeeProfiles.DTOs;
+﻿using Application.Core;
+using Application.EmployeeProfiles.DTOs;
 using Domain;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -11,10 +12,11 @@ namespace Application.EmployeeProfiles.Queries;
 /// Returns names and job titles only, so any authenticated user can call it —
 /// it backs the "nominate someone to cover my leave" picker.
 ///
-/// A System Administrator filing leave on somebody's behalf needs <em>that</em> person's
-/// colleagues, not their own (a System Administrator has no department, so their own list is
+/// An HR Administrator filing leave on somebody's behalf needs <em>that</em> person's
+/// colleagues, not their own (an HR Administrator has no department, so their own list is
 /// empty), which is what <see cref="Query.ForUserId"/> is for. The controller
-/// only passes it through for a System Administrator.
+/// only passes it through for an HR Administrator, and the handler honours it
+/// only for someone inside the caller's assigned departments.
 /// </summary>
 public class GetTeammateList
 {
@@ -25,7 +27,7 @@ public class GetTeammateList
         /// <summary>
         /// Whose colleagues to list, when not the caller's own. Null means the
         /// caller. Honoured only when the controller has established the caller
-        /// is a System Administrator.
+        /// is an HR Administrator.
         /// </summary>
         public string? ForUserId { get; set; }
     }
@@ -47,6 +49,14 @@ public class GetTeammateList
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (myDepartmentId is null) return [];
+
+            // Filing on behalf: the person has to be inside the filer's departments,
+            // or the picker would hand an HR Administrator colleagues they may not see.
+            if (subjectUserId != request.RequestingUserId)
+            {
+                var scope = await ManagerAccessScopeResolver.ResolveAsync(context, request.RequestingUserId, cancellationToken);
+                if (!scope.ManagedDepartmentIds.Contains(myDepartmentId.Value)) return [];
+            }
 
             return await context.EmployeeProfiles
                 .AsNoTracking()
