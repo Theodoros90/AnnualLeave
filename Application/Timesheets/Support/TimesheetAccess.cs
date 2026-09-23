@@ -30,7 +30,8 @@ public static class TimesheetAccess
         string requestingUserId,
         bool isAdmin,
         bool isManager,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool isHrAdministrator = false)
     {
         var timesheet = await context.Timesheets
             .FirstOrDefaultAsync(t => t.Id == timesheetId, cancellationToken);
@@ -79,6 +80,13 @@ public static class TimesheetAccess
                         && ep.ManagerId != null
                         && scope.ManagerProfileIds.Contains(ep.ManagerId),
                         cancellationToken);
+            }
+
+            // The HR Administrator also reaches a department-less timesheet — an
+            // administrator's own — which no department scope would otherwise include.
+            if (!inScope && timesheet.DepartmentId == null && isHrAdministrator)
+            {
+                inScope = true;
             }
 
             if (inScope)

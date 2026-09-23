@@ -15,6 +15,8 @@ public class SubmitTimesheet
         public required string Id { get; set; }
         public required string RequestingUserId { get; set; }
         public bool IsAdmin { get; set; }
+        public bool IsManager { get; set; }
+        public bool IsHrAdministrator { get; set; }
     }
 
     public class Handler(
@@ -40,7 +42,21 @@ public class SubmitTimesheet
                     .AsNoTracking()
                     .FirstOrDefaultAsync(ep => ep.UserId == request.RequestingUserId, cancellationToken);
 
-                if (requesterProfile is null || timesheet.EmployeeProfileId != requesterProfile.Id)
+                var isOwn = requesterProfile is not null && timesheet.EmployeeProfileId == requesterProfile.Id;
+                var inScope = false;
+                if (!isOwn && request.IsManager)
+                {
+                    // A Manager, or an HR Administrator, submitting on behalf of somebody
+                    // in their departments — the same scope every other timesheet write uses.
+                    var scope = await ManagerAccessScopeResolver.ResolveAsync(context, request.RequestingUserId, cancellationToken);
+                    inScope = (timesheet.DepartmentId != null && scope.ManagedDepartmentIds.Contains(timesheet.DepartmentId.Value))
+                        || (timesheet.Employee != null && scope.DirectReportUserIds.Contains(timesheet.Employee.UserId))
+                        // The HR Administrator also reaches a department-less timesheet — an
+                        // administrator's own — which no department scope would otherwise include.
+                        || (timesheet.DepartmentId == null && request.IsHrAdministrator);
+                }
+
+                if (!isOwn && !inScope)
                 {
                     return Result<Unit>.ValidationFailure(
                         new Dictionary<string, string[]>

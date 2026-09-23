@@ -28,7 +28,8 @@ public static class TimesheetScope
         string requestingUserId,
         bool isAdmin,
         bool isManager,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool isHrAdministrator = false)
     {
         if (isAdmin)
         {
@@ -47,7 +48,10 @@ public static class TimesheetScope
                 // Timesheets in managed departments
                 || (t.DepartmentId != null && scope.ManagedDepartmentIds.Contains(t.DepartmentId.Value))
                 // Direct reports' timesheets
-                || scope.DirectReportUserIds.Contains(t.Employee.UserId));
+                || scope.DirectReportUserIds.Contains(t.Employee.UserId)
+                // The HR Administrator also reaches a department-less timesheet — an
+                // administrator's own — which no department scope would otherwise include.
+                || (t.DepartmentId == null && isHrAdministrator));
         }
 
         // Employees see only their own timesheets. Timesheet.EmployeeProfileId is an

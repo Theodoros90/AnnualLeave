@@ -51,6 +51,7 @@ public class GetTimesheetStatusHistoryList
         public string RequestingUserId { get; set; } = string.Empty;
         public bool IsAdmin { get; set; }
         public bool IsManager { get; set; }
+        public bool IsHrAdministrator { get; set; }
         public int? Page { get; set; }
         public int? PageSize { get; set; }
     }
@@ -121,7 +122,10 @@ public class GetTimesheetStatusHistoryList
                     && (h.Timesheet.Employee.UserId == request.RequestingUserId
                         || (h.Timesheet.DepartmentId != null
                             && scope.ManagedDepartmentIds.Contains(h.Timesheet.DepartmentId.Value))
-                        || scope.DirectReportUserIds.Contains(h.Timesheet.Employee.UserId)));
+                        || scope.DirectReportUserIds.Contains(h.Timesheet.Employee.UserId)
+                        // The HR Administrator also reaches a department-less timesheet — an
+                        // administrator's own — which no department scope would otherwise include.
+                        || (h.Timesheet.DepartmentId == null && request.IsHrAdministrator)));
             }
             else
             {

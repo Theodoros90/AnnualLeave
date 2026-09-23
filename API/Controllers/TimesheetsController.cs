@@ -89,8 +89,8 @@ namespace API.Controllers
         public async Task<ActionResult<List<TimesheetDto>>> GetTimesheets([FromQuery] bool myOnly = false, [FromQuery] int? page = null, [FromQuery] int? pageSize = null)
         {
             var userId = ResolveUserId();
-            var isAdmin = User.IsAdministrator();
-            var isManager = User.IsInRole(AppRoles.Manager);
+            var isAdmin = User.IsSystemAdministrator();
+            var isManager = User.IsDepartmentScoped();
 
             var result = await Mediator.Send(new GetTimesheetList.Query
             {
@@ -114,8 +114,8 @@ namespace API.Controllers
             {
                 Id = id,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsAdministrator(),
-                IsManager = User.IsInRole(AppRoles.Manager),
+                IsAdmin = User.IsSystemAdministrator(),
+                IsManager = User.IsDepartmentScoped(),
             }, cancellationToken);
 
             return HandleResult(result);
@@ -165,8 +165,11 @@ namespace API.Controllers
             {
                 Id = id,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsHrAdministrator(),
-                IsManager = User.IsInRole(AppRoles.Manager),
+                // Nobody deletes a timesheet unscoped: the HR Administrator and a Manager
+                // inside their departments, everyone else their own. (DeleteTimesheetTests
+                // pins that a System Administrator may not.)
+                IsAdmin = false,
+                IsManager = User.IsDepartmentScoped(),
             }, cancellationToken);
 
             return HandleResult(result);
@@ -181,7 +184,9 @@ namespace API.Controllers
             {
                 Id = id,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsAdministrator(),
+                IsAdmin = User.IsSystemAdministrator(),
+                IsManager = User.IsDepartmentScoped(),
+                IsHrAdministrator = User.IsHrAdministrator(),
             }, cancellationToken);
 
             if (result.IsSuccess)
@@ -202,8 +207,11 @@ namespace API.Controllers
                 Id = id,
                 NewStatus = TimesheetStatus.Approved,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsHrAdministrator(),
-                IsManager = User.IsInRole(AppRoles.Manager),
+                // LeaveAndTimeDecisionRoles already keeps the System Administrator out; the
+                // HR Administrator and a Manager both decide inside their departments.
+                IsAdmin = false,
+                IsManager = User.IsDepartmentScoped(),
+                IsHrAdministrator = User.IsHrAdministrator(),
             }, cancellationToken);
 
             if (result.IsSuccess)
@@ -224,8 +232,11 @@ namespace API.Controllers
                 Id = id,
                 NewStatus = TimesheetStatus.Rejected,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsHrAdministrator(),
-                IsManager = User.IsInRole(AppRoles.Manager),
+                // LeaveAndTimeDecisionRoles already keeps the System Administrator out; the
+                // HR Administrator and a Manager both decide inside their departments.
+                IsAdmin = false,
+                IsManager = User.IsDepartmentScoped(),
+                IsHrAdministrator = User.IsHrAdministrator(),
                 Comment = body?.Comment,
             }, cancellationToken);
 
@@ -250,8 +261,9 @@ namespace API.Controllers
             {
                 TimesheetId = id,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsAdministrator(),
-                IsManager = User.IsInRole(AppRoles.Manager),
+                IsAdmin = User.IsSystemAdministrator(),
+                IsManager = User.IsDepartmentScoped(),
+                IsHrAdministrator = User.IsHrAdministrator(),
             }, cancellationToken);
 
             return Paged(result);
@@ -296,8 +308,9 @@ namespace API.Controllers
                 FromStatus = fromStatus,
                 ToStatus = toStatus,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsAdministrator(),
-                IsManager = User.IsInRole(AppRoles.Manager),
+                IsAdmin = User.IsSystemAdministrator(),
+                IsManager = User.IsDepartmentScoped(),
+                IsHrAdministrator = User.IsHrAdministrator(),
                 Page = page,
                 PageSize = pageSize,
             }, cancellationToken);
@@ -332,8 +345,9 @@ namespace API.Controllers
             {
                 EmployeeProfileId = employeeProfileId,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsAdministrator(),
-                IsManager = User.IsInRole(AppRoles.Manager),
+                IsAdmin = User.IsSystemAdministrator(),
+                IsManager = User.IsDepartmentScoped(),
+                IsHrAdministrator = User.IsHrAdministrator(),
                 Page = page,
                 PageSize = pageSize,
             }, cancellationToken);

@@ -194,4 +194,110 @@ public class HrAdministratorScopeTests
         Assert.False(outside.IsSuccess);
         Assert.Contains("assigned departments", outside.Error);
     }
+
+    private static Timesheet Timesheet(string id, int departmentId, string profileId) => new()
+    {
+        Id = id, EmployeeProfileId = profileId, DepartmentId = departmentId,
+        PeriodStart = new DateTime(2026, 9, 7), PeriodEnd = new DateTime(2026, 9, 13),
+        TotalHours = 40m, Status = TimesheetStatus.Submitted,
+    };
+
+    [Fact]
+    public async Task Timesheets_are_read_and_approved_inside_the_scope_only()
+    {
+        using var db = SeedWorld();
+        db.Timesheets.AddRange(Timesheet("ta", A, "pa"), Timesheet("tb", B, "pb"));
+        await db.SaveChangesAsync();
+
+        var visible = await Application.Timesheets.Support.TimesheetScope.ApplyAsync(
+            db, db.Timesheets, Hr, isAdmin: false, isManager: true);
+        Assert.Equal(["ta"], visible.Select(t => t.Id).ToList());
+
+        var handler = new Application.Timesheets.Commands.UpdateTimesheetStatus.Handler(
+            db, new FakeEmailService(), Microsoft.Extensions.Logging.Abstractions.NullLogger<Application.Timesheets.Commands.UpdateTimesheetStatus.Handler>.Instance);
+        var outside = await handler.Handle(new Application.Timesheets.Commands.UpdateTimesheetStatus.Command
+        {
+            Id = "tb", NewStatus = TimesheetStatus.Approved, RequestingUserId = Hr, IsAdmin = false, IsManager = true,
+        }, CancellationToken.None);
+        Assert.False(outside.IsSuccess);
+    }
+
+    [Fact]
+    public async Task A_scoped_caller_may_submit_a_timesheet_inside_their_scope()
+    {
+        using var db = SeedWorld();
+        var ta = Timesheet("ta", A, "pa"); ta.Status = TimesheetStatus.Draft;
+        var tb = Timesheet("tb", B, "pb"); tb.Status = TimesheetStatus.Draft;
+        db.Timesheets.AddRange(ta, tb);
+        await db.SaveChangesAsync();
+        var handler = new Application.Timesheets.Commands.SubmitTimesheet.Handler(
+            db, new FakeEmailService(), Microsoft.Extensions.Logging.Abstractions.NullLogger<Application.Timesheets.Commands.SubmitTimesheet.Handler>.Instance);
+
+        var inside = await handler.Handle(new Application.Timesheets.Commands.SubmitTimesheet.Command { Id = "ta", RequestingUserId = Hr, IsAdmin = false, IsManager = true }, CancellationToken.None);
+        var outside = await handler.Handle(new Application.Timesheets.Commands.SubmitTimesheet.Command { Id = "tb", RequestingUserId = Hr, IsAdmin = false, IsManager = true }, CancellationToken.None);
+
+        Assert.True(inside.IsSuccess, inside.Error);
+        Assert.False(outside.IsSuccess);
+    }
+
+    /// <summary>
+    /// The HR Administrator also reaches a department-less timesheet — an
+    /// administrator's own — which no assigned department could ever cover. Here
+    /// it is Hr2's own timesheet (their profile "hr2-p" has no department, like
+    /// every administrator's), which Hr is assigned nowhere near. A plain Manager
+    /// (isHrAdministrator: false) gets none of that — "th" would sit unseen and
+    /// unapprovable for them, which is the point of the widened reach being
+    /// HR-only, exactly as the department-less leave test above pins.
+    /// </summary>
+    private static void AddDepartmentLessTimesheet(AppDbContext db) =>
+        db.Timesheets.Add(new Timesheet
+        {
+            Id = "th", EmployeeProfileId = "hr2-p", DepartmentId = null,
+            PeriodStart = new DateTime(2026, 9, 7), PeriodEnd = new DateTime(2026, 9, 13),
+            TotalHours = 40m, Status = TimesheetStatus.Submitted,
+        });
+
+    [Fact]
+    public async Task The_hr_administrator_also_reaches_a_department_less_timesheet()
+    {
+        using var db = SeedWorld();
+        AddDepartmentLessTimesheet(db);
+        await db.SaveChangesAsync();
+
+        var visibleToHr = await Application.Timesheets.Support.TimesheetScope.ApplyAsync(
+            db, db.Timesheets, Hr, isAdmin: false, isManager: true, isHrAdministrator: true);
+        Assert.Contains("th", visibleToHr.Select(t => t.Id).ToList());
+
+        var visibleToPlainManager = await Application.Timesheets.Support.TimesheetScope.ApplyAsync(
+            db, db.Timesheets, Hr, isAdmin: false, isManager: true, isHrAdministrator: false);
+        Assert.DoesNotContain("th", visibleToPlainManager.Select(t => t.Id).ToList());
+
+        var handler = new Application.Timesheets.Commands.UpdateTimesheetStatus.Handler(
+            db, new FakeEmailService(), Microsoft.Extensions.Logging.Abstractions.NullLogger<Application.Timesheets.Commands.UpdateTimesheetStatus.Handler>.Instance);
+
+        var approved = await handler.Handle(new Application.Timesheets.Commands.UpdateTimesheetStatus.Command
+        {
+            Id = "th", NewStatus = TimesheetStatus.Approved, RequestingUserId = Hr, IsAdmin = false, IsManager = true, IsHrAdministrator = true,
+        }, CancellationToken.None);
+        Assert.True(approved.IsSuccess, approved.Error);
+    }
+
+    [Fact]
+    public async Task A_plain_manager_may_not_approve_a_department_less_timesheet()
+    {
+        using var db = SeedWorld();
+        AddDepartmentLessTimesheet(db);
+        await db.SaveChangesAsync();
+
+        var handler = new Application.Timesheets.Commands.UpdateTimesheetStatus.Handler(
+            db, new FakeEmailService(), Microsoft.Extensions.Logging.Abstractions.NullLogger<Application.Timesheets.Commands.UpdateTimesheetStatus.Handler>.Instance);
+
+        var refused = await handler.Handle(new Application.Timesheets.Commands.UpdateTimesheetStatus.Command
+        {
+            Id = "th", NewStatus = TimesheetStatus.Approved, RequestingUserId = Hr, IsAdmin = false, IsManager = true, IsHrAdministrator = false,
+        }, CancellationToken.None);
+
+        Assert.False(refused.IsSuccess);
+        Assert.Equal(TimesheetStatus.Submitted, (await db.Timesheets.FindAsync("th"))!.Status);
+    }
 }

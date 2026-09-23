@@ -19,8 +19,9 @@ public class TimesheetStatusHistoriesController : BaseApiController
         var result = await Mediator.Send(new GetTimesheetStatusHistoryList.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsAdministrator(),
-            IsManager = User.IsInRole(AppRoles.Manager),
+            IsAdmin = User.IsSystemAdministrator(),
+            IsManager = User.IsDepartmentScoped(),
+            IsHrAdministrator = User.IsHrAdministrator(),
             Page = page,
             PageSize = pageSize,
         });
