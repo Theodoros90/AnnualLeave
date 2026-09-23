@@ -12,7 +12,7 @@ namespace WorkTrack.Tests;
 /// urgent matters while the employee is away. It must point at a real user and
 /// can never be the requester themselves. Whether it may be left blank at all is
 /// <c>CoverageRule</c>'s question, covered in <see cref="CoverageRequiredTests"/>;
-/// the users seeded here hold no role, so the rule reads them as non-Admins and
+/// the users seeded here hold no role, so the rule reads them as non-System Administrators and
 /// asks for one — these tests look only at the two shape checks.
 /// </summary>
 public class LeaveDelegateTests

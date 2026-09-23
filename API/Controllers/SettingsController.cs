@@ -1,3 +1,4 @@
+using Domain;
 using Application.Reminders;
 using Application.Settings.Commands;
 using Application.Settings.DTOs;
@@ -22,7 +23,7 @@ public class SettingsController : BaseApiController
     }
 
     [HttpPut]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<AppSettingsDto>> UpdateSettings(
         [FromBody] UpdateAppSettings.Command command,
         CancellationToken cancellationToken)
@@ -32,7 +33,7 @@ public class SettingsController : BaseApiController
     }
 
     [HttpPost("reset-reminders")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<AppSettingsDto>> ResetReminders(
         CancellationToken cancellationToken)
     {
@@ -41,14 +42,14 @@ public class SettingsController : BaseApiController
     }
 
     [HttpPost("clear-approval-history")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<int>> ClearApprovalHistory(CancellationToken cancellationToken) =>
         HandleResult(await Mediator.Send(new ClearApprovalHistory.Command(), cancellationToken));
 
     // On-demand dispatch of a single reminder, ignoring its schedule. Lets an
     // admin verify reminder delivery without waiting for the configured time.
     [HttpPost("run-reminder/{id}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult> RunReminder(
         string id,
         [FromServices] ReminderDispatcher dispatcher,

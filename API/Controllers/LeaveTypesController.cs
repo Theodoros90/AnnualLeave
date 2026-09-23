@@ -20,7 +20,7 @@ public class LeaveTypesController : BaseApiController
     }
 
     [HttpPost]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<LeaveTypeDto>> CreateLeaveType(UpsertLeaveTypeRequest request)
     {
         var result = await Mediator.Send(new CreateLeaveType.Command { LeaveType = request });
@@ -28,7 +28,7 @@ public class LeaveTypesController : BaseApiController
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<LeaveTypeDto>> UpdateLeaveType(int id, UpsertLeaveTypeRequest request)
     {
         var result = await Mediator.Send(new UpdateLeaveType.Command { Id = id, LeaveType = request });
@@ -36,7 +36,7 @@ public class LeaveTypesController : BaseApiController
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult> DeleteLeaveType(int id)
     {
         var result = await Mediator.Send(new DeleteLeaveType.Command { Id = id });

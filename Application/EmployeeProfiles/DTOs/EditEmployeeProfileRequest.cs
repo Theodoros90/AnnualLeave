@@ -8,7 +8,7 @@ public class EditEmployeeProfileRequest
     public string Id { get; set; } = string.Empty;
 
     /// <summary>
-    /// Null only for an Admin, who has no department. Which roles may leave it
+    /// Null only for a System Administrator, who has no department. Which roles may leave it
     /// blank and which must fill it in is role-dependent, so it cannot be settled
     /// by an annotation here — see <c>EditEmployeeProfileRequestValidator</c>.
     /// </summary>
@@ -27,7 +27,7 @@ public class EditEmployeeProfileRequest
     public string? JobTitle { get; set; }
 
     /// <summary>
-    /// Required for an Employee or a Manager, null only for an Admin — role-dependent
+    /// Required for an Employee or a Manager, null only for a System Administrator — role-dependent
     /// like <see cref="DepartmentId"/> above it, so <c>EditEmployeeProfileRequestValidator</c>
     /// settles it rather than an annotation here. Unlike the leave numbers, this one
     /// belongs on the request: the dialog shows it, so omitting it would clear a

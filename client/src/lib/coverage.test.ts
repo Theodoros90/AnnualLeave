@@ -3,7 +3,7 @@ import { COVERAGE_REQUIRED_MESSAGE, coverageError, isCoverageRequired } from './
 
 /**
  * Mirror of `CoverageRule.cs`: coverage is mandatory for an Employee and a
- * Manager, and an Admin's own leave is exempt.
+ * Manager, and a System Administrator's own leave is exempt.
  */
 describe('isCoverageRequired', () => {
     it('is required for an Employee', () => {
@@ -14,8 +14,8 @@ describe('isCoverageRequired', () => {
         expect(isCoverageRequired(['Manager'])).toBe(true)
     })
 
-    it('is not required for an Admin', () => {
-        expect(isCoverageRequired(['Admin'])).toBe(false)
+    it('is not required for a System Administrator', () => {
+        expect(isCoverageRequired(['System Administrator'])).toBe(false)
     })
 
     it('reads unknown roles as not required, so the mirror never over-refuses', () => {
@@ -36,6 +36,6 @@ describe('coverageError', () => {
     })
 
     it('passes an admin naming nobody', () => {
-        expect(coverageError(['Admin'], null)).toBeNull()
+        expect(coverageError(['System Administrator'], null)).toBeNull()
     })
 })

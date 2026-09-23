@@ -1,3 +1,4 @@
+using Domain;
 using Application.Holidays.Queries;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +11,7 @@ namespace API.Controllers;
 public class HolidaysController : BaseApiController
 {
     [HttpGet("countries")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<IActionResult> GetCountries(CancellationToken cancellationToken) =>
         HandleResult(await Mediator.Send(new GetCountries.Query(), cancellationToken));
 

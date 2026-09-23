@@ -110,10 +110,10 @@ const DashboardHome = observer(function DashboardHome() {
     const user = authStore.user
     if (!user) return null
 
-    const isAdmin = user.roles.includes('Admin')
+    const isAdmin = user.roles.includes('System Administrator')
     const isManager = user.roles.includes('Manager') && !isAdmin
 
-    // Admin sub-routes are derived from the URL (was: uiStore.adminSection).
+    // System Administrator sub-routes are derived from the URL (was: uiStore.adminSection).
     const adminSection = location.pathname.startsWith('/admin/')
         ? location.pathname.split('/')[2]
         : null
@@ -1638,7 +1638,7 @@ function TeamHealthCard({ leaves, teamHistory }: {
     )
 }
 
-/* ── Admin-only ───────────────────────────────────────────────────────── */
+/* ── System Administrator-only ───────────────────────────────────────────────────────── */
 
 function Gauge({ label, big, bigColor, sub, barColor, barPct }: {
     label: string; big: string; bigColor?: string; sub: string; barColor: string; barPct: number

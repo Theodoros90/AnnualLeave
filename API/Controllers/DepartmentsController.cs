@@ -24,7 +24,7 @@ public class DepartmentsController : BaseApiController
     }
 
     [HttpPost]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<DepartmentDto>> CreateDepartment(UpsertDepartmentRequest request)
     {
         var result = await Mediator.Send(new CreateDepartment.Command { Department = request });
@@ -32,7 +32,7 @@ public class DepartmentsController : BaseApiController
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<DepartmentDto>> UpdateDepartment(int id, UpsertDepartmentRequest request)
     {
         var result = await Mediator.Send(new UpdateDepartment.Command { Id = id, Department = request });
@@ -40,7 +40,7 @@ public class DepartmentsController : BaseApiController
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult> DeleteDepartment(int id)
     {
         var result = await Mediator.Send(new DeleteDepartment.Command { Id = id });

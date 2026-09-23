@@ -28,7 +28,7 @@ public class EditEmployeeProfile
             employeeProfile.ManagerId = request.EmployeeProfile.ManagerId;
             employeeProfile.JobTitle = request.EmployeeProfile.JobTitle;
             // Assigned unconditionally, like every field above it: the dialog shows
-            // the start date, so a null arriving here is a promotion to Admin
+            // the start date, so a null arriving here is a promotion to System Administrator
             // clearing it rather than a client that forgot to send it.
             var startDateMoved = employeeProfile.EmploymentStartDate != request.EmployeeProfile.EmploymentStartDate;
             employeeProfile.EmploymentStartDate = request.EmployeeProfile.EmploymentStartDate;

@@ -70,7 +70,7 @@ function scrollToId(id: string) {
 const Topbar = observer(function Topbar() {
     const { authStore, uiStore } = useStore()
     const location = useLocation()
-    const isAdminUser = authStore.user?.roles?.includes('Admin') ?? false
+    const isAdminUser = authStore.user?.roles?.includes('System Administrator') ?? false
     const isManagerUser = authStore.user?.roles?.includes('Manager') ?? false
     const shouldUseManagerNotifications = isManagerUser && !isAdminUser
 

@@ -104,7 +104,7 @@ export const GENDER_REQUIRED_MESSAGE = 'Gender is required.'
  * left unspecified. The only thing that can be wrong with the value is its
  * absence — the radios offer two answers and nothing else.
  *
- * Callers only ask this for an Employee or a Manager. An Admin has no recorded
+ * Callers only ask this for an Employee or a Manager. A System Administrator has no recorded
  * gender — the field is hidden for them, and the API refuses one outright
  * (`PersonFieldRules.GenderNotForAdminMessage`) — so the dialogs skip the check
  * and send null, exactly as they do for `employmentStartDateError`.
@@ -138,7 +138,7 @@ export function earliestAllowedStartDate(dateOfBirth: string | null | undefined)
  * Note what is *not* here: a start date in the future is accepted, unlike a date
  * of birth. An administrator keys a new hire in before their first day.
  *
- * Callers only ask this for an Employee or a Manager. An Admin has no start date
+ * Callers only ask this for an Employee or a Manager. A System Administrator has no start date
  * — the Profile section that collects it is hidden for them, and the API refuses
  * one outright — so the dialogs skip the check rather than passing a blank.
  */

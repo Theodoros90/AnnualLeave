@@ -43,7 +43,7 @@ public static class ManagerNotificationRecipients
             .Select(r => r.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
-        // An Admin has no department, and "the same department as nobody" is not a
+        // A System Administrator has no department, and "the same department as nobody" is not a
         // match — without this the comparison below would equate one absent
         // department with another and treat every other department-less profile as
         // a colleague. Only the Manager-role join keeps that from mattering today,

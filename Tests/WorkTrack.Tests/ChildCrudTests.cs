@@ -295,7 +295,7 @@ public class ChildCrudTests
     /// <summary>
     /// A date-of-birth change moves the eligibility window an already-approved
     /// leave was measured against, so it gets the same guard DeleteChild has:
-    /// refused once leave is recorded, unless the caller is an Admin (matching
+    /// refused once leave is recorded, unless the caller is a System Administrator (matching
     /// EditAnnualLeave's admin override for approved requests).
     /// </summary>
     [Fact]

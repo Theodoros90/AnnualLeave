@@ -112,7 +112,7 @@ const TD = {
 }
 
 const TeamTimesheetPage = observer(function TeamTimesheetPage({ user }: { user: UserInfo }) {
-    const isAdmin = user.roles.includes('Admin')
+    const isAdmin = user.roles.includes('System Administrator')
     const isManager = user.roles.includes('Manager')
     const queryClient = useQueryClient()
 
@@ -176,7 +176,7 @@ const TeamTimesheetPage = observer(function TeamTimesheetPage({ user }: { user: 
         () => new Map(departments.map((d) => [d.id, d.name])),
         [departments]
     )
-    /* A sheet filed by someone with no department — an Admin — carries none, so
+    /* A sheet filed by someone with no department — a System Administrator — carries none, so
        the id can be absent as well as unknown. Both read as "—". */
     const deptNameOf = (id: number | null) =>
         (id === null ? undefined : deptById.get(id)) ?? '—'

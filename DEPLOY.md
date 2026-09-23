@@ -116,7 +116,7 @@ logs a warning whenever it cuts a run back this way.
 | Departments | 5 |
 | Leave types / activity types | 8 / 8 |
 | App settings | 1 |
-| Admin user, profile, department assignment | 1 / 1 / 1 |
+| System Administrator user, profile, department assignment | 1 / 1 / 1 |
 | Backfills: leave-type design fields, project metadata, zero entitlements | in place |
 
 A real tenant wants all of this. The three backfills repair rows that predate a
@@ -139,21 +139,21 @@ left to fall away with the demo accounts.
 
 On a Production host you need **all three** flags `true` to get the second table.
 
-Log in as `admin@annualleave.com`; every seeded account uses the password
+Log in as `systemadmin@annualleave.com`; every seeded account uses the password
 `Pa$$w0rd`.
 
 **Read these before leaving the flags on:**
 
 - ⚠️ **All 11 accounts share the hardcoded password `Pa$$w0rd`**, and
   `EnsurePassword` **resets it on every startup**. So with all three flags on,
-  changing Admin's password in the UI is undone by the next app-pool recycle.
+  changing System Administrator's password in the UI is undone by the next app-pool recycle.
   This is fine for a demo/UAT site on `jpeople_dev`; it is **not** acceptable for
   a real tenant with real staff data. `AllowInProduction: false` is what stops
   it — leave it off and the reset cannot happen no matter what the other two
   flags say.
 - ⚠️ **Flipping `DemoData` back to `false` deletes the demo data.** On the next
   start `SeedUsers` removes all ten demo accounts *and their dependent rows*
-  (profiles, leave, timesheets) so only Admin remains. Leave it `true` for as
+  (profiles, leave, timesheets) so only System Administrator remains. Leave it `true` for as
   long as you want the demo accounts to exist — don't treat it as a one-shot
   fill. The three sample projects are *not* deleted — they only lose their owner,
   since a project is real work and losing it with the account that happened to own
@@ -161,7 +161,7 @@ Log in as `admin@annualleave.com`; every seeded account uses the password
 - ⚠️ **`Enabled: false` does not clean up demo accounts already in the database.**
   It stops the seeder running at all, which also stops the teardown. See §3.2.
 - To go live for real: set **all three** flags to `false`, restart, then set a
-  strong Admin password. With `Enabled: false` the seeder never runs; even if
+  strong System Administrator password. With `Enabled: false` the seeder never runs; even if
   something turns it back on, `AllowInProduction: false` keeps the password from
   being reset.
 - Each individual seeder is a no-op when its table already has rows, so an
@@ -178,9 +178,9 @@ once on each such database:
    `AllowInProduction: false`.
 2. Recycle the app pool. `SeedUsers` deletes the ten demo accounts and their
    profiles, leave, timesheets and department assignments. `AllowInProduction:
-   false` keeps Admin's password untouched throughout.
+   false` keeps System Administrator's password untouched throughout.
 3. Confirm: `SELECT Email FROM AspNetUsers ORDER BY Email` — only
-   `admin@annualleave.com` and accounts you created should remain.
+   `systemadmin@annualleave.com` and accounts you created should remain.
 4. Set `Enabled: false` and recycle again.
 
 > Before this was fixed, step 2 silently did nothing. `DbInitializer`'s cleanup had

@@ -21,9 +21,9 @@ using Xunit;
 namespace WorkTrack.Tests;
 
 /// <summary>
-/// An Admin sits outside the department structure: the role sees every department,
+/// A System Administrator sits outside the department structure: the role sees every department,
 /// so belonging to one grants nothing. The admin panel has always said so — it
-/// hides the whole Profile section for an Admin — but
+/// hides the whole Profile section for a System Administrator — but
 /// <c>EmployeeProfile.DepartmentId</c> was a required foreign key, so
 /// <c>CreateUserDialog</c> substituted "the first active department" for a field it
 /// never showed, and the seeder wrote Engineering unconditionally.
@@ -35,7 +35,7 @@ namespace WorkTrack.Tests;
 /// not be deleted, and the admin could not be moved out of it through any field the
 /// panel offered.
 ///
-/// So the column is nullable and null is what an Admin gets. These cover the two
+/// So the column is nullable and null is what a System Administrator gets. These cover the two
 /// halves that had to change deliberately: which roles the validators require a
 /// department from, and clearing the rows already written.
 /// </summary>
@@ -91,7 +91,7 @@ public class AdminHasNoDepartmentTests : IDisposable
 
     private async Task GivenRolesAsync()
     {
-        foreach (var role in new[] { AppRoles.Admin, AppRoles.Manager, AppRoles.Employee })
+        foreach (var role in new[] { AppRoles.SystemAdministrator, AppRoles.Manager, AppRoles.Employee })
         {
             if (!await Roles.RoleExistsAsync(role))
             {
@@ -126,14 +126,14 @@ public class AdminHasNoDepartmentTests : IDisposable
 
     private static AdminCreateUserDto CreatePayload(string role, int? departmentId) => new()
     {
-        Email = $"{role.ToLowerInvariant()}@test.local",
+        Email = $"{role.Replace(" ", "").ToLowerInvariant()}@test.local",
         DisplayName = $"New {role}",
         DepartmentId = departmentId,
         Roles = [role],
         // Required since the field became mandatory — see PersonFieldValidationTests.
         DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-30),
-        // Likewise for everyone but an Admin, who is refused one — see UserGenderTests.
-        Gender = role == AppRoles.Admin ? null : Gender.Female,
+        // Likewise for everyone but a System Administrator, who is refused one — see UserGenderTests.
+        Gender = role == AppRoles.SystemAdministrator ? null : Gender.Female,
     };
 
     private Task<FluentValidation.Results.ValidationResult> ValidateCreate(AdminCreateUserDto payload) =>
@@ -151,7 +151,7 @@ public class AdminHasNoDepartmentTests : IDisposable
 
     /// <summary>
     /// The field the dialog never shows must be one the API accepts as blank —
-    /// otherwise the only way to create an Admin is to invent a department for
+    /// otherwise the only way to create a System Administrator is to invent a department for
     /// them, which is exactly what the client was doing.
     /// </summary>
     [Fact]
@@ -160,7 +160,7 @@ public class AdminHasNoDepartmentTests : IDisposable
         await GivenDepartmentAsync();
         await GivenRolesAsync();
 
-        var result = await ValidateCreate(CreatePayload(AppRoles.Admin, departmentId: null));
+        var result = await ValidateCreate(CreatePayload(AppRoles.SystemAdministrator, departmentId: null));
 
         Assert.True(result.IsValid, Errors(result));
     }
@@ -178,14 +178,14 @@ public class AdminHasNoDepartmentTests : IDisposable
         var result = await new CreateAdminUser.Handler(
                 Db, Users, new FakeAccountEmailSender(), NullLogger<CreateAdminUser.Handler>.Instance)
             .Handle(
-                new CreateAdminUser.Command { User = CreatePayload(AppRoles.Admin, departmentId: null) },
+                new CreateAdminUser.Command { User = CreatePayload(AppRoles.SystemAdministrator, departmentId: null) },
                 CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Error);
 
         var profile = await Db.EmployeeProfiles.AsNoTracking().SingleAsync();
         Assert.Null(profile.DepartmentId);
-        // The profile itself still exists: an Admin books their own leave against
+        // The profile itself still exists: a System Administrator books their own leave against
         // it, and it is the foreign key their leave and timesheet history hangs on.
         // No annual-leave type is seeded here, so the entitlement is the compiled-in
         // fallback rather than an allowance — and must never be a 0, which would
@@ -194,7 +194,7 @@ public class AdminHasNoDepartmentTests : IDisposable
     }
 
     /// <summary>
-    /// Blank is a licence for Admins only. Relaxing the rule for everyone would let
+    /// Blank is a licence for System Administrators only. Relaxing the rule for everyone would let
     /// an Employee through with no department, which is the field their manager,
     /// their leave routing and their project visibility are all derived from.
     /// </summary>
@@ -214,7 +214,7 @@ public class AdminHasNoDepartmentTests : IDisposable
 
     /// <summary>
     /// Refused rather than quietly dropped. The panel cannot send one, so a request
-    /// that carries a department for an Admin was built against the old shape — and
+    /// that carries a department for a System Administrator was built against the old shape — and
     /// silently ignoring it would recreate the invisible assignment this removes.
     /// </summary>
     [Fact]
@@ -223,23 +223,23 @@ public class AdminHasNoDepartmentTests : IDisposable
         var departmentId = await GivenDepartmentAsync();
         await GivenRolesAsync();
 
-        var result = await ValidateCreate(CreatePayload(AppRoles.Admin, departmentId));
+        var result = await ValidateCreate(CreatePayload(AppRoles.SystemAdministrator, departmentId));
 
         Assert.False(result.IsValid);
-        Assert.Contains("An Admin cannot belong to a department.", Errors(result));
+        Assert.Contains("A System Administrator cannot belong to a department.", Errors(result));
     }
 
     /* ── Editing a profile ──────────────────────────────────────────────────── */
 
     /// <summary>
     /// The same rule on the way through the edit dialog, which is the path a
-    /// promotion to Admin takes: roles are set first, then the profile is saved, so
-    /// by the time this validator runs the user is already an Admin.
+    /// promotion to System Administrator takes: roles are set first, then the profile is saved, so
+    /// by the time this validator runs the user is already a System Administrator.
     /// </summary>
     [Fact]
     public async Task An_Admin_profile_can_be_saved_with_no_department()
     {
-        var user = await GivenUserAsync("admin@test.local", AppRoles.Admin);
+        var user = await GivenUserAsync("admin@test.local", AppRoles.SystemAdministrator);
         var profile = await GivenProfileAsync(user.Id, departmentId: null);
 
         var result = await ValidateEdit(new EditEmployeeProfileRequest
@@ -262,13 +262,13 @@ public class AdminHasNoDepartmentTests : IDisposable
         var user = await GivenUserAsync("promoted@test.local", AppRoles.Employee);
         var profile = await GivenProfileAsync(user.Id, departmentId);
 
-        // The dialog sets roles first, so the user is an Admin by the time the
+        // The dialog sets roles first, so the user is a System Administrator by the time the
         // profile save lands. Re-read rather than reuse: GivenProfileAsync clears
         // the change tracker, so the instance above is detached.
         var tracked = await Users.FindByIdAsync(user.Id);
         Assert.NotNull(tracked);
         Assert.True((await Users.RemoveFromRoleAsync(tracked, AppRoles.Employee)).Succeeded);
-        Assert.True((await Users.AddToRoleAsync(tracked, AppRoles.Admin)).Succeeded);
+        Assert.True((await Users.AddToRoleAsync(tracked, AppRoles.SystemAdministrator)).Succeeded);
 
         var request = new EditEmployeeProfileRequest
         {
@@ -315,7 +315,7 @@ public class AdminHasNoDepartmentTests : IDisposable
     public async Task An_Admin_profile_cannot_be_given_a_department()
     {
         var departmentId = await GivenDepartmentAsync();
-        var user = await GivenUserAsync("admin@test.local", AppRoles.Admin);
+        var user = await GivenUserAsync("admin@test.local", AppRoles.SystemAdministrator);
         var profile = await GivenProfileAsync(user.Id, departmentId: null);
 
         var result = await ValidateEdit(new EditEmployeeProfileRequest
@@ -325,7 +325,7 @@ public class AdminHasNoDepartmentTests : IDisposable
         });
 
         Assert.False(result.IsValid);
-        Assert.Contains("An Admin cannot belong to a department.", Errors(result));
+        Assert.Contains("A System Administrator cannot belong to a department.", Errors(result));
     }
 
     /* ── The seeder, and rows already written ───────────────────────────────── */
@@ -339,7 +339,7 @@ public class AdminHasNoDepartmentTests : IDisposable
     {
         await DbInitializer.SeedData(Db, Users, Roles, SeedPolicy.Unrestricted(demoData: true));
 
-        var adminUser = await Db.Users.SingleAsync(u => u.Email == "admin@annualleave.com");
+        var adminUser = await Db.Users.SingleAsync(u => u.Email == "systemadmin@annualleave.com");
         var profile = await Db.EmployeeProfiles.AsNoTracking().SingleAsync(ep => ep.UserId == adminUser.Id);
 
         Assert.Null(profile.DepartmentId);
@@ -354,7 +354,7 @@ public class AdminHasNoDepartmentTests : IDisposable
     {
         await DbInitializer.SeedData(Db, Users, Roles, SeedPolicy.Unrestricted(demoData: true));
 
-        var adminId = (await Db.Users.SingleAsync(u => u.Email == "admin@annualleave.com")).Id;
+        var adminId = (await Db.Users.SingleAsync(u => u.Email == "systemadmin@annualleave.com")).Id;
         var others = await Db.EmployeeProfiles.AsNoTracking()
             .Where(ep => ep.UserId != adminId)
             .ToListAsync();
@@ -366,14 +366,14 @@ public class AdminHasNoDepartmentTests : IDisposable
     /// <summary>
     /// A database seeded before this change still holds the invented assignment, and
     /// no field in the panel can clear it — the Profile section is hidden for
-    /// Admins. So the seed run repairs it, the way the non-manager
+    /// System Administrators. So the seed run repairs it, the way the non-manager
     /// <c>UserDepartments</c> rows are repaired.
     /// </summary>
     [Fact]
     public async Task A_seed_run_clears_a_department_an_admin_already_had()
     {
         var departmentId = await GivenDepartmentAsync("Finance", "FIN");
-        var admin = await GivenUserAsync("legacy.admin@test.local", AppRoles.Admin);
+        var admin = await GivenUserAsync("legacy.admin@test.local", AppRoles.SystemAdministrator);
         var profile = await GivenProfileAsync(admin.Id, departmentId);
 
         await DbInitializer.SeedData(Db, Users, Roles, SeedPolicy.Unrestricted(demoData: false));
@@ -385,7 +385,7 @@ public class AdminHasNoDepartmentTests : IDisposable
     }
 
     /// <summary>
-    /// And leaves everyone else's alone — the repair has to tell an Admin apart
+    /// And leaves everyone else's alone — the repair has to tell a System Administrator apart
     /// from anybody else, not clear the column wholesale.
     /// </summary>
     [Fact]
@@ -415,7 +415,7 @@ public class AdminHasNoDepartmentTests : IDisposable
     public async Task A_department_with_only_a_department_less_admin_can_be_deleted()
     {
         var departmentId = await GivenDepartmentAsync();
-        var admin = await GivenUserAsync("admin@test.local", AppRoles.Admin);
+        var admin = await GivenUserAsync("admin@test.local", AppRoles.SystemAdministrator);
         await GivenProfileAsync(admin.Id, departmentId: null);
 
         var result = await new DeleteDepartment.Handler(Db)

@@ -6,7 +6,7 @@ using Persistence;
 namespace Application.Timesheets.Support;
 
 /// <summary>
-/// What a caller is allowed to *read*: every timesheet for an Admin; their own
+/// What a caller is allowed to *read*: every timesheet for a System Administrator; their own
 /// plus their managed departments and direct reports for a Manager; their own
 /// only for anyone else.
 ///
@@ -32,7 +32,7 @@ public static class TimesheetScope
     {
         if (isAdmin)
         {
-            // Admins see all timesheets — no filter.
+            // System Administrators see all timesheets — no filter.
             return query;
         }
 

@@ -13,7 +13,7 @@ namespace WorkTrack.Tests;
 /// The seeder plants one published constant password into every account it owns
 /// and re-asserts it on every startup. Production had Seed:Enabled and
 /// Seed:DemoData both true, so each restart of the deployed app reset
-/// admin@annualleave.com — and ten demo accounts — back to that password,
+/// systemadmin@annualleave.com — and ten demo accounts — back to that password,
 /// undoing whatever the operator had set.
 ///
 /// Two things stop that now, and both are tested here: Production configuration no
@@ -23,7 +23,7 @@ namespace WorkTrack.Tests;
 /// </summary>
 public class SeedPolicyTests : IDisposable
 {
-    private const string AdminEmail = "admin@annualleave.com";
+    private const string AdminEmail = "systemadmin@annualleave.com";
     private const string SeedPassword = "Pa$$w0rd";
     private const string OperatorPassword = "0perator-Chose-Th1s!";
     private static readonly string[] DemoEmails =
@@ -189,7 +189,7 @@ public class SeedPolicyTests : IDisposable
         var reloaded = await Users.FindByEmailAsync(AdminEmail);
         Assert.NotNull(reloaded);
         Assert.Equal("Admin User", reloaded!.DisplayName);
-        Assert.True(await Users.IsInRoleAsync(reloaded, AppRoles.Admin));
+        Assert.True(await Users.IsInRoleAsync(reloaded, AppRoles.SystemAdministrator));
         Assert.True(await Users.CheckPasswordAsync(admin, OperatorPassword));
     }
 
@@ -340,7 +340,7 @@ public class SeedPolicyTests : IDisposable
     ///
     /// A <c>UserDepartment</c> row is not structural in the same way, and this test
     /// used to assert the opposite. The seeder gave the admin ENG on every host,
-    /// which bought nothing — an Admin sees every department regardless — and made
+    /// which bought nothing — a System Administrator sees every department regardless — and made
     /// Engineering undeletable on the deployed site, because DeleteDepartment counts
     /// the row as an assigned manager and nothing can remove it. See
     /// <see cref="NonManagerUserDepartmentTests"/>.

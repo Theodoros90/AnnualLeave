@@ -26,13 +26,13 @@ public class EditEmployeeProfileRequestValidator : AbstractValidator<EditEmploye
 
             // Whether a department is required depends on the role of the user whose
             // profile this is, so it takes a lookup rather than a standalone rule.
-            // An Admin sees every department and belongs to none; everyone else is
+            // A System Administrator sees every department and belongs to none; everyone else is
             // placed in one, which is where their manager, their leave routing and
             // their project visibility all come from.
             //
             // This is also the path a role change takes: the edit dialog sets roles
             // first and saves the profile second, so the role read here is already
-            // the new one — a promotion to Admin arrives with a null department and
+            // the new one — a promotion to System Administrator arrives with a null department and
             // a demotion out of it arrives with a real one.
             RuleFor(x => x.EmployeeProfile)
                 .CustomAsync(async (request, validationContext, cancellationToken) =>
@@ -49,7 +49,7 @@ public class EditEmployeeProfileRequestValidator : AbstractValidator<EditEmploye
                         .Select(ep => new
                         {
                             IsAdmin = ep.User != null
-                                && ep.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin),
+                                && ep.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator),
                             DateOfBirth = ep.User == null ? null : ep.User.DateOfBirth,
                         })
                         .FirstOrDefaultAsync(cancellationToken);
@@ -62,7 +62,7 @@ public class EditEmployeeProfileRequestValidator : AbstractValidator<EditEmploye
                         {
                             validationContext.AddFailure(
                                 "EmployeeProfile.DepartmentId",
-                                "An Admin cannot belong to a department.");
+                                "A System Administrator cannot belong to a department.");
                         }
 
                         if (request.EmploymentStartDate is not null)

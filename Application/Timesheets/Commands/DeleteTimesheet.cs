@@ -13,7 +13,7 @@ namespace Application.Timesheets.Commands;
 /// Authorization goes through <see cref="TimesheetAccess.AuthorizeWriteAsync"/>,
 /// which is the same rule the timesheet-entry actions already enforce. The rule
 /// this replaced was applied inline in the controller and recognised only the
-/// employee the timesheet belongs to — so an Admin could not delete a timesheet at
+/// employee the timesheet belongs to — so a System Administrator could not delete a timesheet at
 /// all, nor could the manager responsible for it, even though both may add, edit
 /// and delete its entries. A caller who could empty a timesheet one entry at a
 /// time could not remove the timesheet itself.

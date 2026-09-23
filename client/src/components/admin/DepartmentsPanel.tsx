@@ -131,7 +131,7 @@ function DepartmentsPanel() {
         [adminUsers]
     )
     const userById = useMemo(() => new Map(adminUsers.map((u) => [u.id, u])), [adminUsers])
-    /* An Admin has no department, so they belong to none of these groups — every
+    /* A System Administrator has no department, so they belong to none of these groups — every
        headcount, team strip, "not checked in" warning and leave figure on this page
        is derived from this map. Skipped explicitly: grouping them under a null key
        would work by accident, since nothing looks that key up, but it reads as
@@ -189,7 +189,7 @@ function DepartmentsPanel() {
             )
 
             // A vacant manager post only matters once there are people whose approvals
-            // fall through to Admin; with nobody in the department there is nothing to
+            // fall through to System Administrator; with nobody in the department there is nothing to
             // approve, so an empty unmanaged department is unconfigured, not broken.
             const outPct = counts.total > 0 ? counts.out / counts.total : 0
             const understaffed = counts.out > 0 && outPct >= 0.25
@@ -576,7 +576,7 @@ function DepartmentCard({ derived, onEdit, onDelete, onViewTeam, onReport }: {
                         }}>⚠</Box>
                         <Box sx={{ flex: 1 }}>
                             <Box sx={{ fontSize: 12, fontWeight: 600, color: 'warning.dark' }}>No manager assigned</Box>
-                            <Box sx={{ fontSize: 11, color: '#78350F' }}>Approvals are routed to Admin</Box>
+                            <Box sx={{ fontSize: 11, color: '#78350F' }}>Approvals are routed to System Administrator</Box>
                         </Box>
                     </Box>
                 )}

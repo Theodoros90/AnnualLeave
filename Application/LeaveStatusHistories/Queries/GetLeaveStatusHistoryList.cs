@@ -31,7 +31,7 @@ public class GetLeaveStatusHistoryList
 
             if (request.IsAdmin)
             {
-                // Admin sees all history.
+                // System Administrator sees all history.
             }
             else if (request.IsManager)
             {
@@ -45,7 +45,7 @@ public class GetLeaveStatusHistoryList
                     ((h.AnnualLeave.DepartmentId.HasValue &&
                       managerScope.ManagedDepartmentIds.Contains(h.AnnualLeave.DepartmentId.Value))
                      || managerScope.DirectReportUserIds.Contains(h.AnnualLeave.EmployeeId))
-                    && (h.AnnualLeave.Employee == null || !h.AnnualLeave.Employee.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin)));
+                    && (h.AnnualLeave.Employee == null || !h.AnnualLeave.Employee.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator)));
             }
             else
             {

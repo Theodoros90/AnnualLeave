@@ -14,7 +14,7 @@ using Xunit;
 namespace WorkTrack.Tests;
 
 /// <summary>
-/// The company dashboard counted every EmployeeProfile, so an Admin who happens
+/// The company dashboard counted every EmployeeProfile, so a System Administrator who happens
 /// to hold one was reported as an employee: the hero read "12 employees" over a
 /// population the Users panel and GetTeammateList both treat as 11, and the
 /// admin's own name turned up in the "not checked in" feed every morning.
@@ -32,7 +32,7 @@ public class AttendanceExcludesAdminsTests
     private const string DepartmentName = "Engineering";
 
     /// <summary>
-    /// One Admin and two employees, all three holding a profile in the same
+    /// One System Administrator and two employees, all three holding a profile in the same
     /// department. Only the two employees are the tracked workforce.
     /// </summary>
     private static AppDbContext SeedWorld()
@@ -44,12 +44,12 @@ public class AttendanceExcludesAdminsTests
         var adminRole = new Role
         {
             Id = "r-admin",
-            Name = AppRoles.Admin,
-            NormalizedName = AppRoles.Admin.ToUpperInvariant(),
+            Name = AppRoles.SystemAdministrator,
+            NormalizedName = AppRoles.SystemAdministrator.ToUpperInvariant(),
         };
         db.Roles.Add(adminRole);
 
-        SeedProfile(db, AdminUserId, AdminProfileId, "Ada Admin");
+        SeedProfile(db, AdminUserId, AdminProfileId, "Ada System Administrator");
         db.UserRoles.Add(new UserRole { UserId = AdminUserId, RoleId = adminRole.Id });
 
         SeedProfile(db, "employee-one-u", "employee-one-p", "Eve Employee");
@@ -105,7 +105,7 @@ public class AttendanceExcludesAdminsTests
         using var provider = BuildProvider(db);
 
         var company = Payload<CompanyAttendanceDto>(
-            await ControllerFor(provider, AdminUserId, AppRoles.Admin).GetCompany(CancellationToken.None));
+            await ControllerFor(provider, AdminUserId, AppRoles.SystemAdministrator).GetCompany(CancellationToken.None));
 
         Assert.Equal(2, company.Total);
 
@@ -123,9 +123,9 @@ public class AttendanceExcludesAdminsTests
         using var provider = BuildProvider(db);
 
         var company = Payload<CompanyAttendanceDto>(
-            await ControllerFor(provider, AdminUserId, AppRoles.Admin).GetCompany(CancellationToken.None));
+            await ControllerFor(provider, AdminUserId, AppRoles.SystemAdministrator).GetCompany(CancellationToken.None));
 
-        Assert.DoesNotContain("Ada Admin", company.Recent.Select(r => r.EmployeeName));
+        Assert.DoesNotContain("Ada System Administrator", company.Recent.Select(r => r.EmployeeName));
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public class AttendanceExcludesAdminsTests
         using var provider = BuildProvider(db);
 
         var team = Payload<TeamAttendanceDto>(
-            await ControllerFor(provider, AdminUserId, AppRoles.Admin).GetTeam(CancellationToken.None));
+            await ControllerFor(provider, AdminUserId, AppRoles.SystemAdministrator).GetTeam(CancellationToken.None));
 
         Assert.DoesNotContain(AdminProfileId, team.Members.Select(m => m.EmployeeId));
         Assert.Equal(2, team.Members.Count);

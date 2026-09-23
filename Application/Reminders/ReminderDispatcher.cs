@@ -15,12 +15,12 @@ namespace Application.Reminders;
 // reminder's recipients + message when asked.
 //
 // Currently implements the reminders backed by real data:
-//   • pending-approvals — managers with leave/timesheets awaiting review in their department (never Admins)
+//   • pending-approvals — managers with leave/timesheets awaiting review in their department (never System Administrators)
 //   • late-submissions  — employees sitting on an un-submitted (Draft) timesheet
 //   • low-balance       — employees whose remaining leave is below the threshold
 //   • birthday-reminder — admins/managers told of upcoming employee birthdays
-//   • check-in          — employees who have not yet checked in today (never Admins)
-//   • check-out         — employees still checked in (no check-out) today (never Admins)
+//   • check-in          — employees who have not yet checked in today (never System Administrators)
+//   • check-out         — employees still checked in (no check-out) today (never System Administrators)
 //   • daily-attendance-report — admins told, each working morning, who was late,
 //                         absent, still checked in, over hours, behind on a
 //                         timesheet or on leave the previous working day
@@ -110,10 +110,10 @@ public class ReminderDispatcher(
         var sent = 0;
         if (settings.EmailNotificationsEnabled)
         {
-            // Managers only, each seeing their own department's queue. Admins used
+            // Managers only, each seeing their own department's queue. System Administrators used
             // to get an organisation-wide copy as well, but the people who action
             // a submission are the managers, so that copy was a daily email about
-            // queues that were not the Admin's to clear. An Admin holds no
+            // queues that were not the System Administrator's to clear. A System Administrator holds no
             // department (the validators refuse one), so the join below cannot
             // pick one up as a manager either.
             foreach (var mgr in managers)
@@ -273,7 +273,7 @@ public class ReminderDispatcher(
             return;
         }
 
-        var admins = await GetUsersInRoleAsync(AppRoles.Admin, ct);
+        var admins = await GetUsersInRoleAsync(AppRoles.SystemAdministrator, ct);
         var managers = await GetManagersWithDepartmentAsync(ct);
 
         string LineHtml(string name, DateOnly date, int age) =>
@@ -407,11 +407,11 @@ public class ReminderDispatcher(
     }
 
     // ── daily-attendance-report ──────────────────────────────────────────────
-    // Every Admin, each working morning, about the previous working day: who
+    // Every System Administrator, each working morning, about the previous working day: who
     // checked in late, who never checked in, who never checked out, who worked
     // overtime, whose timesheet for the latest week past its deadline is still
     // unsubmitted, and who was on leave. Nothing goes out on a non-working morning, and Monday's
-    // report covers Friday. Admins and deactivated accounts appear in none of
+    // report covers Friday. System Administrators and deactivated accounts appear in none of
     // the lists (AttendanceDay.ExcludeAdmins; a leaver is not expected in),
     // matching the check-in reminders and the attendance dashboards.
     //
@@ -440,7 +440,7 @@ public class ReminderDispatcher(
             return;
         }
 
-        var admins = await GetUsersInRoleAsync(AppRoles.Admin, ct);
+        var admins = await GetUsersInRoleAsync(AppRoles.SystemAdministrator, ct);
         if (admins.Count == 0)
         {
             logger.LogInformation("daily-attendance-report: no admin with an email address; nothing sent.");
@@ -652,8 +652,8 @@ public class ReminderDispatcher(
     // today (keyed by EmployeeProfile.Id, as attendance events are) and who is
     // on approved leave today (keyed by user id, as AnnualLeave.EmployeeId is).
     //
-    // Admins are dropped the same way the attendance dashboards drop them
-    // (AttendanceDay.ExcludeAdmins): an Admin may hold a profile, but the topbar
+    // System Administrators are dropped the same way the attendance dashboards drop them
+    // (AttendanceDay.ExcludeAdmins): a System Administrator may hold a profile, but the topbar
     // hides the check-in widget for the role, so a reminder to check in is one
     // they cannot act on and would receive every working morning.
     private async Task<AttendanceSnapshot> LoadAttendanceTodayAsync(CancellationToken ct)

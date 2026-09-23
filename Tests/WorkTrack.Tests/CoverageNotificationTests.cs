@@ -63,7 +63,7 @@ public class CoverageNotificationTests
         AddPerson(db, ColleagueUserId, "p-colleague", "Petros Christou", ColleagueEmail, DepartmentId);
         AddPerson(db, "u-outsider", "p-outsider", "Elena Pavlou", OutsiderEmail, OtherDepartmentId);
 
-        // An Admin has a profile with no department at all — the shape the domain
+        // A System Administrator has a profile with no department at all — the shape the domain
         // requires, and the one that makes "the same department as nobody" a trap
         // worth a seeded example rather than a comment.
         db.Users.Add(new User
@@ -71,7 +71,7 @@ public class CoverageNotificationTests
             Id = AdminUserId,
             UserName = AdminEmail,
             Email = AdminEmail,
-            DisplayName = "Chris Admin",
+            DisplayName = "Chris System Administrator",
         });
         db.EmployeeProfiles.Add(new EmployeeProfile
         {
@@ -378,7 +378,7 @@ public class CoverageNotificationTests
     {
         await using var db = await SeedWorldAsync(requiresApproval: false);
 
-        // An Admin has no department, and "the same department as nobody" must not
+        // A System Administrator has no department, and "the same department as nobody" must not
         // read as a match — the seeded admin is the other department-less profile
         // that a null-matching query would wrongly call a colleague.
         var profile = db.EmployeeProfiles.Single(ep => ep.Id == EmployeeProfileId);

@@ -17,7 +17,7 @@ namespace WorkTrack.Tests;
 /// A <see cref="UserDepartment"/> row means one thing: an extra department a
 /// <b>manager</b> covers, beyond the one on their own profile. Nothing reads it
 /// for anyone else — <c>ProjectScope.DepartmentIdsForAsync</c> consults the table
-/// only when the caller is a manager, and an Admin short-circuits to "sees
+/// only when the caller is a manager, and a System Administrator short-circuits to "sees
 /// everything" before departments are resolved at all.
 ///
 /// One place did read it for everyone: <c>DeleteDepartment</c>, which counts every
@@ -29,7 +29,7 @@ namespace WorkTrack.Tests;
 /// Two paths wrote such rows:
 ///
 /// <list type="bullet">
-/// <item>The seeder gave <c>admin@annualleave.com</c> ENG unconditionally — in
+/// <item>The seeder gave <c>systemadmin@annualleave.com</c> ENG unconditionally — in
 /// every environment, before the demo-data gate — so the deployed IIS site had a
 /// permanently undeletable Engineering department. It seeded an Employee into HR
 /// as well.</item>
@@ -40,7 +40,7 @@ namespace WorkTrack.Tests;
 /// </summary>
 public class NonManagerUserDepartmentTests : IDisposable
 {
-    private const string AdminEmail = "admin@annualleave.com";
+    private const string AdminEmail = "systemadmin@annualleave.com";
 
     /// <summary>
     /// Deliberately not one of the seeder's own demo managers. Those are deleted
@@ -163,7 +163,7 @@ public class NonManagerUserDepartmentTests : IDisposable
     [Fact]
     public async Task Seeding_deletes_an_existing_admins_department_assignment()
     {
-        var admin = await GivenUserAsync(AdminEmail, AppRoles.Admin);
+        var admin = await GivenUserAsync(AdminEmail, AppRoles.SystemAdministrator);
         var engineering = await GivenDepartmentAsync("Engineering", "ENG");
         await GivenAssignmentAsync(admin.Id, engineering);
 

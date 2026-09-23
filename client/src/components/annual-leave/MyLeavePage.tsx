@@ -97,7 +97,7 @@ function nextWorkingDay(iso: string) {
 const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) {
     const { uiStore } = useStore()
     const queryClient = useQueryClient()
-    const isAdminUser = user.roles.includes('Admin')
+    const isAdminUser = user.roles.includes('System Administrator')
 
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('All')
     const [viewLeave, setViewLeave] = useState<AnnualLeave | null>(null)

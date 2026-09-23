@@ -71,7 +71,7 @@ public class GetStoredFile
         }
 
         /// <summary>
-        /// Leave evidence is visible to the employee it concerns, to an Admin, and
+        /// Leave evidence is visible to the employee it concerns, to a System Administrator, and
         /// to a Manager who could already open the leave it is attached to — the
         /// scope comes from <see cref="ManagerAccessScopeResolver"/>, the same
         /// source the leave queries use, so the two cannot drift apart.
@@ -93,7 +93,7 @@ public class GetStoredFile
 
             var path = StoredFilePath.For(file.Id);
 
-            // The uploader is not always the subject: an Admin creating leave on
+            // The uploader is not always the subject: a System Administrator creating leave on
             // someone's behalf uploads their evidence for them. Whoever the leave
             // names may read what is attached to it.
             var isTheirOwnLeave = await context.AnnualLeaves.AnyAsync(
@@ -128,7 +128,7 @@ public class GetStoredFile
         /// named on the leave may open it — which is the one reader evidence does
         /// not have, and why the two purposes are kept apart. Otherwise the same
         /// readers as evidence: the uploader, the employee the leave names, an
-        /// Admin, and a Manager who could open the leave itself.
+        /// System Administrator, and a Manager who could open the leave itself.
         /// </summary>
         private async Task<bool> CanReadHandoverAsync(
             Query request,

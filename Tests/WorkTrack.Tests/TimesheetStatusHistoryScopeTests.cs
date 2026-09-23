@@ -395,6 +395,6 @@ public class TimesheetStatusHistoryScopeTests
             await EndpointHistoryFor(provider, ManagerUserId, "out-p", AppRoles.Manager));
         Assert.Equal(
             ["ts-out"],
-            (await EndpointHistoryFor(provider, "admin-u", "out-p", AppRoles.Admin)).Distinct());
+            (await EndpointHistoryFor(provider, "admin-u", "out-p", AppRoles.SystemAdministrator)).Distinct());
     }
 }

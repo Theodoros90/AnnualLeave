@@ -19,7 +19,7 @@ public class ProjectTypesController : BaseApiController
     }
 
     [HttpPost]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<ProjectTypeDto>> CreateProjectType(UpsertProjectTypeRequest request)
     {
         var result = await Mediator.Send(new CreateProjectType.Command { Type = request });
@@ -27,7 +27,7 @@ public class ProjectTypesController : BaseApiController
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<ProjectTypeDto>> UpdateProjectType(int id, UpsertProjectTypeRequest request)
     {
         var result = await Mediator.Send(new UpdateProjectType.Command { Id = id, Type = request });
@@ -35,7 +35,7 @@ public class ProjectTypesController : BaseApiController
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult> DeleteProjectType(int id)
     {
         var result = await Mediator.Send(new DeleteProjectType.Command { Id = id });

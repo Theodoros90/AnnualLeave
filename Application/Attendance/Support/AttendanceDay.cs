@@ -69,9 +69,9 @@ public static class AttendanceDay
         context.EmployeeProfiles.FirstOrDefaultAsync(ep => ep.UserId == userId, cancellationToken);
 
     /// <summary>
-    /// Drops Admin-role accounts from an employee-profile query.
+    /// Drops System Administrator-role accounts from an employee-profile query.
     ///
-    /// An Admin may hold an <see cref="EmployeeProfile"/> — both admin accounts
+    /// A System Administrator may hold an <see cref="EmployeeProfile"/> — both admin accounts
     /// in this deployment do — but an admin is not part of the tracked workforce.
     /// Counting them inflated every company and department total, and put names in
     /// the "not checked in" feed that nobody expects to check in. The
@@ -81,7 +81,7 @@ public static class AttendanceDay
     /// </summary>
     public static IQueryable<EmployeeProfile> ExcludeAdmins(IQueryable<EmployeeProfile> profiles) =>
         profiles.Where(p => p.User == null
-            || !p.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin));
+            || !p.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator));
 
     /// <summary>
     /// The refusal for a caller with no employee profile, phrased identically

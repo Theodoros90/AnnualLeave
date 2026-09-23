@@ -27,7 +27,7 @@ namespace WorkTrack.Tests;
 /// </summary>
 public class SeedDemoDataTeardownTests : IAsyncLifetime
 {
-    private const string AdminEmail = "admin@annualleave.com";
+    private const string AdminEmail = "systemadmin@annualleave.com";
     private static readonly string[] DemoEmails =
     [
         "manager1@annualleave.com",

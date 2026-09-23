@@ -352,19 +352,19 @@ builder.Services.AddAuthentication();
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AnnualLeaveRead", policy =>
-        policy.RequireRole(AppRoles.Admin, AppRoles.Manager, AppRoles.Employee));
+        policy.RequireRole(AppRoles.SystemAdministrator, AppRoles.Manager, AppRoles.Employee));
 
     options.AddPolicy("AnnualLeaveCreate", policy =>
-        policy.RequireRole(AppRoles.Admin, AppRoles.Manager, AppRoles.Employee));
+        policy.RequireRole(AppRoles.SystemAdministrator, AppRoles.Manager, AppRoles.Employee));
 
     options.AddPolicy("AnnualLeaveUpdate", policy =>
-        policy.RequireRole(AppRoles.Admin, AppRoles.Manager, AppRoles.Employee));
+        policy.RequireRole(AppRoles.SystemAdministrator, AppRoles.Manager, AppRoles.Employee));
 
     options.AddPolicy("AnnualLeaveDelete", policy =>
-        policy.RequireRole(AppRoles.Admin, AppRoles.Manager, AppRoles.Employee));
+        policy.RequireRole(AppRoles.SystemAdministrator, AppRoles.Manager, AppRoles.Employee));
 
     options.AddPolicy("EmployeeProfileUpdate", policy =>
-        policy.RequireRole(AppRoles.Admin));
+        policy.RequireRole(AppRoles.SystemAdministrator));
 });
 var app = builder.Build();
 

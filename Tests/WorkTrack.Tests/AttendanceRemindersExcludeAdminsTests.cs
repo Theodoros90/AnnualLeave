@@ -9,9 +9,9 @@ namespace WorkTrack.Tests;
 
 /// <summary>
 /// The check-in and check-out reminders mailed every EmployeeProfile with an
-/// email, so an Admin who holds one — both admin accounts in this deployment do —
+/// email, so a System Administrator who holds one — both admin accounts in this deployment do —
 /// was told every morning to check in, and could never satisfy the reminder:
-/// the topbar hides the check-in widget for an Admin, and the attendance
+/// the topbar hides the check-in widget for a System Administrator, and the attendance
 /// dashboards already drop admins from the tracked workforce
 /// (<see cref="AttendanceDay.ExcludeAdmins"/>). The reminders now draw the same
 /// line. These tests seed a real Admin UserRole row, which is what the filter
@@ -45,12 +45,12 @@ public class AttendanceRemindersExcludeAdminsTests
         var adminRole = new Role
         {
             Id = "r-admin",
-            Name = AppRoles.Admin,
-            NormalizedName = AppRoles.Admin.ToUpperInvariant(),
+            Name = AppRoles.SystemAdministrator,
+            NormalizedName = AppRoles.SystemAdministrator.ToUpperInvariant(),
         };
         db.Roles.Add(adminRole);
 
-        SeedProfile(db, "admin-u", AdminProfileId, "Ada Admin", AdminEmail, departmentId: null);
+        SeedProfile(db, "admin-u", AdminProfileId, "Ada System Administrator", AdminEmail, departmentId: null);
         db.UserRoles.Add(new UserRole { UserId = "admin-u", RoleId = adminRole.Id });
 
         SeedProfile(db, "employee-u", EmployeeProfileId, "Eve Employee", EmployeeEmail, departmentId: 1);

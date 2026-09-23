@@ -72,7 +72,7 @@ describe('minServiceError', () => {
         expect(minServiceError(type({ minServiceMonths: 0 }), '2026-09-21', today2)).toBeNull()
     })
 
-    // Nobody recorded it — an Admin, or an account predating the field. The same
+    // Nobody recorded it — a System Administrator, or an account predating the field. The same
     // reading the server gives a null gender: not "started today".
     it('passes an unrecorded start date', () => {
         expect(minServiceError(type({ minServiceMonths: 24 }), null, today2)).toBeNull()

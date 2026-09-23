@@ -32,7 +32,7 @@ public class GetTeamAwayThisWeekCount
 
             if (request.IsAdmin)
             {
-                // Admin sees all approved employees away this week.
+                // System Administrator sees all approved employees away this week.
             }
             else if (request.IsManager)
             {
@@ -46,7 +46,7 @@ public class GetTeamAwayThisWeekCount
                     : query.Where(al =>
                         ((al.DepartmentId.HasValue && managerScope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
                          || managerScope.DirectReportUserIds.Contains(al.EmployeeId))
-                        && (al.Employee == null || !al.Employee.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin)));
+                        && (al.Employee == null || !al.Employee.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator)));
             }
             else if (request.IsEmployee)
             {

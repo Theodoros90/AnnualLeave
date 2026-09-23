@@ -109,7 +109,7 @@ function addMonthsClamped(date: Date, months: number): Date {
  * Mirrors `MinimumServiceRule.Check`: months of service measured from the
  * employee's start date to **today**, not to the leave's start date, so the type
  * is hidden until the months are served and then appears. A start date nobody
- * recorded (`null`/`undefined`) passes, as it does on the server: an Admin never
+ * recorded (`null`/`undefined`) passes, as it does on the server: a System Administrator never
  * has one, and an account predating the field has none until next saved. A type
  * carrying no `minServiceMonths` at all — an API built before the column — reads
  * as 0, no minimum.

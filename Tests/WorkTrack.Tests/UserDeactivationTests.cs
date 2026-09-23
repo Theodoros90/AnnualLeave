@@ -305,7 +305,7 @@ public class UserDeactivationWiringTests(ApiRouteTableFixture app)
         {
             Assert.Contains("PUT", r.HttpMethods);
             Assert.False(r.AllowsAnonymous, $"{r} is reachable anonymously.");
-            Assert.Contains(AppRoles.Admin, r.Roles ?? string.Empty);
+            Assert.Contains(AppRoles.SystemAdministrator, r.Roles ?? string.Empty);
         });
     }
 }

@@ -60,7 +60,7 @@ public class LeaveBalanceAtomicityTests
             Id = AdminUserId,
             UserName = "admin@test.local",
             Email = "admin@test.local",
-            DisplayName = "Admin",
+            DisplayName = "System Administrator",
         });
         db.EmployeeProfiles.Add(new EmployeeProfile
         {

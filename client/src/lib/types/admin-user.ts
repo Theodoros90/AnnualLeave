@@ -40,12 +40,12 @@ export interface AdminCreateUserRequest {
     email: string
     displayName: string
     roles: UserRole[]
-    /** Null for an Admin, who belongs to no department. */
+    /** Null for a System Administrator, who belongs to no department. */
     departmentId: number | null
     phoneNumber?: string | null
     dateOfBirth?: string | null
     /**
-     * Required for an Employee or a Manager, and null for an Admin — the same
+     * Required for an Employee or a Manager, and null for a System Administrator — the same
      * role-dependent rule as `departmentId`; the API refuses either the other
      * way round. See `genderError` in `lib/validation/person.ts`.
      */
@@ -53,9 +53,9 @@ export interface AdminCreateUserRequest {
     managerId?: string | null
     jobTitle?: string | null
     /**
-     * Required for an Employee or a Manager, and null for an Admin — the same
+     * Required for an Employee or a Manager, and null for a System Administrator — the same
      * role-dependent rule as `departmentId`, since both live in the Profile
-     * section the dialog hides for an Admin.
+     * section the dialog hides for a System Administrator.
      */
     employmentStartDate: string | null
     annualLeaveEntitlement?: number
@@ -73,7 +73,7 @@ export interface AdminUpdateUserRequest {
     /**
      * Required for an Employee or a Manager — the API refuses a null, so an
      * account that predates the field has to be given one the next time it is
-     * saved, as with the date of birth — and null for an Admin, for whom the API
+     * saved, as with the date of birth — and null for a System Administrator, for whom the API
      * refuses a value. The server reads the *stored* role to tell which, so the
      * roles call has to land before this one on a role change.
      */

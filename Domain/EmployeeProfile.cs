@@ -10,7 +10,7 @@ public class EmployeeProfile : ISoftDeletable, IAuditable
     public User? User { get; set; }
 
     /// <summary>
-    /// Null for an Admin, who sits outside the department structure: the role sees
+    /// Null for a System Administrator, who sits outside the department structure: the role sees
     /// every department, so belonging to one grants nothing. Left non-null it was
     /// an invented assignment, and it counted — the admin appeared in that
     /// department's headcount and attendance warnings, and blocked its deletion.
@@ -63,9 +63,9 @@ public class EmployeeProfile : ISoftDeletable, IAuditable
     /// maintains on the Users panel, beside the department and the job title — the
     /// three fields that say where somebody sits in the organisation.
     ///
-    /// Required for an Employee and a Manager, and refused for an Admin, exactly as
+    /// Required for an Employee and a Manager, and refused for a System Administrator, exactly as
     /// <see cref="DepartmentId"/> is: the Profile section that collects all three is
-    /// hidden for an Admin, so a rule that demanded one would make an Admin
+    /// hidden for a System Administrator, so a rule that demanded one would make a System Administrator
     /// impossible to create through the only screen that creates users. Enforced by
     /// <c>CreateAdminUserValidator</c> and <c>EditEmployeeProfileRequestValidator</c>,
     /// and mirrored on the client by <c>lib/validation/person.ts</c>.

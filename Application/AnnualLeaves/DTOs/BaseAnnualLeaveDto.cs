@@ -44,7 +44,7 @@ public class BaseAnnualLeaveDto
     /// Colleague nominated to cover while the employee is away. Required for an
     /// Employee or a Manager (<c>CoverageRule</c>), which the validators enforce
     /// from the employee's stored role rather than an attribute here, since an
-    /// Admin's own request may leave it blank.
+    /// System Administrator's own request may leave it blank.
     /// </summary>
     [StringLength(450)]
     public string? DelegateId { get; set; }

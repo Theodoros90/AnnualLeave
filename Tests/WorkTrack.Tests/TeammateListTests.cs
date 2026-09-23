@@ -63,7 +63,7 @@ public class TeammateListTests
         SeedProfile(db, MeUserId, 1, "Me Myself");
         SeedProfile(db, "boss", 1, "Big Boss");
 
-        var adminRole = new Role { Id = "r-admin", Name = AppRoles.Admin, NormalizedName = AppRoles.Admin.ToUpperInvariant() };
+        var adminRole = new Role { Id = "r-admin", Name = AppRoles.SystemAdministrator, NormalizedName = AppRoles.SystemAdministrator.ToUpperInvariant() };
         db.Roles.Add(adminRole);
         db.UserRoles.Add(new UserRole { UserId = "boss", RoleId = adminRole.Id });
         await db.SaveChangesAsync();

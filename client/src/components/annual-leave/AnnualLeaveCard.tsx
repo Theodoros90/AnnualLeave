@@ -57,7 +57,7 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
     const [rejectComment, setRejectComment] = useState('')
     const [actionsAnchorEl, setActionsAnchorEl] = useState<null | HTMLElement>(null)
 
-    const isAdmin = user.roles.includes('Admin')
+    const isAdmin = user.roles.includes('System Administrator')
     const isManager = user.roles.includes('Manager')
     const isOwnLeave = leave.employeeId === user.id
 
@@ -71,10 +71,10 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
         return leaveTypes.find((leaveType) => leaveType.id === leave.leaveTypeId)?.name ?? 'Leave Type'
     }, [leave.leaveTypeId, leaveTypes])
 
-    // Approve / Reject: Admin any, Manager dept-team-only (server enforces), Employee never
+    // Approve / Reject: System Administrator any, Manager dept-team-only (server enforces), Employee never
     const canApproveReject = (isAdmin || isManager) && leave.status === 'Pending'
 
-    // Edit dates/type/reason: Approved/Rejected requests are admin-only; otherwise Admin any, Manager any, Employee own only
+    // Edit dates/type/reason: Approved/Rejected requests are admin-only; otherwise System Administrator any, Manager any, Employee own only
     const isLockedStatus = leave.status === 'Rejected' || leave.status === 'Approved'
     const canEdit = isLockedStatus ? isAdmin : (isAdmin || isManager || isOwnLeave)
     const showLockedStatusNote = isLockedStatus && !isAdmin
@@ -84,7 +84,7 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
             ? 'This request has been approved and is now read-only.'
             : 'This request can no longer be edited.'
 
-    // Cancel: Admin any, Manager own, Employee own-pending-only
+    // Cancel: System Administrator any, Manager own, Employee own-pending-only
     const canCancel =
         isAdmin ||
         (isManager && isOwnLeave) ||

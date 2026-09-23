@@ -47,9 +47,9 @@ public class CreateAdminUserValidator : AbstractValidator<CreateAdminUser.Comman
             RuleFor(x => x.User.JobTitle).MaximumLength(150);
 
             // Gender follows the department's rule rather than the date of birth's:
-            // required for an Employee and a Manager, refused for an Admin. It is
+            // required for an Employee and a Manager, refused for a System Administrator. It is
             // there to decide who is offered gender-restricted leave, and the
-            // dialog hides it for an Admin the way it hides the Profile section.
+            // dialog hides it for a System Administrator the way it hides the Profile section.
             When(x => !IsAdmin(x.User.Roles), () =>
             {
                 RuleFor(x => x.User.Gender)
@@ -71,7 +71,7 @@ public class CreateAdminUserValidator : AbstractValidator<CreateAdminUser.Comman
                 .When(x => x.User.AnnualLeaveEntitlement.HasValue);
 
             // Who needs a department depends on the role being asked for, which is
-            // why this is here rather than a [Range] on the DTO. An Admin sees every
+            // why this is here rather than a [Range] on the DTO. A System Administrator sees every
             // department, so belonging to one grants them nothing — and the panel
             // hides the field for them, which is why it used to send "the first
             // active department" for a question it never asked.
@@ -87,7 +87,7 @@ public class CreateAdminUserValidator : AbstractValidator<CreateAdminUser.Comman
             });
 
             // Refused rather than ignored: the panel cannot send one, so a payload
-            // that carries a department for an Admin was built against the old
+            // that carries a department for a System Administrator was built against the old
             // shape, and accepting it would quietly recreate the invented
             // assignment that put admins in a department's headcount and blocked
             // its deletion.
@@ -95,13 +95,13 @@ public class CreateAdminUserValidator : AbstractValidator<CreateAdminUser.Comman
             {
                 RuleFor(x => x.User.DepartmentId)
                     .Null()
-                    .WithMessage("An Admin cannot belong to a department.");
+                    .WithMessage("A System Administrator cannot belong to a department.");
             });
 
             // The start date rides with the department, for the same reason: both
-            // live in the Profile section, which the panel hides for an Admin. So
-            // an Employee or a Manager must bring one and an Admin must not — and
-            // an Admin sending one was built against a shape this does not have.
+            // live in the Profile section, which the panel hides for a System Administrator. So
+            // an Employee or a Manager must bring one and a System Administrator must not — and
+            // a System Administrator sending one was built against a shape this does not have.
             When(x => !IsAdmin(x.User.Roles), () =>
             {
                 RuleFor(x => x.User.EmploymentStartDate)
@@ -165,9 +165,9 @@ public class CreateAdminUserValidator : AbstractValidator<CreateAdminUser.Comman
     private static int CountDistinct(IEnumerable<string>? roles) => Distinct(roles).Count;
 
     /// <summary>
-    /// Whether Admin is the role being asked for. An omitted role means Employee —
-    /// the default <c>CreateAdminUser</c> applies — so a blank list is not an Admin.
+    /// Whether System Administrator is the role being asked for. An omitted role means Employee —
+    /// the default <c>CreateAdminUser</c> applies — so a blank list is not a System Administrator.
     /// </summary>
     private static bool IsAdmin(IEnumerable<string>? roles) =>
-        Distinct(roles).Contains(AppRoles.Admin, StringComparer.OrdinalIgnoreCase);
+        Distinct(roles).Contains(AppRoles.SystemAdministrator, StringComparer.OrdinalIgnoreCase);
 }

@@ -21,11 +21,11 @@ const mobx = vi.mocked(await import('../../lib/mobx'))
 
 const ADMIN: UserInfo = {
     id: 'u-admin',
-    userName: 'admin@annualleave.com',
-    email: 'admin@annualleave.com',
+    userName: 'systemadmin@annualleave.com',
+    email: 'systemadmin@annualleave.com',
     displayName: 'Admin User',
     imageUrl: '',
-    roles: ['Admin'],
+    roles: ['System Administrator'],
 }
 
 /* The 13:00 shape of one company day: two of twelve working, ten with no

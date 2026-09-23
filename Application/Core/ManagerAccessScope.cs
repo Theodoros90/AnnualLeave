@@ -23,7 +23,7 @@ public static class ManagerAccessScopeResolver
             .Select(ep => new { ep.Id, ep.DepartmentId })
             .ToListAsync(cancellationToken);
 
-        // A department-less profile (an Admin's) contributes nothing to manage.
+        // A department-less profile (a System Administrator's) contributes nothing to manage.
         // Dropping the nulls here keeps ManagedDepartmentIds a list of real
         // departments, so every consumer can compare against it without a cast.
         var managedDepartmentIds = managerProfiles

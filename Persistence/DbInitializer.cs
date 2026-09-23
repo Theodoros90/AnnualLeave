@@ -7,6 +7,11 @@ namespace Persistence;
 public class DbInitializer
 {
     private const string DefaultSeedPassword = "Pa$$w0rd";
+
+    /// The seeded System Administrator account. Migration RenameSeededAdminEmail moved
+    /// the row that used to be admin@annualleave.com onto this address.
+    public const string SystemAdministratorEmail = "systemadmin@annualleave.com";
+
     private static readonly Dictionary<string, string> LegacyRoleMappings = new(StringComparer.OrdinalIgnoreCase)
     {
         ["Author"] = AppRoles.Manager,
@@ -23,7 +28,7 @@ public class DbInitializer
     };
 
     // Demo manager/employee accounts. Seeded only when demo data is enabled
-    // (development); on a real deployment they're removed so only Admin remains.
+    // (development); on a real deployment they're removed so only System Administrator remains.
     private static readonly string[] DemoSeedEmails =
     {
         "manager1@annualleave.com",
@@ -118,7 +123,7 @@ public class DbInitializer
         if (context.Timesheets.Any()) return;
 
         // Get admin user and profile
-        var adminUser = context.Users.FirstOrDefault(u => u.Email == "admin@annualleave.com");
+        var adminUser = context.Users.FirstOrDefault(u => u.Email == SystemAdministratorEmail);
         if (adminUser is null) return;
 
         var adminProfile = context.EmployeeProfiles.FirstOrDefault(ep => ep.UserId == adminUser.Id);
@@ -184,7 +189,7 @@ public class DbInitializer
         var finance = context.Departments.FirstOrDefault(d => d.Code == "FIN");
         if (engineering is null || hr is null || finance is null) return;
 
-        var admin = context.Users.FirstOrDefault(u => u.Email == "admin@annualleave.com");
+        var admin = context.Users.FirstOrDefault(u => u.Email == SystemAdministratorEmail);
         var manager1 = context.Users.FirstOrDefault(u => u.Email == "manager1@annualleave.com");
         var manager2 = context.Users.FirstOrDefault(u => u.Email == "manager2@annualleave.com");
 
@@ -228,7 +233,7 @@ public class DbInitializer
         // Enrich pre-existing project rows that pre-date the metadata migration.
         var rows = await context.Projects.ToListAsync();
         var colors = new[] { "p1", "p2", "p3", "p4", "p5" };
-        var admin = await context.Users.FirstOrDefaultAsync(u => u.Email == "admin@annualleave.com");
+        var admin = await context.Users.FirstOrDefaultAsync(u => u.Email == SystemAdministratorEmail);
         var changed = false;
         var idx = 0;
 
@@ -307,16 +312,16 @@ public class DbInitializer
         await RemoveSeedUsersAsync(context, userManager, DeprecatedSeedEmails);
 
         // On a real deployment, strip the demo manager/employee accounts (in case
-        // a previous deploy created them) so only the Admin account remains.
+        // a previous deploy created them) so only the System Administrator account remains.
         if (!policy.SeedDemoData)
         {
             await RemoveSeedUsersAsync(context, userManager, DemoSeedEmails);
         }
 
-        // Admin is always seeded; the demo managers/employees only in demo mode.
+        // System Administrator is always seeded; the demo managers/employees only in demo mode.
         var users = new List<SeedUser>
         {
-            new("Admin User", "admin@annualleave.com", AppRoles.Admin),
+            new("Admin User", SystemAdministratorEmail, AppRoles.SystemAdministrator),
         };
 
         if (policy.SeedDemoData)
@@ -430,7 +435,7 @@ public class DbInitializer
         // ReleaseUploadedFiles. Null on a first-ever startup, when nothing has been
         // uploaded yet either.
         var adminId = await context.Users
-            .Where(u => u.Email == "admin@annualleave.com")
+            .Where(u => u.Email == SystemAdministratorEmail)
             .Select(u => u.Id)
             .FirstOrDefaultAsync();
 
@@ -674,7 +679,7 @@ public class DbInitializer
     {
         if (context.AnnualLeaves.Any()) return;
 
-        var adminUser = context.Users.FirstOrDefault(u => u.Email == "admin@annualleave.com");
+        var adminUser = context.Users.FirstOrDefault(u => u.Email == SystemAdministratorEmail);
         if (adminUser is null) return;
 
         // EmployeeProfileId has to be set alongside EmployeeId. CreateAnnualLeave
@@ -968,10 +973,10 @@ public class DbInitializer
     /// A <see cref="UserDepartment"/> row only ever means one thing: an extra
     /// department this <b>manager</b> covers, on top of the one on their own
     /// profile. Nothing else reads it — <c>ProjectScope.DepartmentIdsForAsync</c>
-    /// consults it only when the caller is a manager, and an Admin short-circuits
+    /// consults it only when the caller is a manager, and a System Administrator short-circuits
     /// to "sees everything" before departments are resolved at all.
     ///
-    /// So a row for an Admin or an Employee changes nothing about what they can
+    /// So a row for a System Administrator or an Employee changes nothing about what they can
     /// see, while <c>DeleteDepartment</c> still counts it as an "assigned manager"
     /// blocker and no endpoint exists to remove it. That is not a harmless
     /// inconsistency: this seeder used to give the admin account ENG
@@ -985,7 +990,7 @@ public class DbInitializer
     {
         if (context.UserDepartments.Any()) return;
 
-        var adminUser = context.Users.FirstOrDefault(u => u.Email == "admin@annualleave.com");
+        var adminUser = context.Users.FirstOrDefault(u => u.Email == SystemAdministratorEmail);
         if (adminUser is null) return;
 
         var engineering = context.Departments.FirstOrDefault(d => d.Code == "ENG");
@@ -1063,7 +1068,7 @@ public class DbInitializer
 
     /// <summary>
     /// Clears <see cref="EmployeeProfile.DepartmentId"/> on every profile belonging
-    /// to a user in the Admin role. An Admin sees every department, so belonging to
+    /// to a user in the System Administrator role. A System Administrator sees every department, so belonging to
     /// one grants nothing — but the column was a required foreign key, so both write
     /// paths invented a value: the seeder wrote Engineering unconditionally, and the
     /// admin panel substituted "the first active department" for a field it hides.
@@ -1071,7 +1076,7 @@ public class DbInitializer
     /// The invented assignment counted. It put the admin in that department's
     /// headcount and team strip, in its "not checked in" warning and leave-used
     /// figures, and in <c>DeleteDepartment</c>'s "employee" blocker count — and it
-    /// was unreachable, because the Profile section is hidden for Admins, so no
+    /// was unreachable, because the Profile section is hidden for System Administrators, so no
     /// action an admin could take would move them out.
     ///
     /// This is the development half only. <c>Seed:Enabled</c> is false in
@@ -1079,17 +1084,17 @@ public class DbInitializer
     /// the <c>ClearAdminProfileDepartments</c> migration is what repairs a deployed
     /// database, since <c>MigrateAsync</c> runs unconditionally.
     ///
-    /// It also catches an Employee or Manager promoted to Admin before
+    /// It also catches an Employee or Manager promoted to System Administrator before
     /// <c>EditEmployeeProfileRequestValidator</c> learned to require a blank
     /// department from them, and any row a future path forgets to clear.
     /// </summary>
     private static async Task RemoveAdminProfileDepartments(AppDbContext context)
     {
         // SeedRoles has already run, so this is only null on a database whose roles
-        // failed to seed — in which case nobody is an Admin and there is nothing to
+        // failed to seed — in which case nobody is a System Administrator and there is nothing to
         // repair.
         var adminRoleId = await context.Roles
-            .Where(r => r.Name == AppRoles.Admin)
+            .Where(r => r.Name == AppRoles.SystemAdministrator)
             .Select(r => r.Id)
             .FirstOrDefaultAsync();
 
@@ -1114,7 +1119,7 @@ public class DbInitializer
     {
         if (context.EmployeeProfiles.Any()) return;
 
-        var adminUser = context.Users.FirstOrDefault(u => u.Email == "admin@annualleave.com");
+        var adminUser = context.Users.FirstOrDefault(u => u.Email == SystemAdministratorEmail);
         var engineering = context.Departments.FirstOrDefault(d => d.Code == "ENG");
         var finance = context.Departments.FirstOrDefault(d => d.Code == "FIN");
         if (adminUser is null || engineering is null || finance is null) return;
@@ -1129,13 +1134,13 @@ public class DbInitializer
             .Select(lt => (int?)lt.DefaultAllowance)
             .FirstOrDefaultAsync() ?? 20;
 
-        // Admin profile — no manager (top of hierarchy), and no department: the role
+        // System Administrator profile — no manager (top of hierarchy), and no department: the role
         // sees every one of them, so belonging to one grants nothing. Giving it
         // Engineering was not inert. It put the admin in that department's headcount
         // and team strip on the Departments panel, in its "not checked in" warning,
         // and in DeleteDepartment's "employee" blocker count — so a department the
         // admin had never worked in could not be deleted, and no field in the panel
-        // could move them out, because the Profile section is hidden for Admins.
+        // could move them out, because the Profile section is hidden for System Administrators.
         // The job title went the same way: "Engineering Manager" described the
         // department it invented, not the account. Always seeded.
         var adminProfile = new EmployeeProfile
@@ -1155,7 +1160,7 @@ public class DbInitializer
         // Manager, so seeding it is what keeps the demo database saveable: without
         // one, every demo employee is refused the moment an admin opens their record
         // and presses Save. The admin profile above deliberately has none — the rule
-        // refuses an Admin a start date, the same way it refuses them a department.
+        // refuses a System Administrator a start date, the same way it refuses them a department.
         var demoStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-2);
 
         // Demo profiles — only for demo users that were actually seeded.

@@ -28,7 +28,7 @@ public class GetEmployeeProfileList
 
             if (request.IsAdmin)
             {
-                // Admin sees all profiles.
+                // System Administrator sees all profiles.
             }
             else if (request.IsManager)
             {
@@ -42,7 +42,7 @@ public class GetEmployeeProfileList
                     ((ep.DepartmentId != null && managerScope.ManagedDepartmentIds.Contains(ep.DepartmentId.Value))
                      || (ep.ManagerId != null && managerScope.ManagerProfileIds.Contains(ep.ManagerId))
                      || ep.UserId == request.RequestingUserId)
-                    && (ep.User == null || !ep.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin)));
+                    && (ep.User == null || !ep.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator)));
             }
             else
             {

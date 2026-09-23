@@ -7,7 +7,7 @@ namespace Application.Timesheets.Support;
 
 /// <summary>
 /// Who may modify a timesheet — and therefore its entries: the employee it
-/// belongs to, an Admin, or a Manager whose scope covers that employee (their
+/// belongs to, a System Administrator, or a Manager whose scope covers that employee (their
 /// department, or a direct report).
 ///
 /// Lives here so every write enforces the identical rule rather than its own

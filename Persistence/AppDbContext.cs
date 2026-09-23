@@ -195,7 +195,7 @@ public class AppDbContext : IdentityDbContext<
         {
             entity.Property(t => t.Id).HasMaxLength(450).IsRequired();
             entity.Property(t => t.EmployeeProfileId).HasMaxLength(450).IsRequired();
-            // Optional: an Admin has no department to file under. Restrict stays —
+            // Optional: a System Administrator has no department to file under. Restrict stays —
             // a department with timesheets against it still cannot be deleted.
             entity.Property(t => t.PeriodStart).IsRequired();
             entity.Property(t => t.PeriodEnd).IsRequired();
@@ -258,7 +258,7 @@ public class AppDbContext : IdentityDbContext<
                 .HasForeignKey(al => al.DelegateId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // The handover for the delegate. Both nullable: an Admin's own leave
+            // The handover for the delegate. Both nullable: a System Administrator's own leave
             // names no delegate, and every row predating the columns has neither.
             entity.Property(al => al.CoverageNote).HasMaxLength(1000);
             entity.Property(al => al.CoverageAttachmentUrl).HasMaxLength(2048);

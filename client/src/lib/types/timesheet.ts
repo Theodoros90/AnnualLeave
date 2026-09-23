@@ -19,7 +19,7 @@ export interface Timesheet {
   id: string;
   employeeId: string;
   employeeName: string; // Added for display
-  /** Null when the author has no department — an Admin. */
+  /** Null when the author has no department — a System Administrator. */
   departmentId: number | null;
   periodStart: string;
   periodEnd: string;

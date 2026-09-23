@@ -114,7 +114,7 @@ public class CurrentUserPayloadTests(ApiRouteTableFixture fixture)
     }
 
     /// <summary>
-    /// An Admin has no employee profile at all, so the department fields and the
+    /// A System Administrator has no employee profile at all, so the department fields and the
     /// children declaration have to survive its absence rather than throw.
     /// </summary>
     [Fact]

@@ -84,7 +84,7 @@ public class CreateAdminUserCommandTests : IDisposable
         db.Departments.Add(new Department { Id = 1, Name = "Engineering", Code = "ENG" });
         await db.SaveChangesAsync();
 
-        foreach (var role in new[] { AppRoles.Admin, AppRoles.Manager, AppRoles.Employee })
+        foreach (var role in new[] { AppRoles.SystemAdministrator, AppRoles.Manager, AppRoles.Employee })
         {
             await Roles.CreateAsync(new Role { Name = role });
         }
@@ -107,8 +107,8 @@ public class CreateAdminUserCommandTests : IDisposable
         DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-30),
         // Likewise, for an Employee or a Manager — see EmploymentStartDateTests.
         EmploymentStartDate = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-2),
-        // Likewise for everyone but an Admin, who is refused one — see UserGenderTests.
-        Gender = role == AppRoles.Admin ? null : Gender.Female,
+        // Likewise for everyone but a System Administrator, who is refused one — see UserGenderTests.
+        Gender = role == AppRoles.SystemAdministrator ? null : Gender.Female,
     };
 
     private Task<Result<AdminUserDto>> Handle(AdminCreateUserDto payload, FakeAccountEmailSender mail) =>
@@ -413,7 +413,7 @@ public class CreateAdminUserCommandTests : IDisposable
         await SeedAsync();
 
         var payload = Payload();
-        payload.Roles = [AppRoles.Admin, AppRoles.Employee];
+        payload.Roles = [AppRoles.SystemAdministrator, AppRoles.Employee];
 
         var result = await Validate(payload);
 
