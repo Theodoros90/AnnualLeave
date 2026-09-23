@@ -351,4 +351,35 @@ public class HrAdministratorScopeTests
         Assert.False(refused.IsSuccess);
         Assert.Equal(TimesheetStatus.Submitted, (await db.Timesheets.FindAsync("th"))!.Status);
     }
+
+    [Fact]
+    public async Task Company_attendance_and_presence_cover_only_the_assigned_departments()
+    {
+        using var db = SeedWorld();
+        db.AppSettings.Add(new AppSettings { TimeZoneId = "UTC", WorkingHoursStart = "09:00", WorkingHoursEnd = "18:00" });
+        await db.SaveChangesAsync();
+
+        var company = await new Application.Attendance.Queries.GetCompanyAttendance.Handler(db).Handle(
+            new Application.Attendance.Queries.GetCompanyAttendance.Query { RequestingUserId = Hr, ScopeToCaller = true, NowUtc = DateTime.UtcNow }, CancellationToken.None);
+        Assert.True(company.IsSuccess, company.Error);
+        Assert.Equal(1, company.Value!.Total);
+
+        var presence = await new Application.Attendance.Queries.GetUserPresence.Handler(db).Handle(
+            new Application.Attendance.Queries.GetUserPresence.Query { RequestingUserId = Hr, ScopeToCaller = true }, CancellationToken.None);
+        Assert.Equal(["ua"], presence.Value!.Select(p => p.UserId).ToList());
+    }
+
+    [Fact]
+    public async Task The_team_attendance_history_follows_the_department_scope()
+    {
+        using var db = SeedWorld();
+        db.AppSettings.Add(new AppSettings { TimeZoneId = "UTC", WorkingHoursStart = "09:00", WorkingHoursEnd = "18:00" });
+        await db.SaveChangesAsync();
+
+        var history = await new Application.Attendance.Queries.GetTeamAttendanceHistory.Handler(db).Handle(
+            new Application.Attendance.Queries.GetTeamAttendanceHistory.Query { RequestingUserId = Hr, IsAdmin = false, Days = 7 }, CancellationToken.None);
+
+        Assert.True(history.IsSuccess, history.Error);
+        Assert.Equal(["Anna A"], history.Value!.Members.Select(m => m.EmployeeName).ToList());
+    }
 }

@@ -28,7 +28,8 @@ public class AttendanceController : BaseApiController
         ?? User.Identity?.Name
         ?? string.Empty;
 
-    private bool IsAdmin => User.IsAdministrator();
+    // Unscoped reach. The HR Administrator goes through the resolver like a Manager.
+    private bool IsAdmin => User.IsSystemAdministrator();
 
     // GET: api/attendance/me/today
     [HttpGet("me/today")]
@@ -114,12 +115,20 @@ public class AttendanceController : BaseApiController
     [Authorize(Roles = AppRoles.AdministratorRoles)]
     [ProducesResponseType(typeof(List<UserPresenceDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult> GetPresence(CancellationToken cancellationToken) =>
-        HandleResult(await Mediator.Send(new GetUserPresence.Query(), cancellationToken));
+        HandleResult(await Mediator.Send(new GetUserPresence.Query
+        {
+            RequestingUserId = ResolveUserId(),
+            ScopeToCaller = !IsAdmin,
+        }, cancellationToken));
 
     // GET: api/attendance/company
     [HttpGet("company")]
     [Authorize(Roles = AppRoles.AdministratorRoles)]
     [ProducesResponseType(typeof(CompanyAttendanceDto), StatusCodes.Status200OK)]
     public async Task<ActionResult> GetCompany(CancellationToken cancellationToken) =>
-        HandleResult(await Mediator.Send(new GetCompanyAttendance.Query(), cancellationToken));
+        HandleResult(await Mediator.Send(new GetCompanyAttendance.Query
+        {
+            RequestingUserId = ResolveUserId(),
+            ScopeToCaller = !IsAdmin,
+        }, cancellationToken));
 }

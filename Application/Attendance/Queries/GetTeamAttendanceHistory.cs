@@ -16,10 +16,10 @@ namespace Application.Attendance.Queries;
 /// with no check-in (off, on leave, or a weekend). It used to be UTC minutes,
 /// which on a UTC+3 deployment drew every arrival three hours early.
 ///
-/// Note this scopes to direct reports only (ManagerId), unlike the team board,
-/// which also covers managed departments. Preserved as-is: the chart and the board
-/// have always drawn different populations for a non-admin, and reconciling them
-/// is a product decision, not a refactor.
+/// The population for a non-admin is the same reach as the team board beside it:
+/// managed departments and direct reports. It used to scope to direct reports
+/// (ManagerId) alone, so a manager's chart and their board disagreed about who
+/// was on the team.
 /// </summary>
 public class GetTeamAttendanceHistory
 {
@@ -42,16 +42,23 @@ public class GetTeamAttendanceHistory
         {
             var days = request.Days is <= 0 or > MaxDays ? DefaultDays : request.Days;
 
-            var profilesQuery = context.EmployeeProfiles
-                .Include(p => p.User)
-                .AsQueryable();
+            var profilesQuery = AttendanceDay.ExcludeAdmins(
+                context.EmployeeProfiles
+                    .Include(p => p.User));
 
             if (!request.IsAdmin)
             {
                 var me = await AttendanceDay.ResolveProfileAsync(context, request.RequestingUserId, cancellationToken);
                 if (me is null) return AttendanceDay.NoProfile<TeamHistoryDto>();
 
-                profilesQuery = profilesQuery.Where(p => p.ManagerId == me.Id);
+                // The same reach as the team board beside it: the caller's departments
+                // and direct reports. It used to read direct reports alone, so a
+                // manager's chart and their board disagreed about who was on the team.
+                var scope = await ManagerAccessScopeResolver.ResolveAsync(context, request.RequestingUserId, cancellationToken);
+                profilesQuery = profilesQuery.Where(p =>
+                    p.UserId != request.RequestingUserId
+                    && ((p.DepartmentId != null && scope.ManagedDepartmentIds.Contains(p.DepartmentId.Value))
+                        || (p.ManagerId != null && scope.ManagerProfileIds.Contains(p.ManagerId))));
             }
 
             var profiles = await profilesQuery
