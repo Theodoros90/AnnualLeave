@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { SweetAlert, AppDialog, AppDialogTitle, AppDialogContent, AppDialogActions, cancelBtnSx, saveBtnSx } from '../ui'
 import Alert from '@mui/material/Alert'
+import Autocomplete from '@mui/material/Autocomplete'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
 import Radio from '@mui/material/Radio'
 import RadioGroup from '@mui/material/RadioGroup'
 import CircularProgress from '@mui/material/CircularProgress'
@@ -25,6 +27,7 @@ import {
     getTimesheetStatusHistories,
     getUserPresence,
     setAdminUserActive,
+    setAdminUserDepartments,
     setAdminUserRoles,
     updateAdminUser,
     updateEmployeeProfile,
@@ -32,7 +35,7 @@ import {
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import {
     dateOfBirthError, earliestAllowedStartDate, emailError, employmentStartDateError,
-    GENDER_REQUIRED_MESSAGE, genderError, latestAllowedDateOfBirth, phoneNumberError,
+    GENDER_REQUIRED_MESSAGE, genderError, hrDepartmentsError, latestAllowedDateOfBirth, phoneNumberError,
 } from '../../lib/validation/person'
 import ChildrenSection from '../layout/ChildrenSection'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
@@ -107,9 +110,62 @@ function GenderRadioGroup(props: {
  */
 const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
     'System Administrator': 'Full access to every department. An admin has no department or manager of their own.',
-    'HR Administrator': 'Leave, attendance and timesheets across every department, but no access to Users, Departments, Configuration or System. Likewise has no department or manager of their own.',
+    'HR Administrator': 'Leave, attendance and timesheets for the departments assigned below, but no access to Users, Departments, Configuration or System. Has no department or manager of their own.',
     Manager: "Manages their department's people, leave and timesheets.",
     Employee: "Files their own leave and timesheets; approvals go to their department's manager.",
+}
+
+/**
+ * Which departments an HR Administrator runs. Shown under the role radios only
+ * while that role is selected, and required there: their reach is exactly this
+ * set, so an empty one is an HR Administrator who can see nothing. Active
+ * departments are offered; one already assigned but since deactivated stays
+ * selectable, so Edit User does not open invalid on a record nobody touched.
+ */
+function HrDepartmentsField(props: {
+    idPrefix: string
+    departments: Department[]
+    value: number[]
+    onChange: (ids: number[]) => void
+    error?: string
+    showError: boolean
+}) {
+    const options = props.departments.filter((d) => d.isActive || props.value.includes(d.id))
+    const selected = options.filter((d) => props.value.includes(d.id))
+
+    return (
+        <Autocomplete<Department, true, false, false>
+            multiple
+            id={`${props.idPrefix}-hr-departments`}
+            options={options}
+            value={selected}
+            getOptionLabel={(d) => `${d.name} (${d.code})`}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            onChange={(_, next) => props.onChange(next.map((d) => d.id))}
+            renderValue={(chosen, getItemProps) =>
+                chosen.map((d, index) => {
+                    /* The chip's own props carry a `key`, which React 19 warns
+                       about being spread into JSX — and the department's id is the
+                       stabler key anyway, since the chips reorder as they are
+                       picked and dropped. */
+                    const { key: _key, ...itemProps } = getItemProps({ index })
+                    return <Chip {...itemProps} key={d.id} label={`${d.name} (${d.code})`} size="small" />
+                })
+            }
+            renderInput={(params) => (
+                <TextField
+                    {...params}
+                    label="Departments"
+                    required
+                    error={props.showError && !!props.error}
+                    helperText={props.showError && props.error
+                        ? props.error
+                        : 'This HR Administrator will see leave, attendance and timesheets for these departments only.'}
+                />
+            )}
+            sx={{ mt: 1.5 }}
+        />
+    )
 }
 
 /**
@@ -308,6 +364,12 @@ interface DerivedUser {
     user: AdminUser
     profile?: EmployeeProfile
     departmentName: string | null
+    /**
+     * The departments assigned to this account — an HR Administrator's whole
+     * reach — resolved to names here rather than in the row, which has no
+     * department lookup of its own. Empty for everybody else.
+     */
+    departmentNames: string[]
     primaryRole: UserRole
     presence: Presence
     isAutoBreak: boolean
@@ -494,6 +556,9 @@ function AdminUsersPanel() {
                 user: u,
                 profile,
                 departmentName,
+                // An id with no department behind it still says something — the
+                // assignment is real, the catalogue row is the part that is missing.
+                departmentNames: (u.departmentIds ?? []).map((id) => deptById.get(id)?.name ?? `#${id}`),
                 primaryRole: primaryRoleOf(u.roles),
                 presence,
                 isAutoBreak,
@@ -604,6 +669,8 @@ function AdminUsersPanel() {
             email: string
             displayName: string
             roles: UserRole[]
+            /** The HR Administrator's departments; null for every other role, which the API refuses the field for. */
+            departmentIds: number[] | null
             profile: EmployeeProfile | undefined
             departmentId: number | null
             jobTitle: string
@@ -614,15 +681,20 @@ function AdminUsersPanel() {
             gender: Gender | null
             employmentStartDate: string | null
         }) => {
-            // The order of these three is load-bearing. Roles go first: the user
+            // The order of these four is load-bearing. Roles go first: the user
             // validator reads the *stored* role to decide whether a gender is
-            // required or refused, so a promotion to System Administrator (sent with a null gender)
-            // and a demotion out of it (sent with one) both have to land after the
-            // role they were built for, or every role change 400s on a field the
-            // admin cannot see. The user then goes before the profile: the profile
-            // validator checks the start date against the *stored* date of birth,
-            // so the one just typed has to be in the database by the time it lands.
+            // required or refused, and the departments endpoint refuses anyone who
+            // is not, as stored, an HR Administrator — so both have to land after
+            // the role they were built for, or every role change 400s on a field
+            // the admin cannot see. (A role change *out* of HR clears the stored
+            // departments itself, which is why there is no call for that case.)
+            // The user then goes before the profile: the profile validator checks
+            // the start date against the *stored* date of birth, so the one just
+            // typed has to be in the database by the time it lands.
             await setAdminUserRoles(payload.userId, { roles: payload.roles })
+            if (payload.departmentIds) {
+                await setAdminUserDepartments(payload.userId, { departmentIds: payload.departmentIds })
+            }
             await updateAdminUser(payload.userId, { email: payload.email, displayName: payload.displayName, phoneNumber: payload.phoneNumber, dateOfBirth: payload.dateOfBirth, gender: payload.gender })
             if (payload.profile) {
                 await updateEmployeeProfile({
@@ -1211,7 +1283,7 @@ function UserRow({
                     <RolePill role={role} />
                 </Box>
 
-                {/* Department — not applicable to admins, who sit outside the department structure */}
+                {/* Department — an Employee's or Manager's own; an HR Administrator's assigned set; blank for a System Administrator */}
                 <Box sx={{ display: { xs: 'none', md: 'block' } }}>
                     {!isAdministratorRole(role) && derived.departmentName ? (
                         <Box component="span" sx={{
@@ -1219,6 +1291,17 @@ function UserRow({
                             borderRadius: '4px', px: '8px', py: '2px',
                             fontSize: 11, fontWeight: 500,
                         }}>{derived.departmentName}</Box>
+                    ) : role === 'HR Administrator' && derived.departmentNames.length > 0 ? (
+                        /* An HR Administrator's cell reads the departments assigned to
+                           them — their reach — where a System Administrator's stays blank. */
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                            {derived.departmentNames.map((name, index) => (
+                                <Box key={index} component="span" sx={{
+                                    display: 'inline-block', bgcolor: softBg('info'), color: 'info.dark',
+                                    borderRadius: '4px', px: '8px', py: '2px', fontSize: 11, fontWeight: 500,
+                                }}>{name}</Box>
+                            ))}
+                        </Box>
                     ) : <Box sx={{ fontSize: 11, color: 'text.disabled' }}>—</Box>}
                 </Box>
 
@@ -1648,6 +1731,8 @@ function EditUserDialog(props: {
         email: string
         displayName: string
         roles: UserRole[]
+        /** The HR Administrator's departments; null for every other role, which the API refuses the field for. */
+        departmentIds: number[] | null
         profile: EmployeeProfile | undefined
         departmentId: number | null
         jobTitle: string
@@ -1672,6 +1757,7 @@ function EditUserDialog(props: {
     const [phoneNumber, setPhoneNumber] = useState('')
     const [dateOfBirth, setDateOfBirth] = useState('')
     const [gender, setGender] = useState<Gender | null>(null)
+    const [hrDepartmentIds, setHrDepartmentIds] = useState<number[]>([])
 
     /* Has the admin started editing? Nothing is marked red until they have, so
        opening a record never greets them with errors — which matters twice over
@@ -1705,6 +1791,7 @@ function EditUserDialog(props: {
                 setPhoneNumber(props.data!.user.phoneNumber ?? '')
                 setDateOfBirth(props.data!.user.dateOfBirth ?? '')
                 setGender(props.data!.user.gender ?? null)
+                setHrDepartmentIds(props.data!.user.departmentIds ?? [])
             })
         }
 
@@ -1753,6 +1840,14 @@ function EditUserDialog(props: {
        demotion has to pick one before it can be saved. */
     const effectiveGender = isAdmin ? null : gender
     const genderMissing = !isAdmin && !!genderError(gender)
+
+    /* The departments ride with the role: shown and required for an HR
+       Administrator, sent as null for everyone else. A demotion from HR drops them
+       (the server clears the rows with the role); a promotion to HR has to pick
+       some before it can be saved. */
+    const isHr = role === 'HR Administrator'
+    const hrDepartmentsMissing = hrDepartmentsError(role, hrDepartmentIds)
+    const effectiveDepartmentIds = isHr ? hrDepartmentIds : null
 
     /* Whether a gap is *shown* as an error, as opposed to whether it blocks Save.
        The two differ only on a form the admin has not started. */
@@ -1861,6 +1956,16 @@ function EditUserDialog(props: {
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                                 {ROLE_DESCRIPTIONS[role]}
                             </Typography>
+                            {isHr && (
+                                <HrDepartmentsField
+                                    idPrefix="edit-user"
+                                    departments={props.departments}
+                                    value={hrDepartmentIds}
+                                    onChange={(ids) => { setDirty(true); setHrDepartmentIds(ids) }}
+                                    error={hrDepartmentsMissing}
+                                    showError={dirty || (!!user && hydratedFor === user.id)}
+                                />
+                            )}
                         </Box>
                     </DialogSection>
 
@@ -1940,12 +2045,12 @@ function EditUserDialog(props: {
                 <Button variant="outlined" onClick={props.onClose} disabled={props.isPending} sx={cancelBtnSx}>Cancel</Button>
                 <Button
                     variant="contained"
-                    disabled={props.isPending || !user || departmentMissing || displayNameMissing || genderMissing || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth)}
+                    disabled={props.isPending || !user || departmentMissing || displayNameMissing || genderMissing || !!hrDepartmentsMissing || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth)}
                     onClick={() =>
                         /* No override means the leave type's own allowance, not 0: a stored 0
                            switches the approval-time balance check off outright (see
                            Application/AnnualLeaves/Commands/AnnualLeaveBalanceCalculator.cs). */
-                        user && props.onSubmit({ userId: user.id, email, displayName, roles: [role], profile, departmentId: effectiveDepartmentId, jobTitle, managerId: showManagerField ? departmentManager?.profileId ?? null : profile?.managerId ?? null, phoneNumber: phoneNumber.trim() || null, dateOfBirth: dateOfBirth || null, gender: effectiveGender, employmentStartDate: effectiveEmploymentStartDate })
+                        user && props.onSubmit({ userId: user.id, email, displayName, roles: [role], departmentIds: effectiveDepartmentIds, profile, departmentId: effectiveDepartmentId, jobTitle, managerId: showManagerField ? departmentManager?.profileId ?? null : profile?.managerId ?? null, phoneNumber: phoneNumber.trim() || null, dateOfBirth: dateOfBirth || null, gender: effectiveGender, employmentStartDate: effectiveEmploymentStartDate })
                     }
                     sx={saveBtnSx}
                 >
@@ -1965,6 +2070,8 @@ function CreateUserDialog(props: {
         email: string
         displayName: string
         roles: UserRole[]
+        /** The HR Administrator's departments; null for every other role, which the API refuses the field for. */
+        departmentIds: number[] | null
         departmentId: number | null
         managerId: string | null
         jobTitle: string | null
@@ -1990,6 +2097,7 @@ function CreateUserDialog(props: {
     const [phoneNumber, setPhoneNumber] = useState('')
     const [dateOfBirth, setDateOfBirth] = useState('')
     const [gender, setGender] = useState<Gender | null>(null)
+    const [hrDepartmentIds, setHrDepartmentIds] = useState<number[]>([])
     const [pendingChildren, setPendingChildren] = useState<UpsertChildRequest[]>([])
 
     /* Has the admin started? Nothing is marked red until they have — an empty form
@@ -2043,6 +2151,12 @@ function CreateUserDialog(props: {
     const effectiveGender = isAdmin ? null : gender
     const genderMissing = !isAdmin && !!genderError(gender)
 
+    /* See EditUserDialog's copy. Announced once the admin has started, like the
+       other blanks on a fresh form. */
+    const isHr = role === 'HR Administrator'
+    const hrDepartmentsMissing = hrDepartmentsError(role, hrDepartmentIds)
+    const effectiveDepartmentIds = isHr ? hrDepartmentIds : null
+
     const close = () => {
         setEmail('')
         setDisplayName('')
@@ -2053,6 +2167,7 @@ function CreateUserDialog(props: {
         setPhoneNumber('')
         setDateOfBirth('')
         setGender(null)
+        setHrDepartmentIds([])
         setPendingChildren([])
         setDirty(false)
         props.onClose()
@@ -2120,6 +2235,16 @@ function CreateUserDialog(props: {
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                                 {ROLE_DESCRIPTIONS[role]}
                             </Typography>
+                            {isHr && (
+                                <HrDepartmentsField
+                                    idPrefix="create-user"
+                                    departments={props.departments}
+                                    value={hrDepartmentIds}
+                                    onChange={(ids) => { setDirty(true); setHrDepartmentIds(ids) }}
+                                    error={hrDepartmentsMissing}
+                                    showError={dirty}
+                                />
+                            )}
                         </Box>
                     </DialogSection>
 
@@ -2187,11 +2312,13 @@ function CreateUserDialog(props: {
                 <Button variant="outlined" onClick={close} disabled={props.isPending} sx={cancelBtnSx}>Cancel</Button>
                 <Button
                     variant="contained"
-                    disabled={props.isPending || !displayName.trim() || effectiveDepartmentId === 0 || genderMissing || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth)}
+                    disabled={props.isPending || !displayName.trim() || effectiveDepartmentId === 0 || genderMissing || !!hrDepartmentsMissing || !!startDateError || !!emailError(email) || !!phoneNumberError(phoneNumber) || !!dateOfBirthError(dateOfBirth)}
                     onClick={() => props.onSubmit({
                         email: email.trim(),
                         displayName: displayName.trim(),
                         roles: [role],
+                        // Only an HR Administrator has a set of these; the API refuses the field for every other role.
+                        departmentIds: effectiveDepartmentIds,
                         departmentId: effectiveDepartmentId,
                         managerId: showManagerField ? departmentManager?.profileId ?? null : null,
                         jobTitle: isAdmin ? null : jobTitle.trim() || null,
