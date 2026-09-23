@@ -27,6 +27,7 @@ public class FilesController : BaseApiController
                 RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
                 IsAdmin = User.IsSystemAdministrator(),
                 IsManager = User.IsDepartmentScoped(),
+                IsHrAdministrator = User.IsHrAdministrator(),
             },
             cancellationToken);
 

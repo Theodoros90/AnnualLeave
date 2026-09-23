@@ -231,12 +231,15 @@ public class HrDepartmentAssignmentTests : IDisposable
         Assert.True((await ValidateCreate(payload)).IsValid);
 
         var result = await new CreateAdminUser.Handler(Db, Users, new NoInviteMail(), Microsoft.Extensions.Logging.Abstractions.NullLogger<CreateAdminUser.Handler>.Instance)
-            .Handle(new CreateAdminUser.Command { User = payload }, CancellationToken.None);
+            .Handle(new CreateAdminUser.Command { User = payload, RequestingUserId = "sysadmin" }, CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Error);
         Assert.Equal([Engineering, Finance], result.Value!.DepartmentIds);
-        var rows = await Db.UserDepartments.Where(ud => ud.UserId == result.Value.Id).Select(ud => ud.DepartmentId).OrderBy(id => id).ToListAsync();
-        Assert.Equal([Engineering, Finance], rows);
+        var written = await Db.UserDepartments.Where(ud => ud.UserId == result.Value.Id).OrderBy(ud => ud.DepartmentId).ToListAsync();
+        Assert.Equal([Engineering, Finance], written.Select(ud => ud.DepartmentId));
+        // Provenance, like the assignment endpoint records: a row written at hire
+        // must not read as granted by nobody.
+        Assert.All(written, ud => Assert.Equal("sysadmin", ud.AssignedByUserId));
     }
 
     private sealed class NoInviteMail : Domain.Interfaces.IAccountEmailSender

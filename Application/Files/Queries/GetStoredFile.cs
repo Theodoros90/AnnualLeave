@@ -1,4 +1,4 @@
-﻿using Application.Core;
+using Application.Core;
 using Domain;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +19,14 @@ public class GetStoredFile
         public string RequestingUserId { get; set; } = string.Empty;
         public bool IsAdmin { get; set; }
         public bool IsManager { get; set; }
+
+        /// <summary>
+        /// Widens the department scope to a leave with no department at all - an
+        /// administrator's own, which no assigned department covers and which only
+        /// an HR Administrator may decide. Without it they can approve a request
+        /// whose document they cannot open.
+        /// </summary>
+        public bool IsHrAdministrator { get; set; }
     }
 
     public class Handler(AppDbContext context) : IRequestHandler<Query, Result<StoredFileDto>>
@@ -119,7 +127,11 @@ public class GetStoredFile
             return await context.AnnualLeaves.AnyAsync(
                 al => al.EvidenceUrl == path
                     && ((al.DepartmentId.HasValue && scope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
-                        || scope.DirectReportUserIds.Contains(al.EmployeeId)),
+                        || scope.DirectReportUserIds.Contains(al.EmployeeId)
+                        // The department-less leave an administrator files for
+                        // themselves, which the HR Administrator decides and nobody
+                        // else's scope reaches.
+                        || (request.IsHrAdministrator && al.DepartmentId == null)),
                 cancellationToken);
         }
 
@@ -168,7 +180,8 @@ public class GetStoredFile
             return await context.AnnualLeaves.AnyAsync(
                 al => al.CoverageAttachmentUrl == path
                     && ((al.DepartmentId.HasValue && scope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
-                        || scope.DirectReportUserIds.Contains(al.EmployeeId)),
+                        || scope.DirectReportUserIds.Contains(al.EmployeeId)
+                        || (request.IsHrAdministrator && al.DepartmentId == null)),
                 cancellationToken);
         }
 

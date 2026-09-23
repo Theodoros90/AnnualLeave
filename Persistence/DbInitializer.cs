@@ -998,8 +998,10 @@ public class DbInitializer
     /// </summary>
     private static async Task SeedUserDepartments(AppDbContext context)
     {
-        if (context.UserDepartments.Any()) return;
-
+        // No "already has rows" guard: an existing development database has the demo
+        // manager's row and would otherwise never get the demo HR account's, which is
+        // that account's entire reach. Assign below is idempotent instead, so a second
+        // run writes nothing rather than duplicating what is there.
         var adminUser = context.Users.FirstOrDefault(u => u.Email == SystemAdministratorEmail);
         if (adminUser is null) return;
 
@@ -1010,10 +1012,19 @@ public class DbInitializer
 
         // Demo assignments — these users exist only when demo data is enabled, so
         // on a real deployment this seeder now writes nothing at all.
+        var alreadyAssigned = context.UserDepartments
+            .Select(ud => new { ud.UserId, ud.DepartmentId })
+            .AsEnumerable()
+            .Select(ud => (ud.UserId, ud.DepartmentId))
+            .ToHashSet();
+
         void Assign(string email, int departmentId)
         {
             var user = context.Users.FirstOrDefault(u => u.Email == email);
             if (user is null) return;
+
+            // Covers both a row already in the database and a repeat inside this run.
+            if (!alreadyAssigned.Add((user.Id, departmentId))) return;
 
             userDepartments.Add(new UserDepartment
             {

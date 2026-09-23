@@ -432,6 +432,43 @@ public class HrAdministratorScopeTests
     }
 
     /// <summary>
+    /// An HR Administrator decides the department-less leave an administrator files
+    /// for themselves, so they have to be able to open the document attached to it -
+    /// approving a request whose evidence is unreadable is no decision at all. A
+    /// plain Manager reaches neither.
+    /// </summary>
+    [Fact]
+    public async Task Evidence_on_a_department_less_leave_opens_for_an_hr_administrator_only()
+    {
+        using var db = SeedWorld();
+        var file = new StoredFile
+        {
+            Id = "f-lh", FileName = "note.pdf", ContentType = "application/pdf",
+            Purpose = StoredFilePurpose.LeaveEvidence, Content = [1], Sha256 = "sha", SizeBytes = 1,
+            // Uploaded by the administrator whose leave it is, so the uploader
+            // shortcut cannot be what lets the reader below through.
+            UploadedById = Hr2,
+        };
+        db.StoredFiles.Add(file);
+        (await db.AnnualLeaves.FindAsync("lh"))!.EvidenceUrl = Application.Files.StoredFilePath.For(file.Id);
+        await db.SaveChangesAsync();
+
+        var handler = new Application.Files.Queries.GetStoredFile.Handler(db);
+
+        var asHr = await handler.Handle(new Application.Files.Queries.GetStoredFile.Query
+        {
+            Id = file.Id, RequestingUserId = Hr, IsAdmin = false, IsManager = true, IsHrAdministrator = true,
+        }, CancellationToken.None);
+        Assert.True(asHr.IsSuccess, asHr.Error);
+
+        var asPlainManager = await handler.Handle(new Application.Files.Queries.GetStoredFile.Query
+        {
+            Id = file.Id, RequestingUserId = Hr, IsAdmin = false, IsManager = true, IsHrAdministrator = false,
+        }, CancellationToken.None);
+        Assert.False(asPlainManager.IsSuccess);
+    }
+
+    /// <summary>
     /// The scoped profile list drops administrators — an HR Administrator has no
     /// department and belongs on nobody's team board — but never the caller's own
     /// row. Dashboard, My Leave and Apply Leave read the signed-in person's

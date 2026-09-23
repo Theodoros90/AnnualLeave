@@ -235,6 +235,27 @@ public class NonManagerUserDepartmentTests : IDisposable
     }
 
     /// <summary>
+    /// The seeder used to bail out the moment the table held anything, so a
+    /// development database seeded before the HR Administrator existed never got
+    /// that account's rows - and those rows are its entire reach. The guard is gone
+    /// and the writer is idempotent instead, which this pins from the other side:
+    /// seeding twice leaves exactly one row per user and department.
+    /// </summary>
+    [Fact]
+    public async Task Seeding_twice_writes_no_duplicate_assignments()
+    {
+        await SeedAsync(SeedPolicy.Unrestricted(demoData: true));
+        var afterFirst = await Db.UserDepartments.CountAsync();
+        Assert.True(afterFirst > 0);
+
+        await SeedAsync(SeedPolicy.Unrestricted(demoData: true));
+
+        var rows = await Db.UserDepartments.Select(ud => new { ud.UserId, ud.DepartmentId }).ToListAsync();
+        Assert.Equal(afterFirst, rows.Count);
+        Assert.Equal(rows.Count, rows.Distinct().Count());
+    }
+
+    /// <summary>
     /// A manager's departments are the team they run; an HR Administrator's are the
     /// reach a System Administrator granted them. They are not the same answer, and
     /// carrying one over as the other silently hands the new role a scope nobody

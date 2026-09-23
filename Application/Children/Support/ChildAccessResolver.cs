@@ -15,6 +15,11 @@ namespace Application.Children.Support;
 ///   <item>Manager — read only, and only inside their existing department scope. A
 ///     manager approving a paternity request has to be able to see the ledger it is
 ///     measured against, but the employee owns the family record.</item>
+///   <item>HR Administrator — read only, and only inside the departments assigned to
+///     them. They come through the Manager branch, because
+///     <see cref="ManagerAccessScopeResolver"/> resolves both from the same
+///     <c>UserDepartment</c> rows and they decide the same paternity requests; the
+///     unscoped write is the System Administrator's alone.</item>
 /// </list>
 ///
 /// Reuses <see cref="ManagerAccessScopeResolver"/> rather than inventing a second

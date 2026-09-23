@@ -89,6 +89,40 @@ public class AdminUserJsonContractTests(ApiRouteTableFixture fixture)
     }
 
     /// <summary>
+    /// The HR Administrator's assigned departments ride out on the same DTO, and the
+    /// client reads them as <c>departmentIds</c> — it renders the chips in Edit User
+    /// from this array and sends the set straight back. A naming-policy change or a
+    /// serializer that flattened the list would empty the picker on every save.
+    /// </summary>
+    [Fact]
+    public void The_assigned_departments_come_back_as_a_camelCase_array()
+    {
+        var json = JsonSerializer.Serialize(new AdminUserDto { DepartmentIds = [7, 8] }, Options);
+
+        using var document = JsonDocument.Parse(json);
+        var ids = document.RootElement.GetProperty("departmentIds");
+        Assert.Equal(JsonValueKind.Array, ids.ValueKind);
+        Assert.Equal(2, ids.GetArrayLength());
+        Assert.Equal([7, 8], ids.EnumerateArray().Select(element => element.GetInt32()));
+    }
+
+    /// <summary>
+    /// The create dialog sends the same array back the other way — an HR
+    /// Administrator's departments chosen at hire — so the request DTO has to
+    /// bind <c>departmentIds</c> under the same camelCase name the response uses,
+    /// or a create payload built from the edit form's shape would silently drop
+    /// the set the admin picked.
+    /// </summary>
+    [Fact]
+    public void A_create_request_binds_departmentIds()
+    {
+        var dto = JsonSerializer.Deserialize<AdminCreateUserDto>(
+            """{"email":"a@b.test","displayName":"A B","roles":["HR Administrator"],"departmentIds":[1,2]}""", Options);
+
+        Assert.Equal([1, 2], dto!.DepartmentIds);
+    }
+
+    /// <summary>
     /// A number is what the enum would serialise as with no converter registered,
     /// so this is the shape the *previous* contract had. Accepting it is harmless
     /// and keeps a stale caller working; the test exists to record that the

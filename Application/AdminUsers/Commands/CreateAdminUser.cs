@@ -18,6 +18,13 @@ public class CreateAdminUser
     public class Command : IRequest<Result<AdminUserDto>>
     {
         public required AdminCreateUserDto User { get; set; }
+
+        /// <summary>
+        /// Who is creating the account, stamped onto the department rows written
+        /// below — the same provenance <c>SetAdminUserDepartments</c> records, so an
+        /// assignment made at hire is not left saying nobody granted it.
+        /// </summary>
+        public string RequestingUserId { get; set; } = string.Empty;
     }
 
     public class Handler(
@@ -129,6 +136,7 @@ public class CreateAdminUser
                     UserId = user.Id,
                     DepartmentId = departmentId,
                     AssignedAt = DateTime.UtcNow,
+                    AssignedByUserId = string.IsNullOrWhiteSpace(request.RequestingUserId) ? null : request.RequestingUserId,
                 }));
                 await context.SaveChangesAsync(cancellationToken);
             }

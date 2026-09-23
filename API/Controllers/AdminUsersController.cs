@@ -56,7 +56,11 @@ public class AdminUsersController : BaseApiController
     public async Task<ActionResult<AdminUserDto>> CreateUser(AdminCreateUserDto request)
     {
         var result = await Mediator.Send(
-            new CreateAdminUser.Command { User = request },
+            new CreateAdminUser.Command
+            {
+                User = request,
+                RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            },
             HttpContext.RequestAborted);
 
         // Not HandleResult on the success path: that answers 200, and this action
