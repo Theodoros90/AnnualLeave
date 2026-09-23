@@ -356,7 +356,7 @@ function PersonalDetailsFields({ idPrefix, values, onChange, flag, emailHelperTe
     )
 }
 
-type StatusTab = 'all' | 'admins' | 'managers' | 'employees' | 'deactivated' | 'online'
+type StatusTab = 'all' | 'systemAdmins' | 'hrAdmins' | 'managers' | 'employees' | 'deactivated' | 'online'
 
 type Presence = PresenceStatus
 
@@ -392,7 +392,13 @@ interface ManagerGroup {
 }
 
 interface GroupedUsers {
-    admins: DerivedUser[]
+    /**
+     * The two administrator roles are separate sections, not one pile: a System
+     * Administrator configures the workspace, an HR Administrator runs Leave &
+     * Time for their assigned departments, and the list should say which is which.
+     */
+    systemAdmins: DerivedUser[]
+    hrAdmins: DerivedUser[]
     teams: ManagerGroup[]
     /** Employees whose profile names no manager, or one who is not a manager here. */
     unassigned: DerivedUser[]
@@ -402,7 +408,8 @@ const byName = (a: DerivedUser, b: DerivedUser) =>
     (a.user.displayName ?? a.user.email).localeCompare(b.user.displayName ?? b.user.email)
 
 /**
- * Reads the filtered list as an org chart: admins first, then each manager with
+ * Reads the filtered list as an org chart: System Administrators, then HR
+ * Administrators, then each manager with
  * their reports underneath, then anyone with no manager. A report's manager is
  * the profile id on their own profile — the one the edit dialog derives from the
  * department — so in practice each group is a department team.
@@ -416,7 +423,8 @@ function groupByReportingLine(filtered: DerivedUser[], all: DerivedUser[]): Grou
     const managerByProfileId = new Map(managers.map((m) => [m.profile!.id, m]))
     const filteredIds = new Set(filtered.map((d) => d.user.id))
 
-    const admins = filtered.filter((d) => isAdministratorRole(d.primaryRole)).sort(byName)
+    const systemAdmins = filtered.filter((d) => d.primaryRole === 'System Administrator').sort(byName)
+    const hrAdmins = filtered.filter((d) => d.primaryRole === 'HR Administrator').sort(byName)
     const employees = filtered.filter((d) => d.primaryRole === 'Employee')
 
     const reportsByManagerProfileId = new Map<string, DerivedUser[]>()
@@ -440,7 +448,7 @@ function groupByReportingLine(filtered: DerivedUser[], all: DerivedUser[]): Grou
         teams.push({ key: m.user.id, managerName: m.user.displayName || m.user.email, manager, reports })
     }
 
-    return { admins, teams, unassigned: unassigned.sort(byName) }
+    return { systemAdmins, hrAdmins, teams, unassigned: unassigned.sort(byName) }
 }
 
 interface ActivityItem {
@@ -575,7 +583,6 @@ function AdminUsersPanel() {
     const counts = useMemo(() => {
         const c = {
             all: derivedAll.length,
-            admins: derivedAll.filter((d) => isAdministratorRole(d.primaryRole)).length,
             systemAdmins: derivedAll.filter((d) => d.primaryRole === 'System Administrator').length,
             hrAdmins: derivedAll.filter((d) => d.primaryRole === 'HR Administrator').length,
             managers: derivedAll.filter((d) => d.primaryRole === 'Manager').length,
@@ -590,7 +597,8 @@ function AdminUsersPanel() {
     /* Filtering */
     const filtered = useMemo(() => {
         let out = derivedAll
-        if (statusTab === 'admins') out = out.filter((d) => isAdministratorRole(d.primaryRole))
+        if (statusTab === 'systemAdmins') out = out.filter((d) => d.primaryRole === 'System Administrator')
+        else if (statusTab === 'hrAdmins') out = out.filter((d) => d.primaryRole === 'HR Administrator')
         else if (statusTab === 'managers') out = out.filter((d) => d.primaryRole === 'Manager')
         else if (statusTab === 'employees') out = out.filter((d) => d.primaryRole === 'Employee')
         else if (statusTab === 'deactivated') out = out.filter((d) => !d.isActive)
@@ -610,9 +618,9 @@ function AdminUsersPanel() {
     }, [derivedAll, statusTab, roleFilter, deptFilter, searchText])
 
     const grouped = useMemo(() => groupByReportingLine(filtered, derivedAll), [filtered, derivedAll])
-    // A lone section needs no heading — the Administrators tab already says "Administrators".
+    // A lone section needs no heading — the active tab already names it.
     const showSectionHeadings =
-        [grouped.admins, grouped.teams, grouped.unassigned].filter((section) => section.length > 0).length > 1
+        [grouped.systemAdmins, grouped.hrAdmins, grouped.teams, grouped.unassigned].filter((section) => section.length > 0).length > 1
 
     /* Mutations */
     const createMutation = useMutation({
@@ -885,7 +893,8 @@ function AdminUsersPanel() {
                     <Box sx={statLabelSx}>👥 Total Users</Box>
                     <Box sx={{ fontSize: 22, fontWeight: 700, color: 'text.primary', lineHeight: 1 }}>{counts.all}</Box>
                     <Box sx={{ display: 'flex', gap: '12px', mt: '8px', fontSize: 11, color: 'text.secondary', flexWrap: 'wrap' }}>
-                        <RoleDot color="#FEE2E2" label={`${counts.admins} admin${counts.admins === 1 ? '' : 's'}`} />
+                        <RoleDot color="#FEE2E2" label={`${counts.systemAdmins} system admin${counts.systemAdmins === 1 ? '' : 's'}`} />
+                        <RoleDot color="#FEE2E2" label={`${counts.hrAdmins} HR admin${counts.hrAdmins === 1 ? '' : 's'}`} />
                         <RoleDot color="#FEF3C7" label={`${counts.managers} manager${counts.managers === 1 ? '' : 's'}`} />
                         <RoleDot color="#DBEAFE" label={`${counts.employees} employee${counts.employees === 1 ? '' : 's'}`} />
                     </Box>
@@ -1015,7 +1024,8 @@ function AdminUsersPanel() {
             <Box sx={{ display: 'flex', gap: '2px', mb: '14px', borderBottom: '1px solid', borderColor: 'divider', px: '2px', flexWrap: 'wrap' }}>
                 {([
                     { value: 'all',       label: 'All',       count: counts.all },
-                    { value: 'admins',    label: 'Administrators',    count: counts.admins },
+                    { value: 'systemAdmins', label: 'System Administrators', count: counts.systemAdmins },
+                    { value: 'hrAdmins',  label: 'HR Administrators', count: counts.hrAdmins },
                     { value: 'managers',  label: 'Managers',  count: counts.managers },
                     { value: 'employees', label: 'Employees', count: counts.employees },
                     { value: 'deactivated', label: '⏸ Deactivated', count: counts.deactivated },
@@ -1060,10 +1070,16 @@ function AdminUsersPanel() {
                 </Box>
             ) : (
                 <>
-                    {grouped.admins.length > 0 && (
+                    {grouped.systemAdmins.length > 0 && (
                         <>
-                            {showSectionHeadings && <SectionHeading>Administrators</SectionHeading>}
-                            {grouped.admins.map(renderRow)}
+                            {showSectionHeadings && <SectionHeading>System Administrators</SectionHeading>}
+                            {grouped.systemAdmins.map(renderRow)}
+                        </>
+                    )}
+                    {grouped.hrAdmins.length > 0 && (
+                        <>
+                            {showSectionHeadings && <SectionHeading>HR Administrators</SectionHeading>}
+                            {grouped.hrAdmins.map(renderRow)}
                         </>
                     )}
                     {grouped.teams.length > 0 && (

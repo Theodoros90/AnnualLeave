@@ -1859,6 +1859,7 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
             user('bob', 'Bob Manager', 'Manager'),
             user('carl', 'Carl Report', 'Employee'),
             user('zed', 'Zed System Administrator', 'System Administrator'),
+            user('hana', 'Hana HR', 'HR Administrator'),
         ] as never)
         api.getEmployeeProfiles.mockResolvedValue([
             profile('anna', 'p-mia'),
@@ -1867,6 +1868,7 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
             profile('bob', null),
             profile('carl', 'p-bob'),
             profile('zed', null),
+            profile('hana', null),
         ] as never)
     })
 
@@ -1874,11 +1876,11 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
         return screen.getAllByTestId('user-row').map((row) => row.getAttribute('data-user-id'))
     }
 
-    it('lists admins, then each manager followed by their reports, then anyone without a manager', async () => {
+    it('lists system administrators, then HR administrators, then each manager followed by their reports, then anyone without a manager', async () => {
         renderPanel()
         await screen.findByText('Zed System Administrator')
 
-        expect(rowOrder()).toEqual(['zed', 'bob', 'carl', 'mia', 'anna', 'dora'])
+        expect(rowOrder()).toEqual(['zed', 'hana', 'bob', 'carl', 'mia', 'anna', 'dora'])
     })
 
     it('nests a report inside a group named after their manager', async () => {
@@ -1891,23 +1893,40 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
         expect(within(team).queryByText('Mia Manager')).not.toBeInTheDocument()
     })
 
-    it('labels the three sections when more than one of them has rows', async () => {
+    /* The two administrator roles are different jobs — one configures the
+       workspace, the other runs Leave & Time for their departments — so they are
+       not one "Administrators" pile: each has its own section and its own tab. */
+    it('labels the four sections when more than one of them has rows', async () => {
         renderPanel()
         await screen.findByText('Zed System Administrator')
 
-        expect(screen.getByRole('heading', { name: 'Administrators' })).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: 'System Administrators' })).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: 'HR Administrators' })).toBeInTheDocument()
+        expect(screen.queryByRole('heading', { name: 'Administrators' })).not.toBeInTheDocument()
         expect(screen.getByRole('heading', { name: 'Managers & teams' })).toBeInTheDocument()
         expect(screen.getByRole('heading', { name: 'No manager assigned' })).toBeInTheDocument()
     })
 
     it('drops the section labels when only one section has rows', async () => {
         renderPanel()
-        fireEvent.click(await screen.findByRole('button', { name: /^Administrators/ }))
+        fireEvent.click(await screen.findByRole('button', { name: /^System Administrators/ }))
 
         expect(screen.getByText('Zed System Administrator')).toBeInTheDocument()
-        // The Administrators tab is still there; the section heading under the tabs is not.
-        expect(screen.queryByRole('heading', { name: 'Administrators' })).not.toBeInTheDocument()
+        expect(screen.queryByText('Hana HR')).not.toBeInTheDocument()
+        // The tab is still there; the section heading under the tabs is not.
+        expect(screen.queryByRole('heading', { name: 'System Administrators' })).not.toBeInTheDocument()
         expect(screen.queryByRole('heading', { name: 'Managers & teams' })).not.toBeInTheDocument()
+    })
+
+    it('has a tab for each administrator role, each counting its own', async () => {
+        renderPanel()
+        await screen.findByText('Zed System Administrator')
+
+        expect(screen.queryByRole('button', { name: /^Administrators/ })).not.toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /^System Administrators\s*1$/ })).toBeInTheDocument()
+        fireEvent.click(screen.getByRole('button', { name: /^HR Administrators\s*1$/ }))
+
+        expect(rowOrder()).toEqual(['hana'])
     })
 
     // A filter that keeps the report but drops the manager must not pull the
@@ -1927,11 +1946,12 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
         api.getEmployeeProfiles.mockResolvedValue([
             profile('anna', 'p-nobody'),
             profile('mia', null), profile('dora', null), profile('bob', null), profile('carl', 'p-bob'), profile('zed', null),
+            profile('hana', null),
         ] as never)
         renderPanel()
         await screen.findByText('Anna Report')
 
-        expect(rowOrder()).toEqual(['zed', 'bob', 'carl', 'mia', 'anna', 'dora'])
+        expect(rowOrder()).toEqual(['zed', 'hana', 'bob', 'carl', 'mia', 'anna', 'dora'])
         expect(screen.queryByRole('group', { name: "Mia Manager's team" })).not.toBeInTheDocument()
     })
 })
