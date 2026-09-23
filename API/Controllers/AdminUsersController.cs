@@ -23,7 +23,14 @@ public class AdminUsersController : BaseApiController
     [ProducesResponseType(typeof(List<AdminUserDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<AdminUserDto>>> GetUsers()
     {
-        return Ok(await Mediator.Send(new GetAdminUserList.Query(), HttpContext.RequestAborted));
+        return Ok(await Mediator.Send(new GetAdminUserList.Query
+        {
+            RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            // The HR Administrator reads this list to file leave on somebody's
+            // behalf, so it is scoped to their departments; the System
+            // Administrator's Users panel is the whole company.
+            ScopeToCaller = !User.IsSystemAdministrator(),
+        }, HttpContext.RequestAborted));
     }
 
     [HttpGet("{id}")]
@@ -32,7 +39,12 @@ public class AdminUsersController : BaseApiController
     public async Task<ActionResult<AdminUserDto>> GetUser(string id)
     {
         return HandleResult(await Mediator.Send(
-            new GetAdminUserDetail.Query { Id = id },
+            new GetAdminUserDetail.Query
+            {
+                Id = id,
+                RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+                ScopeToCaller = !User.IsSystemAdministrator(),
+            },
             HttpContext.RequestAborted));
     }
 

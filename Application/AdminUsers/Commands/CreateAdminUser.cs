@@ -119,6 +119,20 @@ public class CreateAdminUser
                 return IdentityFailure("Failed to assign user roles.", addRolesResult);
             }
 
+            // An HR Administrator's reach is the departments assigned here. Validated
+            // non-empty and active by CreateAdminUserValidator; stored normalised.
+            var departmentIds = HrDepartmentScopeRules.Normalize(request.User.DepartmentIds);
+            if (departmentIds.Count > 0)
+            {
+                context.UserDepartments.AddRange(departmentIds.Select(departmentId => new UserDepartment
+                {
+                    UserId = user.Id,
+                    DepartmentId = departmentId,
+                    AssignedAt = DateTime.UtcNow,
+                }));
+                await context.SaveChangesAsync(cancellationToken);
+            }
+
             var inviteEmailSent = await accountEmailSender.SendWelcomeInviteAsync(user, cancellationToken);
             if (!inviteEmailSent)
             {
@@ -132,7 +146,7 @@ public class CreateAdminUser
                     user.Id);
             }
 
-            var created = AdminUserMapper.ToDto(user, selectedRoles);
+            var created = AdminUserMapper.ToDto(user, selectedRoles, departmentIds);
             created.InviteEmailSent = inviteEmailSent;
 
             return Result<AdminUserDto>.Success(created);

@@ -1,5 +1,6 @@
 using Application.AdminUsers.Commands;
 using Application.AdminUsers.DTOs;
+using Application.AdminUsers.Queries;
 using Application.AdminUsers.Validators;
 using Application.Core;
 using Domain;
@@ -145,5 +146,96 @@ public class HrDepartmentAssignmentTests : IDisposable
     {
         Assert.Equal(new[] { 2, 5 }, HrDepartmentScopeRules.Normalize([5, 2, 5, 0, -1]));
         Assert.Empty(HrDepartmentScopeRules.Normalize(null));
+    }
+
+    private static AdminCreateUserDto CreatePayload(string role, List<int>? departmentIds) => new()
+    {
+        Email = $"{Guid.NewGuid():N}@test.local",
+        DisplayName = "New Person",
+        Roles = [role],
+        DepartmentIds = departmentIds,
+        DepartmentId = AppRoles.IsAdministrator(role) ? null : Engineering,
+        DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-30),
+        EmploymentStartDate = AppRoles.IsAdministrator(role) ? null : DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-1),
+        Gender = AppRoles.IsAdministrator(role) ? null : Gender.Female,
+    };
+
+    private Task<FluentValidation.Results.ValidationResult> ValidateCreate(AdminCreateUserDto payload) =>
+        new CreateAdminUserValidator(Db, Roles).ValidateAsync(new CreateAdminUser.Command { User = payload });
+
+    [Fact]
+    public async Task Creating_an_HR_Administrator_without_departments_is_refused()
+    {
+        await SeedAsync();
+
+        var none = await ValidateCreate(CreatePayload(AppRoles.HrAdministrator, null));
+        var empty = await ValidateCreate(CreatePayload(AppRoles.HrAdministrator, []));
+
+        Assert.Contains(none.Errors, e => e.ErrorMessage == HrDepartmentScopeRules.DepartmentsRequiredMessage);
+        Assert.Contains(empty.Errors, e => e.ErrorMessage == HrDepartmentScopeRules.DepartmentsRequiredMessage);
+    }
+
+    [Theory]
+    [InlineData(AppRoles.SystemAdministrator)]
+    [InlineData(AppRoles.Manager)]
+    [InlineData(AppRoles.Employee)]
+    public async Task Creating_any_other_role_with_departments_is_refused(string role)
+    {
+        await SeedAsync();
+
+        var result = await ValidateCreate(CreatePayload(role, [Engineering]));
+
+        Assert.Contains(result.Errors, e => e.ErrorMessage == HrDepartmentScopeRules.DepartmentsNotForRoleMessage);
+    }
+
+    [Fact]
+    public async Task Creating_an_HR_Administrator_writes_their_department_rows()
+    {
+        await SeedAsync();
+        var payload = CreatePayload(AppRoles.HrAdministrator, [Finance, Engineering]);
+        Assert.True((await ValidateCreate(payload)).IsValid);
+
+        var result = await new CreateAdminUser.Handler(Db, Users, new NoInviteMail(), Microsoft.Extensions.Logging.Abstractions.NullLogger<CreateAdminUser.Handler>.Instance)
+            .Handle(new CreateAdminUser.Command { User = payload }, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal([Engineering, Finance], result.Value!.DepartmentIds);
+        var rows = await Db.UserDepartments.Where(ud => ud.UserId == result.Value.Id).Select(ud => ud.DepartmentId).OrderBy(id => id).ToListAsync();
+        Assert.Equal([Engineering, Finance], rows);
+    }
+
+    private sealed class NoInviteMail : Domain.Interfaces.IAccountEmailSender
+    {
+        public string BuildClientUrl(string route, IDictionary<string, string?>? query = null) => $"https://test.local{route}";
+        public Task<bool> SendWelcomeInviteAsync(User user, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> SendPasswordResetAsync(User user, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> SendEmailChangeConfirmationAsync(User user, string newEmail, string apiBaseUrlFallback, CancellationToken cancellationToken = default) => Task.FromResult(true);
+    }
+
+    [Fact]
+    public async Task The_user_list_carries_each_persons_department_ids_and_scopes_to_an_HR_caller()
+    {
+        await SeedAsync();
+        var hr = await GivenUserAsync("hr@test.local", AppRoles.HrAdministrator);
+        var eng = await GivenUserAsync("eng@test.local", AppRoles.Employee);
+        var fin = await GivenUserAsync("fin@test.local", AppRoles.Employee);
+        Db.EmployeeProfiles.AddRange(
+            new EmployeeProfile { Id = "hr-p", UserId = hr.Id, DepartmentId = null },
+            new EmployeeProfile { Id = "eng-p", UserId = eng.Id, DepartmentId = Engineering },
+            new EmployeeProfile { Id = "fin-p", UserId = fin.Id, DepartmentId = Finance });
+        Db.UserDepartments.Add(new UserDepartment { UserId = hr.Id, DepartmentId = Engineering });
+        await Db.SaveChangesAsync();
+
+        var all = await new GetAdminUserList.Handler(Users, Db).Handle(new GetAdminUserList.Query(), CancellationToken.None);
+        Assert.Equal([Engineering], all.Single(u => u.Id == hr.Id).DepartmentIds);
+        Assert.Equal(3, all.Count);
+
+        var scoped = await new GetAdminUserList.Handler(Users, Db).Handle(
+            new GetAdminUserList.Query { RequestingUserId = hr.Id, ScopeToCaller = true }, CancellationToken.None);
+        Assert.Equal(new[] { eng.Id, hr.Id }.OrderBy(x => x), scoped.Select(u => u.Id).OrderBy(x => x));
+
+        var outOfScope = await new GetAdminUserDetail.Handler(Users, Db).Handle(
+            new GetAdminUserDetail.Query { Id = fin.Id, RequestingUserId = hr.Id, ScopeToCaller = true }, CancellationToken.None);
+        Assert.False(outOfScope.IsSuccess);
     }
 }

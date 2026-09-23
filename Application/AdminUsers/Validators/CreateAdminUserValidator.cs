@@ -124,6 +124,28 @@ public class CreateAdminUserValidator : AbstractValidator<CreateAdminUser.Comman
                     PersonFieldRules.IsOldEnoughToStart(startDate, command.User.DateOfBirth))
                 .WithMessage(PersonFieldRules.EmploymentStartDateTooYoungMessage);
 
+            // The mirror image of DepartmentId: an HR Administrator has no department
+            // of their own but must be assigned at least one to run; everyone else
+            // is refused the field, so an admin cannot widen a Manager or scope an
+            // Employee through it by accident.
+            When(x => IsHr(x.User.Roles), () =>
+            {
+                RuleFor(x => x.User.DepartmentIds)
+                    .Cascade(CascadeMode.Stop)
+                    .Must(ids => HrDepartmentScopeRules.Normalize(ids).Count > 0)
+                    .WithMessage(HrDepartmentScopeRules.DepartmentsRequiredMessage)
+                    .MustAsync(async (ids, ct) =>
+                        await HrDepartmentScopeRules.AllActiveAsync(context, HrDepartmentScopeRules.Normalize(ids), ct))
+                    .WithMessage(HrDepartmentScopeRules.UnknownDepartmentMessage);
+            });
+
+            When(x => !IsHr(x.User.Roles), () =>
+            {
+                RuleFor(x => x.User.DepartmentIds)
+                    .Must(ids => HrDepartmentScopeRules.Normalize(ids).Count == 0)
+                    .WithMessage(HrDepartmentScopeRules.DepartmentsNotForRoleMessage);
+            });
+
             RuleFor(x => x.User.ManagerId)
                 .MustAsync(async (managerId, cancellationToken) =>
                     await context.EmployeeProfiles.AnyAsync(ep => ep.Id == managerId, cancellationToken))
@@ -170,4 +192,7 @@ public class CreateAdminUserValidator : AbstractValidator<CreateAdminUser.Comman
     /// </summary>
     private static bool IsAdmin(IEnumerable<string>? roles) =>
         Distinct(roles).Any(AppRoles.IsAdministrator);
+
+    private static bool IsHr(IEnumerable<string>? roles) =>
+        Distinct(roles).Any(role => string.Equals(role, AppRoles.HrAdministrator, StringComparison.OrdinalIgnoreCase));
 }
