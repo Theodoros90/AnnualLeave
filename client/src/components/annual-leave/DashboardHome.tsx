@@ -16,11 +16,14 @@ import { alpha, useTheme, type Theme } from '@mui/material/styles'
 import { BarChart } from '@mui/x-charts/BarChart'
 import { LineChart } from '@mui/x-charts/LineChart'
 import {
-    approveTimesheet, getAnnualLeaves, getAppSettings,
+    approveTimesheet, getAdminUsers, getAnnualLeaves, getAppSettings,
     getCompanyAttendance, getDepartments, getEmployeeProfiles, getLeaveTypes,
-    getMyTimesheets, getTeamAttendance, getTeamAttendanceHistory, getTimesheets, rejectTimesheet, updateLeaveStatus,
+    getMyTimesheets, getProjectActivityTypes, getProjectComponents, getProjects, getProjectTypes,
+    getTeamAttendance, getTeamAttendanceHistory, getTimesheets, rejectTimesheet, updateLeaveStatus,
 } from '../../lib/api'
 import { currentYearEntitlement } from '../../lib/leave-allowance'
+import { isAwaitingDocument } from '../../lib/attachment-policy'
+import { isAdministrator, isSystemAdministrator } from '../../lib/roles'
 import { activityIcon } from '../../lib/hooks/useAttendance'
 import { useOfferedLeaveTypes } from '../../lib/hooks'
 import { buildLeaveBalanceRows, type LeaveBalanceRow } from '../../lib/leave-balance-rows'
@@ -28,7 +31,7 @@ import { useStore } from '../../lib/mobx'
 import { iconForLeaveType } from './leave-icons'
 import { ActivityTypesPanel, AdminUsersPanel, AppSettingsPanel, ComponentsPanel, DataMaintenancePanel, DepartmentsPanel, LeaveTypesPanel, OrgSettingsPanel, ProjectsPanel, ProjectTypesPanel } from '..'
 import type {
-    AnnualLeave, AnnualLeaveStatus, AttendanceIssue, DepartmentAttendance,
+    AdminUser, AnnualLeave, AnnualLeaveStatus, AttendanceIssue, Department, DepartmentAttendance, EmployeeProfile, LeaveType,
     RecentActivity, TeamAttendance, TeamHistory, TeamMemberAttendance, Timesheet, TimesheetStatus, UserInfo,
 } from '../../lib/types'
 
@@ -110,24 +113,31 @@ const DashboardHome = observer(function DashboardHome() {
     const user = authStore.user
     if (!user) return null
 
-    const isAdmin = user.roles.includes('System Administrator')
+    const isAdmin = isAdministrator(user.roles)
+    // The configuration panels below are system administration; the route guard in
+    // App.tsx already turns an HR Administrator away from /admin/*, and this agrees with it.
+    const isSystemAdmin = isSystemAdministrator(user.roles)
     const isManager = user.roles.includes('Manager') && !isAdmin
 
     // System Administrator sub-routes are derived from the URL (was: uiStore.adminSection).
     const adminSection = location.pathname.startsWith('/admin/')
         ? location.pathname.split('/')[2]
         : null
-    if (isAdmin && adminSection === 'users') return <AdminUsersPanel />
-    if (isAdmin && adminSection === 'departments') return <DepartmentsPanel />
-    if (isAdmin && (adminSection === 'leave-types' || adminSection === 'leave')) return <LeaveTypesPanel />
-    if (isAdmin && adminSection === 'projects') return <ProjectsPanel />
-    if (isAdmin && adminSection === 'project-activities') return <ActivityTypesPanel />
-    if (isAdmin && adminSection === 'components') return <ComponentsPanel />
-    if (isAdmin && adminSection === 'project-types') return <ProjectTypesPanel />
-    if (isAdmin && adminSection === 'organization') return <AppSettingsPanel />
-    if (isAdmin && adminSection === 'reminders-notifications') return <OrgSettingsPanel />
-    if (isAdmin && adminSection === 'maintenance') return <DataMaintenancePanel />
+    if (isSystemAdmin && adminSection === 'users') return <AdminUsersPanel />
+    if (isSystemAdmin && adminSection === 'departments') return <DepartmentsPanel />
+    if (isSystemAdmin && (adminSection === 'leave-types' || adminSection === 'leave')) return <LeaveTypesPanel />
+    if (isSystemAdmin && adminSection === 'projects') return <ProjectsPanel />
+    if (isSystemAdmin && adminSection === 'project-activities') return <ActivityTypesPanel />
+    if (isSystemAdmin && adminSection === 'components') return <ComponentsPanel />
+    if (isSystemAdmin && adminSection === 'project-types') return <ProjectTypesPanel />
+    if (isSystemAdmin && adminSection === 'organization') return <AppSettingsPanel />
+    if (isSystemAdmin && adminSection === 'reminders-notifications') return <OrgSettingsPanel />
+    if (isSystemAdmin && adminSection === 'maintenance') return <DataMaintenancePanel />
 
+    // An HR Administrator has the reach without the configuration, and a dashboard
+    // to match: the decisions waiting on them, who is away, and balances to watch —
+    // not the workspace overview a System Administrator opens on.
+    if (isAdmin && !isSystemAdmin) return <HrDashboard user={user} />
     if (isAdmin) return <AdminDashboard user={user} />
     if (isManager) return <ManagerDashboard user={user} />
     return <EmployeeDashboard user={user} />
@@ -405,21 +415,7 @@ function ManagerDashboard({ user }: { user: UserInfo }) {
     )
 
     // Detect conflicts: leave requests overlapping same dept on same dates
-    const conflictMap = useMemo(() => {
-        const result = new Map<string, string[]>() // leaveId → list of overlapping names
-        for (const a of pendingLeaves) {
-            const overlapping = leaves.filter((b) =>
-                b.id !== a.id
-                && b.departmentName === a.departmentName
-                && (b.status === 'Pending' || b.status === 'Approved')
-                && b.startDate <= a.endDate && b.endDate >= a.startDate
-            )
-            if (overlapping.length > 0) {
-                result.set(a.id, overlapping.map((b) => b.employeeName))
-            }
-        }
-        return result
-    }, [pendingLeaves, leaves])
+    const conflictMap = useMemo(() => buildConflictMap(pendingLeaves, leaves), [pendingLeaves, leaves])
 
     // Mutations
     const approveLeaveMut = useMutation({
@@ -447,94 +443,24 @@ function ManagerDashboard({ user }: { user: UserInfo }) {
     const isMutating = approveLeaveMut.isPending || rejectLeaveMut.isPending || approveTsMut.isPending || rejectTsMut.isPending
 
     const [rejectTarget, setRejectTarget] = useState<{ kind: 'leave' | 'timesheet'; id: string; label: string } | null>(null)
-    const [rejectReason, setRejectReason] = useState('')
-    const [rejectError, setRejectError] = useState('')
+    const isRejecting = rejectLeaveMut.isPending || rejectTsMut.isPending
 
-    function openReject(item: QueueItem) {
-        setRejectTarget({ kind: item.kind, id: item.id, label: item.title })
-        setRejectReason('')
-        setRejectError('')
-    }
-
-    function closeReject() {
-        if (rejectLeaveMut.isPending || rejectTsMut.isPending) return
-        setRejectTarget(null)
-        setRejectReason('')
-        setRejectError('')
-    }
-
-    async function confirmReject() {
+    async function confirmReject(reason: string) {
         if (!rejectTarget) return
-        const trimmed = rejectReason.trim()
-        if (trimmed.length === 0) {
-            setRejectError('Please provide a reason for rejecting.')
-            return
+        if (rejectTarget.kind === 'leave') {
+            await rejectLeaveMut.mutateAsync({ id: rejectTarget.id, comment: reason })
+        } else {
+            await rejectTsMut.mutateAsync({ id: rejectTarget.id, comment: reason })
         }
-        try {
-            if (rejectTarget.kind === 'leave') {
-                await rejectLeaveMut.mutateAsync({ id: rejectTarget.id, comment: trimmed })
-            } else {
-                await rejectTsMut.mutateAsync({ id: rejectTarget.id, comment: trimmed })
-            }
-            setRejectTarget(null)
-            setRejectReason('')
-            setRejectError('')
-        } catch { /* mutation error is surfaced elsewhere */ }
+        setRejectTarget(null)
     }
 
     // Build queue: merge leaves + timesheets, sort by age
     const now = useNow()
-    const queue = useMemo(() => {
-        const items: QueueItem[] = []
-        for (const l of pendingLeaves) {
-            const lt = l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined
-            const startD = new Date(l.startDate)
-            const daysNotice = Math.round((startD.getTime() - now) / 86_400_000)
-            const tags: QueueTag[] = []
-            if (daysNotice >= 0 && daysNotice < 1) tags.push({ label: '⚠ < 1 day notice', tone: 'urgent' })
-            if (l.evidenceUrl) tags.push({ label: '📎 Document attached', tone: 'info' })
-            const conflicts = conflictMap.get(l.id)
-            if (conflicts && conflicts.length > 0) tags.push({ label: `⚠ Overlaps with ${conflicts[0]}`, tone: 'conflict' })
-            items.push({
-                kind: 'leave',
-                id: l.id,
-                name: l.employeeName,
-                title: `${l.employeeName} · ${lt?.name ?? 'Leave'}`,
-                meta: <>{iconForLeaveType(lt?.name)} {l.totalDays} day{l.totalDays === 1 ? '' : 's'} · {formatRange(l.startDate, l.endDate)}</>,
-                tags,
-                createdAt: l.createdAt,
-                urgent: daysNotice >= 0 && daysNotice < 1,
-            })
-        }
-        for (const t of pendingTs) {
-            const hours = Number(t.totalHours)
-            const tags: QueueTag[] = []
-            if (hours < WEEKLY_TARGET * 0.9) tags.push({ label: 'Under target', tone: 'warning' })
-            const submittedAt = t.submittedAt ? new Date(t.submittedAt) : null
-            const periodEnd = new Date(t.periodEnd); periodEnd.setHours(23, 59, 59, 999)
-            const isLate = submittedAt ? submittedAt > periodEnd : false
-            if (isLate) tags.push({ label: 'Late submission', tone: 'warning' })
-            for (const p of (t.projectSummaries ?? []).slice(0, 2)) {
-                tags.push({ label: `${p.code} · ${Number(p.hours).toFixed(0)}h`, tone: 'info' })
-            }
-            items.push({
-                kind: 'timesheet',
-                id: t.id,
-                name: t.employeeName,
-                title: `${t.employeeName} · Timesheet · ${formatRange(t.periodStart, t.periodEnd)}`,
-                meta: `📋 ${hours.toFixed(1)}h logged${hours >= WEEKLY_TARGET ? ' ✓' : ' (under target)'}`,
-                tags,
-                createdAt: t.submittedAt ?? t.createdAt,
-                urgent: isLate,
-            })
-        }
-        // Sort: urgent first, then by oldest
-        items.sort((a, b) => {
-            if (a.urgent !== b.urgent) return a.urgent ? -1 : 1
-            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        })
-        return items
-    }, [pendingLeaves, pendingTs, leaveTypeById, conflictMap, now])
+    const queue = useMemo(
+        () => buildApprovalQueue(pendingLeaves, pendingTs, leaveTypeById, conflictMap, now),
+        [pendingLeaves, pendingTs, leaveTypeById, conflictMap, now],
+    )
 
     // Team submissions this week
     const teamSubmissions = useMemo(() => {
@@ -599,7 +525,7 @@ function ManagerDashboard({ user }: { user: UserInfo }) {
                 queue={queue.slice(0, 5)}
                 totalQueue={queue.length}
                 onApprove={(item) => item.kind === 'leave' ? approveLeaveMut.mutate(item.id) : approveTsMut.mutate(item.id)}
-                onReject={(item) => openReject(item)}
+                onReject={(item) => setRejectTarget({ kind: item.kind, id: item.id, label: item.title })}
                 disabled={isMutating}
                 onViewAllLeave={() => uiStore.navigateToTeamLeave()}
                 onViewAllTs={() => uiStore.navigateToTeamTimesheets()}
@@ -623,57 +549,12 @@ function ManagerDashboard({ user }: { user: UserInfo }) {
                 ]} />
             </ActionCard>
 
-            <Dialog open={rejectTarget !== null} onClose={closeReject} maxWidth="xs" fullWidth>
-                <DialogTitle sx={{ fontSize: 15, fontWeight: 600, color: 'text.primary', pb: 1 }}>
-                    Reject {rejectTarget?.kind === 'leave' ? 'leave request' : 'timesheet'}
-                </DialogTitle>
-                <DialogContent sx={{ px: 3, py: 2 }}>
-                    {rejectTarget && (
-                        <Stack spacing={1.5}>
-                            <Typography sx={{ fontSize: 13, color: 'text.secondary' }}>
-                                Please provide a reason. The employee will see this message.
-                            </Typography>
-                            <Box sx={{ fontSize: 12, color: 'text.secondary' }}>{rejectTarget.label}</Box>
-                            <TextField
-                                autoFocus
-                                multiline
-                                minRows={3}
-                                maxRows={6}
-                                fullWidth
-                                placeholder="Reason for rejection (required)"
-                                value={rejectReason}
-                                onChange={(e) => {
-                                    setRejectReason(e.target.value)
-                                    if (rejectError) setRejectError('')
-                                }}
-                                error={!!rejectError}
-                                helperText={rejectError || `${rejectReason.trim().length}/500`}
-                                inputProps={{ maxLength: 500 }}
-                                sx={{ '& .MuiInputBase-input': { fontSize: 13 } }}
-                            />
-                        </Stack>
-                    )}
-                </DialogContent>
-                <DialogActions sx={{ px: 3, py: 1.75, gap: 1 }}>
-                    <Button
-                        size="small"
-                        onClick={closeReject}
-                        disabled={rejectLeaveMut.isPending || rejectTsMut.isPending}
-                        sx={{ textTransform: 'none', color: 'text.secondary' }}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        size="small"
-                        variant="contained"
-                        disabled={rejectLeaveMut.isPending || rejectTsMut.isPending || rejectReason.trim().length === 0}
-                        onClick={() => void confirmReject()}
-                        sx={{ textTransform: 'none', bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' }, boxShadow: 'none' }}
-                    >
-                        {(rejectLeaveMut.isPending || rejectTsMut.isPending) ? 'Rejecting…' : 'Confirm Reject'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
+            <RejectDialog
+                target={rejectTarget}
+                onClose={() => setRejectTarget(null)}
+                onConfirm={confirmReject}
+                busy={isRejecting}
+            />
         </Box>
     )
 }
@@ -697,53 +578,69 @@ function buildManagerSummary({ pendingLeaves, pendingTs, urgent, conflicts }: {
 function AdminDashboard({ user: _user }: { user: UserInfo }) {
     const { uiStore } = useStore()
     const today = useMemo(() => new Date(), [])
-    const now = useNow()
 
-    const { data: leaves = [], isLoading: lLoading } = useQuery({ queryKey: ['annualLeaves'], queryFn: getAnnualLeaves })
-    const { data: timesheets = [], isLoading: tLoading } = useQuery({ queryKey: ['timesheets'], queryFn: getTimesheets })
-    const { data: departments = [] } = useQuery({ queryKey: ['departments'], queryFn: getDepartments })
-    const { data: company } = useQuery({ queryKey: ['attendance', 'company'], queryFn: getCompanyAttendance })
+    const { data: users = [], isLoading: uLoading } = useQuery({ queryKey: ['adminUsers'], queryFn: getAdminUsers })
+    const { data: profiles = [] } = useQuery({ queryKey: ['employeeProfiles'], queryFn: getEmployeeProfiles })
+    const { data: departments = [], isLoading: dLoading } = useQuery({ queryKey: ['departments'], queryFn: getDepartments })
+    const { data: projects = [] } = useQuery({ queryKey: ['projects'], queryFn: getProjects })
+    const { data: leaveTypes = [] } = useQuery({ queryKey: ['leaveTypes'], queryFn: getLeaveTypes })
+    const { data: activities = [] } = useQuery({ queryKey: ['projectActivityTypes'], queryFn: getProjectActivityTypes })
+    const { data: components = [] } = useQuery({ queryKey: ['projectComponents'], queryFn: getProjectComponents })
+    const { data: projectTypes = [] } = useQuery({ queryKey: ['projectTypes'], queryFn: getProjectTypes })
+    const { data: settings } = useQuery({ queryKey: ['appSettings'], queryFn: getAppSettings })
 
-    const pendingLeaveCount = leaves.filter((l) => l.status === 'Pending').length
-    const pendingTsCount = timesheets.filter((t) => t.status === 'Submitted' || t.status === 'Resubmitted').length
-    const totalApprovals = pendingLeaveCount + pendingTsCount
+    const workspace = useMemo(() => buildWorkspaceOverview(users, profiles, departments), [users, profiles, departments])
 
-    const overThreeDaysOld = useMemo(() => {
-        const cutoff = now - 3 * 86_400_000
-        const oldLeaves = leaves.filter((l) => l.status === 'Pending' && new Date(l.createdAt).getTime() < cutoff).length
-        const oldTs = timesheets.filter((t) => (t.status === 'Submitted' || t.status === 'Resubmitted') && new Date(t.submittedAt ?? t.createdAt).getTime() < cutoff).length
-        return oldLeaves + oldTs
-    }, [leaves, timesheets, now])
+    if (uLoading || dLoading) return <CenterSpinner />
 
-    // The hero counts employees from one source only: `company.total`, the
-    // tracked workforce — non-admin accounts holding an employee profile. Any
-    // second estimate here diverges from the sentence beside it, which is how
-    // this pane came to show three different sizes for one company, so there is
-    // no fallback count: the stat reads "—" until the query resolves.
-    const activeDepts = departments.filter((d) => d.isActive).length
+    const activeLeaveTypes = leaveTypes.filter((t) => t.isActive).length
+    const activeProjects = projects.filter((p) => p.isActive).length
+    const activeActivities = activities.filter((a) => a.isActive).length
+    const activeComponents = components.filter((c) => c.isActive).length
+    const activeProjectTypes = projectTypes.filter((t) => t.isActive).length
+    const remindersOn = settings?.reminders.filter((r) => r.enabled).length ?? 0
 
-    // On-time submissions over last 4 weeks
-    const onTimePct = useMemo(() => {
-        const cutoff = now - 28 * 86_400_000
-        const recent = timesheets.filter((t) => t.submittedAt && new Date(t.submittedAt).getTime() > cutoff && (t.status === 'Approved' || t.status === 'Submitted'))
-        if (recent.length === 0) return 0
-        const onTime = recent.filter((t) => {
-            const end = new Date(t.periodEnd); end.setHours(23, 59, 59, 999)
-            return new Date(t.submittedAt!) <= end
-        }).length
-        return Math.round((onTime / recent.length) * 100)
-    }, [timesheets, now])
-
-    if (lLoading || tLoading) return <CenterSpinner />
-
-    const attendancePct = company && company.total > 0 ? Math.round((company.in / company.total) * 100) : 0
-
-    // One set behind all three props of the Active issues tile. The feed carries
-    // a 'success' row — the "No unusual overtime" all-clear, which the card below
-    // shows in green so the panel never goes blank — and counting it as an issue
-    // drove the bar to 80% on a day with two real problems while the number said 2.
-    const activeIssues = company?.issues.filter((i) => i.severity !== 'success') ?? []
-    const urgentIssues = activeIssues.filter((i) => i.severity === 'danger').length
+    const attention: AttentionItem[] = []
+    if (workspace.invitesPending.length > 0) {
+        attention.push({
+            icon: '✉️', tone: 'urgent',
+            label: `${workspace.invitesPending.length} invite${workspace.invitesPending.length === 1 ? '' : 's'} not yet accepted`,
+            sub: workspace.invitesPending.slice(0, 3).map((u) => u.displayName || u.email).join(', ') + (workspace.invitesPending.length > 3 ? ` +${workspace.invitesPending.length - 3}` : ''),
+            onClick: () => uiStore.navigateToAdminSection('users'),
+        })
+    }
+    if (workspace.noDepartment.length > 0) {
+        attention.push({
+            icon: '🧭', tone: 'urgent',
+            label: `${workspace.noDepartment.length} ${workspace.noDepartment.length === 1 ? 'person has' : 'people have'} no department`,
+            sub: 'Invisible to every manager and to leave routing until placed',
+            onClick: () => uiStore.navigateToAdminSection('users'),
+        })
+    }
+    if (workspace.withoutManager.length > 0) {
+        attention.push({
+            icon: '👥', tone: 'urgent',
+            label: `${workspace.withoutManager.length} department${workspace.withoutManager.length === 1 ? '' : 's'} without a manager`,
+            sub: `${workspace.withoutManager.map((d) => d.name).join(', ')} — nobody to approve their leave`,
+            onClick: () => uiStore.navigateToAdminSection('departments'),
+        })
+    }
+    if (workspace.deactivated.length > 0) {
+        attention.push({
+            icon: '⏸', tone: 'normal',
+            label: `${workspace.deactivated.length} deactivated account${workspace.deactivated.length === 1 ? '' : 's'}`,
+            sub: 'Kept for their approval history; they cannot sign in',
+            onClick: () => uiStore.navigateToAdminSection('users'),
+        })
+    }
+    if (workspace.emptyDepartments.length > 0) {
+        attention.push({
+            icon: '🏢', tone: 'normal',
+            label: `${workspace.emptyDepartments.length} empty department${workspace.emptyDepartments.length === 1 ? '' : 's'}`,
+            sub: workspace.emptyDepartments.map((d) => d.name).join(', '),
+            onClick: () => uiStore.navigateToAdminSection('departments'),
+        })
+    }
 
     return (
         <Box>
@@ -754,44 +651,625 @@ function AdminDashboard({ user: _user }: { user: UserInfo }) {
                 }}
                 hello={`${greetingForHour(today.getHours())} · ${formatTodayLong()}`}
                 name="Workspace overview"
-                summary={
-                    company
-                        ? <><strong>{company.in} of {company.total}</strong> employees are working right now. <strong>{totalApprovals} approval{totalApprovals === 1 ? '' : 's'}</strong> {totalApprovals === 1 ? 'is' : 'are'} pending across all departments{company.out > 0 ? <>, with <strong>{company.out} not checked in</strong></> : ''}.</>
-                        : <>Tracking activity across <strong>{activeDepts}</strong> departments.</>
-                }
+                summary={buildWorkspaceSummary(workspace)}
                 meta={[
-                    { l: 'Employees', v: company ? `${company.total} tracked` : '—' },
-                    { l: 'Working now', v: company ? `${company.in} (${attendancePct}%)` : '—' },
-                    { l: 'On leave today', v: company ? `${company.leave}` : '—' },
-                    { l: 'Departments', v: `${activeDepts} active` },
+                    { l: 'Accounts', v: `${workspace.active.length} active` },
+                    { l: 'Departments', v: `${workspace.activeDepartments.length} active` },
+                    { l: 'Leave types', v: `${activeLeaveTypes} active` },
+                    { l: 'Projects', v: `${activeProjects} active` },
                 ]}
             />
 
-            <Box sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' },
-                gap: '12px', mb: '14px',
-            }}>
-                <Gauge label="Pending approvals" big={totalApprovals.toString()} bigColor="warning.main" sub={`${pendingLeaveCount} leave · ${pendingTsCount} timesheets · ${overThreeDaysOld} over 3 days old`} barColor="warning.main" barPct={Math.min(100, totalApprovals * 5)} />
-                <Gauge label="Today's attendance" big={`${attendancePct}%`} bigColor="success.main" sub={company ? `${company.in} in · ${company.leave} on leave · ${company.out} not checked in` : '—'} barColor="success.main" barPct={attendancePct} />
-                <Gauge label="On-time submissions" big={`${onTimePct}%`} bigColor="primary.main" sub="last 4 weeks · target 90%" barColor="primary.main" barPct={onTimePct} />
-                <Gauge label="Active issues" big={`${activeIssues.length}`} bigColor="error.main" sub={company ? `${urgentIssues} urgent · ${activeIssues.length - urgentIssues} to watch` : '—'} barColor="error.main" barPct={activeIssues.length * 20} />
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: '12px', mb: '14px' }}>
+                <Gauge
+                    label="Accounts"
+                    big={`${workspace.active.length}`}
+                    bigColor="primary.main"
+                    sub={`${workspace.deactivated.length} deactivated · ${workspace.invitesPending.length} invite${workspace.invitesPending.length === 1 ? '' : 's'} pending`}
+                    barColor="primary.main"
+                    barPct={users.length > 0 ? (workspace.active.length / users.length) * 100 : 0}
+                />
+                <Gauge
+                    label="People"
+                    big={`${workspace.roles.employees}`}
+                    bigColor="success.main"
+                    sub={`employees · ${workspace.roles.managers} manager${workspace.roles.managers === 1 ? '' : 's'} · ${workspace.roles.hrAdmins} HR · ${workspace.roles.systemAdmins} system`}
+                    barColor="success.main"
+                    barPct={workspace.active.length > 0 ? (workspace.roles.employees / workspace.active.length) * 100 : 0}
+                />
+                <Gauge
+                    label="Departments"
+                    big={`${workspace.activeDepartments.length}`}
+                    bigColor={workspace.withoutManager.length > 0 ? 'warning.main' : 'text.primary'}
+                    sub={`${workspace.withoutManager.length} without a manager · ${workspace.emptyDepartments.length} empty`}
+                    barColor="warning.main"
+                    barPct={workspace.activeDepartments.length > 0 ? ((workspace.activeDepartments.length - workspace.withoutManager.length) / workspace.activeDepartments.length) * 100 : 0}
+                />
+                <Gauge
+                    label="Configuration"
+                    big={`${activeProjects}`}
+                    bigColor="secondary.main"
+                    sub={`projects · ${activeLeaveTypes} leave types · ${activeActivities} activities · ${activeComponents} components · ${activeProjectTypes} project types`}
+                    barColor="secondary.main"
+                    barPct={projects.length > 0 ? (activeProjects / projects.length) * 100 : 0}
+                />
             </Box>
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: '14px', mb: '14px' }}>
-                <DepartmentHealthCard departments={company?.departments ?? []} leaves={leaves} timesheets={timesheets} onLive={() => uiStore.navigateToCompanyAttendance()} />
+                <ActionCard
+                    title="People by department"
+                    icon="🏢"
+                    countLabel={`${workspace.placed} placed`}
+                    action={<OutlineBtn onClick={() => uiStore.navigateToAdminSection('departments')}>Departments</OutlineBtn>}
+                >
+                    {workspace.departmentRows.length === 0 ? (
+                        <Box sx={{ fontSize: 12, color: 'text.secondary', textAlign: 'center', py: '12px' }}>
+                            No active departments yet.
+                        </Box>
+                    ) : workspace.departmentRows.map((row, i) => (
+                        <Box key={row.department.id} sx={{
+                            display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px', alignItems: 'center',
+                            py: '9px', borderBottom: i === workspace.departmentRows.length - 1 ? 'none' : '1px solid', borderColor: 'divider',
+                        }}>
+                            <Box sx={{ minWidth: 0 }}>
+                                <Box sx={{ fontSize: 13, fontWeight: 600, color: 'text.primary' }}>
+                                    {row.department.name}
+                                    <Box component="span" sx={{ ml: '6px', fontSize: 10, fontWeight: 500, color: 'text.secondary' }}>{row.department.code}</Box>
+                                </Box>
+                                <Box sx={{ fontSize: 11, color: row.managers.length === 0 ? 'warning.dark' : 'text.secondary', mt: '2px' }}>
+                                    {row.managers.length === 0 ? '⚠ No manager assigned' : `Managed by ${row.managers.join(', ')}`}
+                                </Box>
+                            </Box>
+                            <Box sx={{
+                                fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', px: '8px', py: '3px', borderRadius: '10px',
+                                bgcolor: row.headcount === 0 ? 'action.hover' : softBg('info'), color: row.headcount === 0 ? 'text.secondary' : 'info.dark',
+                            }}>{row.headcount} {row.headcount === 1 ? 'person' : 'people'}</Box>
+                        </Box>
+                    ))}
+                </ActionCard>
+
+                <ActionCard
+                    title="Needs attention"
+                    icon="🔔"
+                    countLabel={attention.length > 0 ? `${attention.length} item${attention.length === 1 ? '' : 's'}` : undefined}
+                    countTone={attention.some((a) => a.tone === 'urgent') ? 'urgent' : 'normal'}
+                    action={<OutlineBtn onClick={() => uiStore.navigateToAdminSection('users')}>Users</OutlineBtn>}
+                >
+                    {attention.length === 0 ? (
+                        <Box sx={{ fontSize: 12, color: 'text.secondary', textAlign: 'center', py: '12px' }}>
+                            ✓ Every account is placed, confirmed and active, and every department has a manager.
+                        </Box>
+                    ) : attention.map((item, i) => <AttentionRow key={i} item={item} />)}
+                </ActionCard>
+            </Box>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: '14px', mb: '14px' }}>
+                <ActionCard title="Configuration" icon="🧩">
+                    <QuickActions tiles={[
+                        { icon: '🏷️', label: 'Leave types', sub: `${activeLeaveTypes} of ${leaveTypes.length} active`, onClick: () => uiStore.navigateToAdminSection('leave-types') },
+                        { icon: '📁', label: 'Projects', sub: `${activeProjects} of ${projects.length} active`, onClick: () => uiStore.navigateToAdminSection('projects') },
+                        { icon: '🗂️', label: 'Activities', sub: `${activeActivities} active`, onClick: () => uiStore.navigateToAdminSection('project-activities') },
+                        { icon: '🧱', label: 'Components', sub: `${activeComponents} active`, onClick: () => uiStore.navigateToAdminSection('components') },
+                        { icon: '🎯', label: 'Project types', sub: `${activeProjectTypes} active`, onClick: () => uiStore.navigateToAdminSection('project-types') },
+                        { icon: '🏢', label: 'Departments', sub: `${workspace.activeDepartments.length} active`, onClick: () => uiStore.navigateToAdminSection('departments') },
+                    ]} />
+                </ActionCard>
+
+                <ActionCard
+                    title="System"
+                    icon="⚙️"
+                    action={(
+                        <Box sx={{ display: 'flex', gap: '6px' }}>
+                            <OutlineBtn onClick={() => uiStore.navigateToAdminSection('organization')}>Organization</OutlineBtn>
+                            <OutlineBtn onClick={() => uiStore.navigateToAdminSection('reminders-notifications')}>Notifications</OutlineBtn>
+                        </Box>
+                    )}
+                >
+                    {!settings ? (
+                        <Box sx={{ fontSize: 12, color: 'text.secondary' }}>Loading settings…</Box>
+                    ) : (
+                        <Box>
+                            <InfoRow label="Email notifications" value={settings.emailNotificationsEnabled ? `On${settings.emailDailyDigest ? ' · daily digest' : ''}${settings.emailUrgentOnly ? ' · urgent only' : ''}` : 'Off'} tone={settings.emailNotificationsEnabled ? 'ok' : 'warn'} />
+                            <InfoRow label="Reminders" value={`${remindersOn} of ${settings.reminders.length} enabled`} tone={remindersOn > 0 ? 'ok' : 'warn'} />
+                            <InfoRow label="Public holidays" value={settings.holidayCountryName ?? 'No country set'} tone={settings.holidayCountryName ? 'ok' : 'warn'} />
+                            <InfoRow label="Working week" value={`${describeWorkingDays(settings.workingDays, settings.workingDaysCustom)} · ${settings.workingHoursStart}–${settings.workingHoursEnd} · ${settings.weeklyHoursTarget}h target`} />
+                            <InfoRow label="Time zone" value={settings.timeZoneId} />
+                            <InfoRow label="Leave year starts" value={monthName(settings.leaveYearStartMonth)} last />
+                        </Box>
+                    )}
+                </ActionCard>
+            </Box>
+        </Box>
+    )
+}
+
+interface WorkspaceOverview {
+    active: AdminUser[]
+    deactivated: AdminUser[]
+    invitesPending: AdminUser[]
+    noDepartment: AdminUser[]
+    roles: { systemAdmins: number; hrAdmins: number; managers: number; employees: number }
+    activeDepartments: Department[]
+    withoutManager: Department[]
+    emptyDepartments: Department[]
+    departmentRows: { department: Department; headcount: number; managers: string[] }[]
+    placed: number
+}
+
+/**
+ * The System Administrator's numbers, from the same three lists the Users and
+ * Departments panels read. Administrators sit outside the department structure, so
+ * "no department" is only ever said of an active Employee or Manager, and a
+ * department's headcount counts active accounts with a profile in it.
+ */
+function buildWorkspaceOverview(users: AdminUser[], profiles: EmployeeProfile[], departments: Department[]): WorkspaceOverview {
+    const active = users.filter((u) => u.isActive)
+    const deactivated = users.filter((u) => !u.isActive)
+    const invitesPending = active.filter((u) => !u.emailConfirmed)
+    const profileByUserId = new Map(profiles.map((p) => [p.userId, p]))
+    const userById = new Map(users.map((u) => [u.id, u]))
+
+    const roles = { systemAdmins: 0, hrAdmins: 0, managers: 0, employees: 0 }
+    for (const u of active) {
+        if (u.roles.includes('System Administrator')) roles.systemAdmins++
+        else if (u.roles.includes('HR Administrator')) roles.hrAdmins++
+        else if (u.roles.includes('Manager')) roles.managers++
+        else roles.employees++
+    }
+
+    const noDepartment = active.filter((u) => !isAdministrator(u.roles) && profileByUserId.get(u.id)?.departmentId == null)
+
+    const activeDepartments = departments.filter((d) => d.isActive).sort((a, b) => a.name.localeCompare(b.name))
+    const departmentRows = activeDepartments.map((department) => {
+        const members = profiles.filter((p) => p.departmentId === department.id && userById.get(p.userId)?.isActive)
+        const managers = members
+            .map((p) => userById.get(p.userId))
+            .filter((u): u is AdminUser => !!u && u.roles.includes('Manager'))
+            .map((u) => u.displayName || u.email)
+        return { department, headcount: members.length, managers }
+    })
+
+    return {
+        active, deactivated, invitesPending, noDepartment, roles, activeDepartments,
+        withoutManager: departmentRows.filter((r) => r.managers.length === 0).map((r) => r.department),
+        emptyDepartments: departmentRows.filter((r) => r.headcount === 0).map((r) => r.department),
+        departmentRows,
+        placed: departmentRows.reduce((sum, r) => sum + r.headcount, 0),
+    }
+}
+
+function buildWorkspaceSummary(w: WorkspaceOverview) {
+    const parts: React.ReactNode[] = []
+    parts.push(<><strong>{w.active.length} active account{w.active.length === 1 ? '' : 's'}</strong> across <strong>{w.activeDepartments.length} department{w.activeDepartments.length === 1 ? '' : 's'}</strong></>)
+    if (w.invitesPending.length > 0) parts.push(<><strong>{w.invitesPending.length}</strong> {w.invitesPending.length === 1 ? 'invite has' : 'invites have'} not been accepted yet</>)
+    if (w.withoutManager.length > 0) parts.push(<><strong>{w.withoutManager.length}</strong> department{w.withoutManager.length === 1 ? ' has' : 's have'} no manager</>)
+    if (w.invitesPending.length === 0 && w.withoutManager.length === 0 && w.noDepartment.length === 0) parts.push(<>everyone is placed and confirmed</>)
+    return joinParts(parts)
+}
+
+function InfoRow({ label, value, tone, last }: { label: string; value: string; tone?: 'ok' | 'warn'; last?: boolean }) {
+    return (
+        <Box sx={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px',
+            py: '8px', borderBottom: last ? 'none' : '1px solid', borderColor: 'divider',
+        }}>
+            <Box sx={{ fontSize: 12, color: 'text.secondary', whiteSpace: 'nowrap' }}>{label}</Box>
+            <Box sx={{
+                fontSize: 12, fontWeight: 600, textAlign: 'right',
+                color: tone === 'warn' ? 'warning.dark' : tone === 'ok' ? 'success.dark' : 'text.primary',
+            }}>{value}</Box>
+        </Box>
+    )
+}
+
+function describeWorkingDays(workingDays: string, custom: string) {
+    switch (workingDays) {
+        case 'mon-fri': return 'Mon–Fri'
+        case 'mon-sat': return 'Mon–Sat'
+        case 'sun-fri': return 'Sun–Fri'
+        case 'custom': return custom ? custom.split(',').map((d) => d.trim().charAt(0).toUpperCase() + d.trim().slice(1, 3)).join(', ') : 'Custom'
+        default: return workingDays
+    }
+}
+
+function monthName(month: number) {
+    return new Date(2000, Math.min(12, Math.max(1, month)) - 1, 1).toLocaleDateString('en-GB', { month: 'long' })
+}
+
+/* ════════════════════════════════════════════════════════════════════════ */
+/* HR ADMINISTRATOR                                                         */
+/* ════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The HR Administrator's opening screen. They hold the administrator's reach over
+ * leave and time and none of the configuration, so this shows the work that reach
+ * exists for: every decision waiting on them (with Approve and Reject to hand, the
+ * way the manager's queue does, but across all departments), who is away now and
+ * in the next fortnight, balances that need a word with somebody, and today's
+ * attendance by department. Nothing here is about the workspace itself.
+ */
+function HrDashboard({ user }: { user: UserInfo }) {
+    const { uiStore } = useStore()
+    const queryClient = useQueryClient()
+    const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
+    const now = useNow()
+
+    const { data: leaves = [], isLoading: lLoading } = useQuery({ queryKey: ['annualLeaves'], queryFn: getAnnualLeaves })
+    const { data: timesheets = [], isLoading: tLoading } = useQuery({ queryKey: ['timesheets'], queryFn: getTimesheets })
+    const { data: leaveTypes = [] } = useQuery({ queryKey: ['leaveTypes'], queryFn: getLeaveTypes })
+    const { data: profiles = [] } = useQuery({ queryKey: ['employeeProfiles'], queryFn: getEmployeeProfiles })
+    const { data: company } = useQuery({ queryKey: ['attendance', 'company'], queryFn: getCompanyAttendance })
+    const { data: settings } = useQuery({ queryKey: ['appSettings'], queryFn: getAppSettings })
+
+    const leaveTypeById = useMemo(() => new Map(leaveTypes.map((lt) => [lt.id, lt])), [leaveTypes])
+    const myProfileId = useMemo(() => profiles.find((p) => p.userId === user.id)?.id, [profiles, user.id])
+
+    // Everybody's, except the HR Administrator's own — nobody approves their own request.
+    const pendingLeaves = useMemo(
+        () => leaves.filter((l) => l.status === 'Pending' && l.employeeId !== user.id)
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+        [leaves, user.id],
+    )
+    const pendingTs = useMemo(
+        () => timesheets.filter((t) => (t.status === 'Submitted' || t.status === 'Resubmitted') && t.employeeId !== myProfileId)
+            .sort((a, b) => new Date(a.submittedAt ?? a.createdAt).getTime() - new Date(b.submittedAt ?? b.createdAt).getTime()),
+        [timesheets, myProfileId],
+    )
+    const conflictMap = useMemo(() => buildConflictMap(pendingLeaves, leaves), [pendingLeaves, leaves])
+    const queue = useMemo(
+        () => buildApprovalQueue(pendingLeaves, pendingTs, leaveTypeById, conflictMap, now),
+        [pendingLeaves, pendingTs, leaveTypeById, conflictMap, now],
+    )
+    const awaitingDocument = queue.filter((q) => q.blocked).length
+    const oldestPending = queue.length > 0
+        ? Math.min(...queue.map((q) => new Date(q.createdAt).getTime()))
+        : null
+
+    // Who is away: approved absences that touch today or the next fourteen days.
+    const horizon = useMemo(() => { const d = new Date(today); d.setDate(d.getDate() + 14); return d }, [today])
+    const upcoming = useMemo(() => leaves
+        .filter((l) => l.status === 'Approved')
+        .map((l) => ({ leave: l, start: startOfDay(l.startDate), end: startOfDay(l.endDate) }))
+        .filter(({ start, end }) => end >= today && start <= horizon)
+        .sort((a, b) => a.start.getTime() - b.start.getTime() || a.leave.employeeName.localeCompare(b.leave.employeeName)),
+    [leaves, today, horizon])
+    const awayToday = new Set(upcoming.filter(({ start, end }) => start <= today && end >= today).map(({ leave }) => leave.employeeId)).size
+    const week = useMemo(() => { const d = new Date(today); d.setDate(d.getDate() + 7); return d }, [today])
+    const startingThisWeek = new Set(upcoming.filter(({ start }) => start > today && start <= week).map(({ leave }) => leave.employeeId)).size
+
+    const balanceWatch = useMemo(
+        () => buildBalanceWatch(profiles, today, settings?.leaveYearStartMonth ?? 1),
+        [profiles, today, settings?.leaveYearStartMonth],
+    )
+
+    const approveLeaveMut = useMutation({
+        mutationFn: (id: string) => updateLeaveStatus(id, 'Approved'),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['annualLeaves'] }),
+    })
+    const rejectLeaveMut = useMutation({
+        mutationFn: ({ id, comment }: { id: string; comment: string }) => updateLeaveStatus(id, 'Rejected', comment),
+        onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: ['annualLeaves'] })
+            void queryClient.invalidateQueries({ queryKey: ['leaveStatusHistories'] })
+        },
+    })
+    const approveTsMut = useMutation({
+        mutationFn: (id: string) => approveTimesheet(id),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
+    })
+    const rejectTsMut = useMutation({
+        mutationFn: ({ id, comment }: { id: string; comment: string }) => rejectTimesheet(id, comment),
+        onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: ['timesheets'] })
+            void queryClient.invalidateQueries({ queryKey: ['timesheetStatusHistories'] })
+        },
+    })
+    const isMutating = approveLeaveMut.isPending || rejectLeaveMut.isPending || approveTsMut.isPending || rejectTsMut.isPending
+    const isRejecting = rejectLeaveMut.isPending || rejectTsMut.isPending
+
+    const [rejectTarget, setRejectTarget] = useState<{ kind: 'leave' | 'timesheet'; id: string; label: string } | null>(null)
+
+    async function confirmReject(reason: string) {
+        if (!rejectTarget) return
+        if (rejectTarget.kind === 'leave') {
+            await rejectLeaveMut.mutateAsync({ id: rejectTarget.id, comment: reason })
+        } else {
+            await rejectTsMut.mutateAsync({ id: rejectTarget.id, comment: reason })
+        }
+        setRejectTarget(null)
+    }
+
+    if (lLoading || tLoading) return <CenterSpinner />
+
+    const lateTs = pendingTs.filter((t) => {
+        if (!t.submittedAt) return false
+        const end = new Date(t.periodEnd); end.setHours(23, 59, 59, 999)
+        return new Date(t.submittedAt) > end
+    }).length
+    const tracked = company?.total ?? profiles.filter((p) => p.departmentId != null).length
+
+    return (
+        <Box>
+            <GreetingHero
+                gradient={{
+                    light: 'linear-gradient(135deg, #0F766E 0%, #14B8A6 100%)',
+                    dark: 'linear-gradient(135deg, #042f2e 0%, #115e59 100%)',
+                }}
+                hello={`${greetingForHour(new Date().getHours())} · ${formatTodayLong()}`}
+                name={`Hi ${firstName(user)} 👋`}
+                summary={buildHrSummary({ pendingLeaves: pendingLeaves.length, pendingTs: pendingTs.length, awaitingDocument, awayToday, startingThisWeek })}
+                meta={[
+                    { l: 'Employees', v: `${tracked} tracked` },
+                    { l: 'Away today', v: `${awayToday}` },
+                    { l: 'Leave to decide', v: `${pendingLeaves.length}` },
+                    { l: 'Timesheets to review', v: `${pendingTs.length}` },
+                ]}
+            />
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: '12px', mb: '14px' }}>
+                <Gauge
+                    label="Leave awaiting decision"
+                    big={`${pendingLeaves.length}`}
+                    bigColor={pendingLeaves.length > 0 ? 'warning.main' : 'success.main'}
+                    sub={pendingLeaves.length === 0 ? 'Nothing waiting' : `${awaitingDocument} need a document · oldest ${oldestPending ? formatRelativeAge(new Date(oldestPending)) : '—'}`}
+                    barColor="warning.main"
+                    barPct={Math.min(100, pendingLeaves.length * 10)}
+                />
+                <Gauge
+                    label="Timesheets to review"
+                    big={`${pendingTs.length}`}
+                    bigColor={pendingTs.length > 0 ? 'primary.main' : 'success.main'}
+                    sub={pendingTs.length === 0 ? 'Nothing waiting' : `${lateTs} submitted late`}
+                    barColor="primary.main"
+                    barPct={Math.min(100, pendingTs.length * 10)}
+                />
+                <Gauge
+                    label="Away today"
+                    big={`${awayToday}`}
+                    bigColor="success.main"
+                    sub={tracked > 0 ? `of ${tracked} employees · ${startingThisWeek} more start this week` : `${startingThisWeek} more start this week`}
+                    barColor="success.main"
+                    barPct={tracked > 0 ? (awayToday / tracked) * 100 : 0}
+                />
+                <Gauge
+                    label="Balances to watch"
+                    big={`${balanceWatch.length}`}
+                    bigColor={balanceWatch.length > 0 ? 'error.main' : 'success.main'}
+                    sub={balanceWatch.length === 0 ? 'Everyone on track' : `${balanceWatch.filter((b) => b.flag === 'low').length} running low · ${balanceWatch.filter((b) => b.flag === 'unused').length} barely used`}
+                    barColor="error.main"
+                    barPct={tracked > 0 ? (balanceWatch.length / tracked) * 100 : 0}
+                />
+            </Box>
+
+            <ApprovalQueueCard
+                queue={queue.slice(0, 6)}
+                totalQueue={queue.length}
+                onApprove={(item) => item.kind === 'leave' ? approveLeaveMut.mutate(item.id) : approveTsMut.mutate(item.id)}
+                onReject={(item) => setRejectTarget({ kind: item.kind, id: item.id, label: item.title })}
+                disabled={isMutating}
+                onViewAllLeave={() => uiStore.navigateToTeamLeave()}
+                onViewAllTs={() => uiStore.navigateToTeamTimesheets()}
+            />
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: '14px', mb: '14px' }}>
+                <WhosAwayCard
+                    rows={upcoming.map(({ leave, start, end }) => ({ leave, start, end }))}
+                    today={today}
+                    leaveTypeById={leaveTypeById}
+                    onViewAll={() => uiStore.navigateToTeamLeave()}
+                />
+                <BalanceWatchCard rows={balanceWatch} onViewAll={() => uiStore.navigateToTeamLeave()} />
+            </Box>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: '14px', mb: '14px' }}>
+                <DepartmentHealthCard
+                    departments={company?.departments ?? []}
+                    leaves={leaves}
+                    timesheets={timesheets}
+                    onLive={() => uiStore.navigateToCompanyAttendance()}
+                />
                 <TodaysIssuesCard issues={company?.issues ?? []} />
             </Box>
 
-            {/* Full width: the admin sidebar is a permanent rail carrying every
-                section a quick-action tile used to duplicate, so there is no
-                second column here. The employee and manager dashboards keep
-                their quick actions — those surface acts (apply for leave, start
-                this week's timesheet) that nav does not offer. */}
             <Box sx={{ mb: '14px' }}>
                 <RecentActivityCard activity={company?.recent ?? []} />
             </Box>
+
+            <RejectDialog
+                target={rejectTarget}
+                onClose={() => setRejectTarget(null)}
+                onConfirm={confirmReject}
+                busy={isRejecting}
+            />
         </Box>
+    )
+}
+
+function startOfDay(iso: string) {
+    const d = new Date(iso)
+    d.setHours(0, 0, 0, 0)
+    return d
+}
+
+function buildHrSummary({ pendingLeaves, pendingTs, awaitingDocument, awayToday, startingThisWeek }: {
+    pendingLeaves: number; pendingTs: number; awaitingDocument: number; awayToday: number; startingThisWeek: number
+}) {
+    const parts: React.ReactNode[] = []
+    const total = pendingLeaves + pendingTs
+    if (total === 0) {
+        parts.push(<>Nothing is waiting for a decision</>)
+    } else {
+        parts.push(<><strong>{pendingLeaves} leave request{pendingLeaves === 1 ? '' : 's'}</strong> and <strong>{pendingTs} timesheet{pendingTs === 1 ? '' : 's'}</strong> {total === 1 ? 'is' : 'are'} waiting for your decision across all departments</>)
+        if (awaitingDocument > 0) parts.push(<>{awaitingDocument} of the leave request{awaitingDocument === 1 ? ' needs' : 's need'} a document before {awaitingDocument === 1 ? 'it' : 'they'} can be approved</>)
+    }
+    parts.push(<><strong>{awayToday}</strong> {awayToday === 1 ? 'person is' : 'people are'} away today{startingThisWeek > 0 ? <>, and <strong>{startingThisWeek} more</strong> start leave in the next seven days</> : ''}</>)
+    return joinParts(parts)
+}
+
+interface BalanceWatchRow {
+    profile: EmployeeProfile
+    entitlement: number
+    balance: number
+    /** `low`: two days or fewer left. `unused`: under a quarter used with half the leave year gone. */
+    flag: 'low' | 'unused'
+}
+
+/**
+ * Two things HR wants a word about, for everyone inside the department structure
+ * (an administrator's own profile is outside it and is skipped). "Running low" is
+ * two days or fewer of the year's pooled entitlement left. "Barely used" is under a
+ * quarter of it taken once the leave year is half gone — the people who lose days
+ * to the carryover cap in December if nobody says anything in September.
+ */
+function buildBalanceWatch(profiles: EmployeeProfile[], today: Date, leaveYearStartMonth: number): BalanceWatchRow[] {
+    // The leave year that contains today, from the configured start month.
+    const startMonth = Math.min(12, Math.max(1, leaveYearStartMonth)) - 1
+    const yearStart = new Date(today.getFullYear(), startMonth, 1)
+    if (yearStart > today) yearStart.setFullYear(yearStart.getFullYear() - 1)
+    const yearEnd = new Date(yearStart); yearEnd.setFullYear(yearEnd.getFullYear() + 1)
+    const progress = (today.getTime() - yearStart.getTime()) / (yearEnd.getTime() - yearStart.getTime())
+
+    const rows: BalanceWatchRow[] = []
+    for (const p of profiles) {
+        if (p.departmentId == null) continue
+        const entitlement = currentYearEntitlement(p)
+        if (entitlement <= 0) continue
+        const balance = Number(p.leaveBalance)
+        const used = entitlement - balance
+        if (balance <= 2) rows.push({ profile: p, entitlement, balance, flag: 'low' })
+        else if (progress >= 0.5 && used / entitlement < 0.25) rows.push({ profile: p, entitlement, balance, flag: 'unused' })
+    }
+    // The ones about to run out first, then the least used.
+    rows.sort((a, b) => {
+        if (a.flag !== b.flag) return a.flag === 'low' ? -1 : 1
+        return a.flag === 'low' ? a.balance - b.balance : b.balance - a.balance
+    })
+    return rows
+}
+
+function dayLabel(d: Date, today: Date) {
+    const diff = Math.round((d.getTime() - today.getTime()) / 86_400_000)
+    if (diff <= 0) return 'Today'
+    if (diff === 1) return 'Tomorrow'
+    return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+function WhosAwayCard({ rows, today, leaveTypeById, onViewAll }: {
+    rows: { leave: AnnualLeave; start: Date; end: Date }[]
+    today: Date
+    leaveTypeById: Map<number, LeaveType>
+    onViewAll: () => void
+}) {
+    const visible = rows.slice(0, 8)
+    const remaining = rows.length - visible.length
+    return (
+        <ActionCard
+            title="Who's away"
+            icon="🌴"
+            countLabel={rows.length > 0 ? `${rows.length} in the next 14 days` : undefined}
+            action={<OutlineBtn onClick={onViewAll}>Leave calendar</OutlineBtn>}
+        >
+            {visible.length === 0 ? (
+                <Box sx={{ fontSize: 12, color: 'text.secondary', textAlign: 'center', py: '12px' }}>
+                    Nobody is away today or in the next two weeks.
+                </Box>
+            ) : (
+                <Box>
+                    {visible.map(({ leave, start, end }, i) => {
+                        const lt = leave.leaveTypeId != null ? leaveTypeById.get(leave.leaveTypeId) : undefined
+                        const isNow = start <= today && end >= today
+                        const label = isNow ? (end.getTime() === today.getTime() ? 'Back tomorrow' : `Back ${formatDateShort(nextWorkingDay(leave.endDate))}`) : dayLabel(start, today)
+                        return (
+                            <Box key={leave.id} sx={{
+                                display: 'grid', gridTemplateColumns: '32px 1fr auto', gap: '10px', alignItems: 'center',
+                                py: '9px', borderBottom: i === visible.length - 1 ? 'none' : '1px solid', borderColor: 'divider',
+                            }}>
+                                <Box sx={{
+                                    width: 32, height: 32, borderRadius: '50%', bgcolor: avatarBgFor(leave.employeeName), color: '#fff',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600,
+                                }}>{initials(leave.employeeName)}</Box>
+                                <Box sx={{ minWidth: 0 }}>
+                                    <Box sx={{ fontSize: 13, fontWeight: 600, color: 'text.primary', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        {leave.employeeName}
+                                        {leave.departmentName && (
+                                            <Box component="span" sx={{ fontSize: 10, fontWeight: 500, color: 'info.dark', bgcolor: softBg('info'), px: '6px', py: '1px', borderRadius: '4px' }}>
+                                                {leave.departmentName}
+                                            </Box>
+                                        )}
+                                    </Box>
+                                    <Box sx={{ fontSize: 11, color: 'text.secondary', mt: '2px' }}>
+                                        {iconForLeaveType(lt?.name)} {lt?.name ?? 'Leave'} · {formatRange(leave.startDate, leave.endDate)} · {leave.totalDays} day{leave.totalDays === 1 ? '' : 's'}
+                                    </Box>
+                                </Box>
+                                <Box sx={{
+                                    fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+                                    color: isNow ? 'success.dark' : 'text.secondary',
+                                    bgcolor: isNow ? softBg('success') : 'action.hover',
+                                    px: '8px', py: '3px', borderRadius: '10px',
+                                }}>{isNow ? `Away · ${label}` : label}</Box>
+                            </Box>
+                        )
+                    })}
+                    {remaining > 0 && (
+                        <Box sx={{ fontSize: 11, color: 'text.secondary', pt: '10px', textAlign: 'center' }}>
+                            +{remaining} more in the next two weeks
+                        </Box>
+                    )}
+                </Box>
+            )}
+        </ActionCard>
+    )
+}
+
+function BalanceWatchCard({ rows, onViewAll }: { rows: BalanceWatchRow[]; onViewAll: () => void }) {
+    const visible = rows.slice(0, 6)
+    return (
+        <ActionCard
+            title="Balances to watch"
+            icon="⚖️"
+            countLabel={rows.length > 0 ? `${rows.length} to talk to` : undefined}
+            countTone={rows.some((r) => r.flag === 'low') ? 'urgent' : 'normal'}
+            action={<OutlineBtn onClick={onViewAll}>All leave</OutlineBtn>}
+        >
+            {visible.length === 0 ? (
+                <Box sx={{ fontSize: 12, color: 'text.secondary', textAlign: 'center', py: '12px' }}>
+                    Nobody is running out of leave, and nobody is sitting on an unused year.
+                </Box>
+            ) : (
+                <Box>
+                    {visible.map((r, i) => {
+                        const usedPct = Math.max(0, Math.min(100, ((r.entitlement - r.balance) / r.entitlement) * 100))
+                        const low = r.flag === 'low'
+                        return (
+                            <Box key={r.profile.id} sx={{ py: '9px', borderBottom: i === visible.length - 1 ? 'none' : '1px solid', borderColor: 'divider' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', mb: '6px' }}>
+                                    <Box sx={{ fontSize: 13, fontWeight: 600, color: 'text.primary', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {r.profile.displayName}
+                                    </Box>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                        <Box component="span" sx={{
+                                            fontSize: 10, fontWeight: 600, px: '6px', py: '2px', borderRadius: '4px',
+                                            bgcolor: low ? softBg('error') : softBg('warning'), color: low ? 'error.dark' : 'warning.dark',
+                                        }}>{low ? 'Running low' : 'Barely used'}</Box>
+                                        <Box sx={{ fontSize: 12, color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                                            <strong style={{ color: 'inherit' }}>{r.balance}</strong> of {r.entitlement} left
+                                        </Box>
+                                    </Box>
+                                </Box>
+                                <Box sx={{ height: 5, bgcolor: 'action.hover', borderRadius: '3px', overflow: 'hidden' }}>
+                                    <Box sx={{ height: '100%', width: `${usedPct}%`, bgcolor: low ? 'error.main' : 'warning.main', borderRadius: '3px' }} />
+                                </Box>
+                            </Box>
+                        )
+                    })}
+                    {rows.length > visible.length && (
+                        <Box sx={{ fontSize: 11, color: 'text.secondary', pt: '10px', textAlign: 'center' }}>
+                            +{rows.length - visible.length} more
+                        </Box>
+                    )}
+                </Box>
+            )}
+        </ActionCard>
     )
 }
 
@@ -818,6 +1296,187 @@ interface QueueItem {
     tags: QueueTag[]
     createdAt: string
     urgent: boolean
+    /** Why Approve is not offered — a document the leave type insists on is still missing. */
+    blocked?: string
+}
+
+/**
+ * Pending leave requests that overlap another pending or approved absence in the
+ * same department — leave id → the colleagues it overlaps with.
+ */
+function buildConflictMap(pendingLeaves: AnnualLeave[], leaves: AnnualLeave[]) {
+    const result = new Map<string, string[]>()
+    for (const a of pendingLeaves) {
+        const overlapping = leaves.filter((b) =>
+            b.id !== a.id
+            && b.departmentName === a.departmentName
+            && (b.status === 'Pending' || b.status === 'Approved')
+            && b.startDate <= a.endDate && b.endDate >= a.startDate
+        )
+        if (overlapping.length > 0) {
+            result.set(a.id, overlapping.map((b) => b.employeeName))
+        }
+    }
+    return result
+}
+
+/**
+ * The approval queue both the manager's and the HR Administrator's dashboards
+ * show: pending leave and submitted timesheets merged, urgent first, then oldest.
+ * `leaveTypeById` also decides whether a request is short a document its type
+ * requires — such a row is shown but its Approve is held, since the API would
+ * refuse it (`AttachmentPolicyRule`).
+ */
+function buildApprovalQueue(
+    pendingLeaves: AnnualLeave[],
+    pendingTs: Timesheet[],
+    leaveTypeById: Map<number, { name: string; attachmentPolicy: LeaveType['attachmentPolicy'] }>,
+    conflictMap: Map<string, string[]>,
+    now: number,
+): QueueItem[] {
+    const items: QueueItem[] = []
+    for (const l of pendingLeaves) {
+        const lt = l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined
+        const startD = new Date(l.startDate)
+        const daysNotice = Math.round((startD.getTime() - now) / 86_400_000)
+        const tags: QueueTag[] = []
+        if (daysNotice >= 0 && daysNotice < 1) tags.push({ label: '⚠ < 1 day notice', tone: 'urgent' })
+        const awaitingDocument = isAwaitingDocument(lt, l.evidenceUrl)
+        if (awaitingDocument) tags.push({ label: '📎 Document needed', tone: 'warning' })
+        else if (l.evidenceUrl) tags.push({ label: '📎 Document attached', tone: 'info' })
+        const conflicts = conflictMap.get(l.id)
+        if (conflicts && conflicts.length > 0) tags.push({ label: `⚠ Overlaps with ${conflicts[0]}`, tone: 'conflict' })
+        items.push({
+            kind: 'leave',
+            id: l.id,
+            name: l.employeeName,
+            title: `${l.employeeName} · ${lt?.name ?? 'Leave'}`,
+            meta: <>{iconForLeaveType(lt?.name)} {l.totalDays} day{l.totalDays === 1 ? '' : 's'} · {formatRange(l.startDate, l.endDate)}</>,
+            tags,
+            createdAt: l.createdAt,
+            urgent: daysNotice >= 0 && daysNotice < 1,
+            blocked: awaitingDocument ? 'Document needed before approval' : undefined,
+        })
+    }
+    for (const t of pendingTs) {
+        const hours = Number(t.totalHours)
+        const tags: QueueTag[] = []
+        if (hours < WEEKLY_TARGET * 0.9) tags.push({ label: 'Under target', tone: 'warning' })
+        const submittedAt = t.submittedAt ? new Date(t.submittedAt) : null
+        const periodEnd = new Date(t.periodEnd); periodEnd.setHours(23, 59, 59, 999)
+        const isLate = submittedAt ? submittedAt > periodEnd : false
+        if (isLate) tags.push({ label: 'Late submission', tone: 'warning' })
+        for (const p of (t.projectSummaries ?? []).slice(0, 2)) {
+            tags.push({ label: `${p.code} · ${Number(p.hours).toFixed(0)}h`, tone: 'info' })
+        }
+        items.push({
+            kind: 'timesheet',
+            id: t.id,
+            name: t.employeeName,
+            title: `${t.employeeName} · Timesheet · ${formatRange(t.periodStart, t.periodEnd)}`,
+            meta: `📋 ${hours.toFixed(1)}h logged${hours >= WEEKLY_TARGET ? ' ✓' : ' (under target)'}`,
+            tags,
+            createdAt: t.submittedAt ?? t.createdAt,
+            urgent: isLate,
+        })
+    }
+    items.sort((a, b) => {
+        if (a.urgent !== b.urgent) return a.urgent ? -1 : 1
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    })
+    return items
+}
+
+/**
+ * One reject flow for both approval queues: a required reason, sent as the
+ * status comment the employee reads. `target` null closes it.
+ */
+function RejectDialog({ target, onClose, onConfirm, busy }: {
+    target: { kind: 'leave' | 'timesheet'; id: string; label: string } | null
+    onClose: () => void
+    onConfirm: (reason: string) => Promise<void>
+    busy: boolean
+}) {
+    return (
+        <Dialog open={target !== null} onClose={() => { if (!busy) onClose() }} maxWidth="xs" fullWidth>
+            <DialogTitle sx={{ fontSize: 15, fontWeight: 600, color: 'text.primary', pb: 1 }}>
+                Reject {target?.kind === 'leave' ? 'leave request' : 'timesheet'}
+            </DialogTitle>
+            {/* Keyed by the request, so every one opens with an empty box rather than
+                the last request's reason. */}
+            {target && <RejectDialogBody key={`${target.kind}-${target.id}`} target={target} onClose={onClose} onConfirm={onConfirm} busy={busy} />}
+        </Dialog>
+    )
+}
+
+function RejectDialogBody({ target, onClose, onConfirm, busy }: {
+    target: { kind: 'leave' | 'timesheet'; id: string; label: string }
+    onClose: () => void
+    onConfirm: (reason: string) => Promise<void>
+    busy: boolean
+}) {
+    const [reason, setReason] = useState('')
+    const [error, setError] = useState('')
+
+    async function confirm() {
+        const trimmed = reason.trim()
+        if (trimmed.length === 0) {
+            setError('Please provide a reason for rejecting.')
+            return
+        }
+        try {
+            await onConfirm(trimmed)
+        } catch { /* mutation error is surfaced elsewhere */ }
+    }
+
+    return (
+        <>
+            <DialogContent sx={{ px: 3, py: 2 }}>
+                <Stack spacing={1.5}>
+                    <Typography sx={{ fontSize: 13, color: 'text.secondary' }}>
+                        Please provide a reason. The employee will see this message.
+                    </Typography>
+                    <Box sx={{ fontSize: 12, color: 'text.secondary' }}>{target.label}</Box>
+                    <TextField
+                        autoFocus
+                        multiline
+                        minRows={3}
+                        maxRows={6}
+                        fullWidth
+                        placeholder="Reason for rejection (required)"
+                        value={reason}
+                        onChange={(e) => {
+                            setReason(e.target.value)
+                            if (error) setError('')
+                        }}
+                        error={!!error}
+                        helperText={error || `${reason.trim().length}/500`}
+                        inputProps={{ maxLength: 500 }}
+                        sx={{ '& .MuiInputBase-input': { fontSize: 13 } }}
+                    />
+                </Stack>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, py: 1.75, gap: 1 }}>
+                <Button
+                    size="small"
+                    onClick={onClose}
+                    disabled={busy}
+                    sx={{ textTransform: 'none', color: 'text.secondary' }}
+                >
+                    Cancel
+                </Button>
+                <Button
+                    size="small"
+                    variant="contained"
+                    disabled={busy || reason.trim().length === 0}
+                    onClick={() => void confirm()}
+                    sx={{ textTransform: 'none', bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' }, boxShadow: 'none' }}
+                >
+                    {busy ? 'Rejecting…' : 'Confirm Reject'}
+                </Button>
+            </DialogActions>
+        </>
+    )
 }
 
 function CenterSpinner() {
@@ -1287,7 +1946,8 @@ function ApprovalQueueRow({ item, isLast, onApprove, onReject, disabled }: {
                 <Box
                     component="button"
                     onClick={onApprove}
-                    disabled={disabled}
+                    disabled={disabled || !!item.blocked}
+                    title={item.blocked}
                     sx={{
                         bgcolor: 'success.main', color: '#fff', border: 'none', borderRadius: '6px',
                         px: '12px', py: '5px', fontSize: 12, fontWeight: 500, cursor: 'pointer',

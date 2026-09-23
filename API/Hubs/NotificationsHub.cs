@@ -10,7 +10,8 @@ namespace API.Hubs;
 [Authorize]
 public class NotificationsHub : Hub
 {
-    public const string AdminGroup = "role:" + AppRoles.SystemAdministrator;
+    // One group for every administrator role, since they receive the same events.
+    public const string AdminGroup = "role:administrators";
 
     public static string DepartmentManagerGroup(int departmentId) => $"dept-mgr:{departmentId}";
 
@@ -44,7 +45,7 @@ public class NotificationsHub : Hub
 
         var roles = await _userManager.GetRolesAsync(user);
 
-        if (roles.Contains(AppRoles.SystemAdministrator))
+        if (roles.Any(AppRoles.IsAdministrator))
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, AdminGroup);
         }

@@ -95,7 +95,7 @@ public class CreateAdminUserValidator : AbstractValidator<CreateAdminUser.Comman
             {
                 RuleFor(x => x.User.DepartmentId)
                     .Null()
-                    .WithMessage("A System Administrator cannot belong to a department.");
+                    .WithMessage("A System or HR Administrator cannot belong to a department.");
             });
 
             // The start date rides with the department, for the same reason: both
@@ -165,9 +165,9 @@ public class CreateAdminUserValidator : AbstractValidator<CreateAdminUser.Comman
     private static int CountDistinct(IEnumerable<string>? roles) => Distinct(roles).Count;
 
     /// <summary>
-    /// Whether System Administrator is the role being asked for. An omitted role means Employee —
-    /// the default <c>CreateAdminUser</c> applies — so a blank list is not a System Administrator.
+    /// Whether an administrator role (System or HR) is the one being asked for. An omitted role means Employee —
+    /// the default <c>CreateAdminUser</c> applies — so a blank list is not an administrator.
     /// </summary>
     private static bool IsAdmin(IEnumerable<string>? roles) =>
-        Distinct(roles).Contains(AppRoles.SystemAdministrator, StringComparer.OrdinalIgnoreCase);
+        Distinct(roles).Any(AppRoles.IsAdministrator);
 }

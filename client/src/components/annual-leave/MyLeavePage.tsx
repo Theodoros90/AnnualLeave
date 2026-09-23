@@ -13,6 +13,7 @@ import Divider from '@mui/material/Divider'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { currentYearEntitlement, describePerChildTotals, ordinal } from '../../lib/leave-allowance'
+import { isAdministrator } from '../../lib/roles'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import { iconForLeaveType } from './leave-icons'
 import {
@@ -97,7 +98,7 @@ function nextWorkingDay(iso: string) {
 const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) {
     const { uiStore } = useStore()
     const queryClient = useQueryClient()
-    const isAdminUser = user.roles.includes('System Administrator')
+    const isAdminUser = isAdministrator(user.roles)
 
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('All')
     const [viewLeave, setViewLeave] = useState<AnnualLeave | null>(null)

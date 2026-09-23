@@ -81,3 +81,55 @@ describe('Edit profile asks about children only where the answer is used', () =>
         expect(screen.getByText('Do you have children?')).toBeTruthy()
     })
 })
+
+/**
+ * The two administrators are disjoint. An HR Administrator runs Leave & Time —
+ * Leave Management, Attendance and Timesheets company-wide — and none of the system
+ * administration. A System Administrator has People, Configuration and System and
+ * no Leave & Time. App.tsx gates the routes behind each section the same way.
+ */
+describe('Navigation offered to each administrator role', () => {
+    function renderSidebarAs(user: UserInfo) {
+        mobx.useStore.mockReturnValue({
+            authStore: { user },
+            uiStore: { sidebarMode: 'light' },
+        } as never)
+
+        const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        render(
+            <MemoryRouter initialEntries={['/dashboard']}>
+                <QueryClientProvider client={queryClient}>
+                    <Sidebar />
+                </QueryClientProvider>
+            </MemoryRouter>,
+        )
+    }
+
+    const HR_ADMIN: UserInfo = { ...ADMIN, id: 'u-hr', email: 'hr@worktrack.com', userName: 'hr@worktrack.com', displayName: 'Helen HR', roles: ['HR Administrator'] }
+
+    it('gives an HR Administrator Leave & Time and nothing under People, Configuration or System', () => {
+        renderSidebarAs(HR_ADMIN)
+
+        expect(screen.getByText('Dashboard')).toBeInTheDocument()
+        expect(screen.getByText('Leave Management')).toBeInTheDocument()
+        expect(screen.getByText('Attendance')).toBeInTheDocument()
+        expect(screen.getByText('Timesheets')).toBeInTheDocument()
+
+        for (const hidden of ['People', 'Users', 'Departments', 'Configuration', 'Projects', 'Leave Types', 'System', 'Organization', 'Notification Settings', 'Data Maintenance']) {
+            expect(screen.queryByText(hidden)).not.toBeInTheDocument()
+        }
+        expect(screen.getByText('HR Administrator')).toBeInTheDocument()
+    })
+
+    it('gives a System Administrator People, Configuration and System, and no Leave & Time', () => {
+        renderSidebarAs(ADMIN)
+
+        for (const shown of ['Users', 'Departments', 'Projects', 'Leave Types', 'Organization', 'Notification Settings', 'Data Maintenance']) {
+            expect(screen.getByText(shown)).toBeInTheDocument()
+        }
+        for (const hidden of ['Leave & Time', 'Leave Management', 'Attendance', 'Timesheets']) {
+            expect(screen.queryByText(hidden)).not.toBeInTheDocument()
+        }
+        expect(screen.getByText('Administrator')).toBeInTheDocument()
+    })
+})

@@ -24,6 +24,7 @@ import Tabs from '@mui/material/Tabs'
 import Typography from '@mui/material/Typography'
 import { getAnnualLeaves, getLeaveStatusHistories, getLeaveTypes, updateLeaveStatus } from '../../lib/api'
 import { isAwaitingDocument } from '../../lib/attachment-policy'
+import { isAdministrator } from '../../lib/roles'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import type { AnnualLeave, AnnualLeaveStatus, LeaveStatusHistory, UserInfo } from '../../lib/types'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
@@ -115,7 +116,7 @@ const TD = {
 }
 
 const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo }) {
-    const isAdmin = user.roles.includes('System Administrator')
+    const isAdmin = isAdministrator(user.roles)
     const isManager = user.roles.includes('Manager')
     const queryClient = useQueryClient()
 

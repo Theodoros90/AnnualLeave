@@ -108,12 +108,12 @@ public static partial class PersonFieldRules
     /// to System Administrator then <i>clears</i> the stored answer instead of stranding a value
     /// the System Administrator's own dialog can no longer show or take back.
     /// </summary>
-    public const string GenderNotForAdminMessage = "A System Administrator has no recorded gender.";
+    public const string GenderNotForAdminMessage = "A System or HR Administrator has no recorded gender.";
 
     public const string EmploymentStartDateRequiredMessage = "Employment start date is required.";
 
     public const string EmploymentStartDateNotForAdminMessage =
-        "A System Administrator has no employment start date.";
+        "A System or HR Administrator has no employment start date.";
 
     public static readonly string EmploymentStartDateTooYoungMessage =
         $"Employment start date must be on or after their {MinimumAgeYears}th birthday.";

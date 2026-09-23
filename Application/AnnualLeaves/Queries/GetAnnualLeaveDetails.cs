@@ -44,7 +44,7 @@ public class GetAnnualLeaveDetails
                     .Where(al =>
                         ((al.DepartmentId.HasValue && managerScope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
                          || managerScope.DirectReportUserIds.Contains(al.EmployeeId))
-                        && (al.Employee == null || !al.Employee.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator)));
+                        && (al.Employee == null || !al.Employee.UserRoles.Any(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!))));
             }
             else if (request.IsEmployee)
             {

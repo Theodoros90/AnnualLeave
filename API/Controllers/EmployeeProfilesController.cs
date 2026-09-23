@@ -20,7 +20,7 @@ public class EmployeeProfilesController : BaseApiController
         return await Mediator.Send(new GetEmployeeProfileList.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+            IsAdmin = User.IsAdministrator(),
             IsManager = User.IsInRole(AppRoles.Manager),
         });
     }
@@ -40,7 +40,7 @@ public class EmployeeProfilesController : BaseApiController
         return await Mediator.Send(new GetTeammateList.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            ForUserId = User.IsInRole(AppRoles.SystemAdministrator) ? forUserId : null,
+            ForUserId = User.IsHrAdministrator() ? forUserId : null,
         });
     }
 

@@ -482,9 +482,13 @@ public class EmploymentStartDateTests : IDisposable
     {
         await DbInitializer.SeedData(Db, Users, Roles, SeedPolicy.Unrestricted(demoData: true));
 
-        var adminId = (await Db.Users.SingleAsync(u => u.Email == "systemadmin@annualleave.com")).Id;
+        // Both administrators — the System Administrator and the demo HR Administrator —
+        // are refused a start date, so the rule is asserted on everyone else.
+        var administratorEmails = new List<string> { "systemadmin@annualleave.com", DbInitializer.HrAdministratorDemoEmail };
+        var adminIds = await Db.Users.Where(u => administratorEmails.Contains(u.Email!)).Select(u => u.Id).ToListAsync();
+        Assert.Equal(2, adminIds.Count);
         var others = await Db.EmployeeProfiles.AsNoTracking()
-            .Where(ep => ep.UserId != adminId)
+            .Where(ep => !adminIds.Contains(ep.UserId))
             .ToListAsync();
 
         Assert.NotEmpty(others);

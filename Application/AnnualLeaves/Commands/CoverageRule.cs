@@ -36,7 +36,7 @@ public static class CoverageRule
         var isAdmin = await context.Users
             .Where(u => u.Id == employeeId)
             .SelectMany(u => u.UserRoles)
-            .AnyAsync(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator, cancellationToken);
+            .AnyAsync(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!), cancellationToken);
 
         return !isAdmin;
     }

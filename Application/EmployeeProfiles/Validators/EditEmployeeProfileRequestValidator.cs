@@ -49,7 +49,7 @@ public class EditEmployeeProfileRequestValidator : AbstractValidator<EditEmploye
                         .Select(ep => new
                         {
                             IsAdmin = ep.User != null
-                                && ep.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator),
+                                && ep.User.UserRoles.Any(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!)),
                             DateOfBirth = ep.User == null ? null : ep.User.DateOfBirth,
                         })
                         .FirstOrDefaultAsync(cancellationToken);
@@ -62,7 +62,7 @@ public class EditEmployeeProfileRequestValidator : AbstractValidator<EditEmploye
                         {
                             validationContext.AddFailure(
                                 "EmployeeProfile.DepartmentId",
-                                "A System Administrator cannot belong to a department.");
+                                "A System or HR Administrator cannot belong to a department.");
                         }
 
                         if (request.EmploymentStartDate is not null)

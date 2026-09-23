@@ -278,7 +278,11 @@ public class DeleteTimesheetTests
     /// </summary>
     [Theory]
     [InlineData(OwnerUserId, AppRoles.Employee, StatusCodes.Status200OK)]
-    [InlineData(AdminUserId, AppRoles.SystemAdministrator, StatusCodes.Status200OK)]
+    // The administrator who may act on a timesheet is the HR Administrator. A System
+    // Administrator configures the workspace and is held to the same rule as any
+    // other outsider — the endpoint asks IsHrAdministrator, not IsAdministrator.
+    [InlineData(AdminUserId, AppRoles.HrAdministrator, StatusCodes.Status200OK)]
+    [InlineData(AdminUserId, AppRoles.SystemAdministrator, StatusCodes.Status403Forbidden)]
     [InlineData(DeptManagerUserId, AppRoles.Manager, StatusCodes.Status200OK)]
     [InlineData(OutsiderUserId, AppRoles.Employee, StatusCodes.Status403Forbidden)]
     [InlineData(OtherManagerUserId, AppRoles.Manager, StatusCodes.Status403Forbidden)]

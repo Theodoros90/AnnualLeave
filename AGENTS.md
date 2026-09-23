@@ -77,7 +77,7 @@ that means when adding code:
 
 **Validation pipeline:** `FluentValidation` validators auto-run via MediatR's `ValidationBehavior` pipeline behavior. Add a validator class in the same folder as the command/query.
 
-**Authorization:** Policy-based (`"AnnualLeaveRead"`, `"AnnualLeaveCreate"`, etc.) defined in `API/Program.cs`. Roles: `System Administrator`, `Manager`, `Employee`. Managers are scoped to their departments in queries.
+**Authorization:** Policy-based (`"AnnualLeaveRead"`, `"AnnualLeaveCreate"`, etc.) defined in `API/Program.cs`. Roles: `System Administrator`, `HR Administrator` (a copy of System Administrator — every gate goes through `AppRoles.Administrators` / `AppRoles.IsAdministrator`, mirrored by `client/src/lib/roles.ts`), `Manager`, `Employee`. Managers are scoped to their departments in queries.
 
 ### Frontend Patterns
 

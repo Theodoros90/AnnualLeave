@@ -89,7 +89,7 @@ namespace API.Controllers
         public async Task<ActionResult<List<TimesheetDto>>> GetTimesheets([FromQuery] bool myOnly = false, [FromQuery] int? page = null, [FromQuery] int? pageSize = null)
         {
             var userId = ResolveUserId();
-            var isAdmin = User.IsInRole(AppRoles.SystemAdministrator);
+            var isAdmin = User.IsAdministrator();
             var isManager = User.IsInRole(AppRoles.Manager);
 
             var result = await Mediator.Send(new GetTimesheetList.Query
@@ -114,7 +114,7 @@ namespace API.Controllers
             {
                 Id = id,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+                IsAdmin = User.IsAdministrator(),
                 IsManager = User.IsInRole(AppRoles.Manager),
             }, cancellationToken);
 
@@ -165,7 +165,7 @@ namespace API.Controllers
             {
                 Id = id,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+                IsAdmin = User.IsHrAdministrator(),
                 IsManager = User.IsInRole(AppRoles.Manager),
             }, cancellationToken);
 
@@ -181,7 +181,7 @@ namespace API.Controllers
             {
                 Id = id,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+                IsAdmin = User.IsAdministrator(),
             }, cancellationToken);
 
             if (result.IsSuccess)
@@ -194,7 +194,7 @@ namespace API.Controllers
 
         // PATCH: api/timesheets/{id}/approve
         [HttpPatch("{id}/approve")]
-        [Authorize(Roles = AppRoles.SystemAdministrator + "," + AppRoles.Manager)]
+        [Authorize(Roles = AppRoles.LeaveAndTimeDecisionRoles)]
         public async Task<IActionResult> ApproveTimesheet(string id, CancellationToken cancellationToken)
         {
             var result = await Mediator.Send(new UpdateTimesheetStatus.Command
@@ -202,7 +202,7 @@ namespace API.Controllers
                 Id = id,
                 NewStatus = TimesheetStatus.Approved,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+                IsAdmin = User.IsHrAdministrator(),
                 IsManager = User.IsInRole(AppRoles.Manager),
             }, cancellationToken);
 
@@ -216,7 +216,7 @@ namespace API.Controllers
 
         // PATCH: api/timesheets/{id}/reject
         [HttpPatch("{id}/reject")]
-        [Authorize(Roles = AppRoles.SystemAdministrator + "," + AppRoles.Manager)]
+        [Authorize(Roles = AppRoles.LeaveAndTimeDecisionRoles)]
         public async Task<IActionResult> RejectTimesheet(string id, [FromBody] RejectTimesheetRequest? body, CancellationToken cancellationToken)
         {
             var result = await Mediator.Send(new UpdateTimesheetStatus.Command
@@ -224,7 +224,7 @@ namespace API.Controllers
                 Id = id,
                 NewStatus = TimesheetStatus.Rejected,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+                IsAdmin = User.IsHrAdministrator(),
                 IsManager = User.IsInRole(AppRoles.Manager),
                 Comment = body?.Comment,
             }, cancellationToken);
@@ -250,7 +250,7 @@ namespace API.Controllers
             {
                 TimesheetId = id,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+                IsAdmin = User.IsAdministrator(),
                 IsManager = User.IsInRole(AppRoles.Manager),
             }, cancellationToken);
 
@@ -275,7 +275,7 @@ namespace API.Controllers
         [HttpGet("history")]
         [ProducesResponseType(typeof(IEnumerable<TimesheetStatusHistoryDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        [Authorize(Roles = AppRoles.SystemAdministrator)]
+        [Authorize(Roles = AppRoles.AdministratorRoles)]
         public async Task<ActionResult> GetAllStatusHistories(
             [FromQuery] string? employeeProfileId,
             [FromQuery] int? departmentId,
@@ -296,7 +296,7 @@ namespace API.Controllers
                 FromStatus = fromStatus,
                 ToStatus = toStatus,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+                IsAdmin = User.IsAdministrator(),
                 IsManager = User.IsInRole(AppRoles.Manager),
                 Page = page,
                 PageSize = pageSize,
@@ -332,7 +332,7 @@ namespace API.Controllers
             {
                 EmployeeProfileId = employeeProfileId,
                 RequestingUserId = ResolveUserId(),
-                IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+                IsAdmin = User.IsAdministrator(),
                 IsManager = User.IsInRole(AppRoles.Manager),
                 Page = page,
                 PageSize = pageSize,

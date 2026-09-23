@@ -11,7 +11,11 @@ using Asp.Versioning;
 
 namespace API.Controllers;
 
-[Authorize(Roles = AppRoles.SystemAdministrator)]
+// Reading the user list is part of an administrator's reach — the leave form needs it to
+// file on somebody's behalf — so both administrator roles may GET. Every write is system
+// administration and carries its own System Administrator gate below; ASP.NET Core ANDs
+// the two attributes, so an HR Administrator passes the class and fails the action.
+[Authorize(Roles = AppRoles.AdministratorRoles)]
 [ApiVersion("1.0")]
 public class AdminUsersController : BaseApiController
 {
@@ -32,6 +36,7 @@ public class AdminUsersController : BaseApiController
             HttpContext.RequestAborted));
     }
 
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     [HttpPost]
     [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
@@ -53,6 +58,7 @@ public class AdminUsersController : BaseApiController
         return HandleResult(result);
     }
 
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     [HttpPut("{id}")]
     [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
@@ -65,6 +71,7 @@ public class AdminUsersController : BaseApiController
             HttpContext.RequestAborted));
     }
 
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     [HttpPut("{id}/roles")]
     [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
@@ -76,6 +83,7 @@ public class AdminUsersController : BaseApiController
             HttpContext.RequestAborted));
     }
 
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     [HttpPut("{id}/active")]
     [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
@@ -93,6 +101,7 @@ public class AdminUsersController : BaseApiController
             HttpContext.RequestAborted));
     }
 
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     [HttpPost("{id}/confirm-email")]
     [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
@@ -104,6 +113,7 @@ public class AdminUsersController : BaseApiController
             HttpContext.RequestAborted));
     }
 
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     [HttpDelete("{id}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]

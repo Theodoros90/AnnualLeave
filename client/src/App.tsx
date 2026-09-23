@@ -29,6 +29,7 @@ import ProtectedRoute from './components/auth/ProtectedRoute'
 import { API_ERROR_EVENT } from './lib/api/error-events'
 import { apiBaseUrl } from './lib/api/client'
 import { useStore } from './lib/mobx'
+import { LEAVE_AND_TIME_ROLES, SYSTEM_ADMINISTRATOR_ROLES, isAdministrator } from './lib/roles'
 import Sidebar from './components/layout/Sidebar'
 import Topbar from './components/layout/Topbar'
 
@@ -123,7 +124,7 @@ const TeamLeaveRoute = observer(() => {
     const { authStore } = useStore()
     const user = authStore.user
     if (!user) return null
-    return user.roles.includes('System Administrator')
+    return isAdministrator(user.roles)
         ? <AllLeaveAdminPage user={user} />
         : <TeamLeavePage user={user} />
 })
@@ -132,7 +133,7 @@ const TimesheetsRoute = observer(() => {
     const { authStore } = useStore()
     const user = authStore.user
     if (!user) return null
-    return user.roles.includes('System Administrator')
+    return isAdministrator(user.roles)
         ? <TeamTimesheetPage user={user} />
         : <MyTimesheetPage user={user} />
 })
@@ -141,7 +142,7 @@ const TeamTimesheetsRoute = observer(() => {
     const { authStore } = useStore()
     const user = authStore.user
     if (!user) return null
-    return user.roles.includes('System Administrator')
+    return isAdministrator(user.roles)
         ? <AllTimesheetsPage />
         : <TeamTimesheetPage user={user} />
 })
@@ -263,19 +264,24 @@ const AppInner = observer(function AppInner() {
                     <Route element={<AppShell />}>
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />
                         <Route path="/dashboard" element={<DashboardHome />} />
-                        <Route path="/my-leave" element={<Navigate to="/my-leave/requests" replace />} />
-                        <Route path="/my-leave/:section" element={<MyLeaveRoute />} />
-                        <Route path="/apply-leave" element={<ApplyLeaveRoute />} />
-                        <Route path="/leave-management" element={<TeamLeaveRoute />} />
-                        <Route path="/timesheets" element={<TimesheetsRoute />} />
-                        <Route path="/timesheets-management" element={<TeamTimesheetsRoute />} />
-                        <Route path="/new-timesheet" element={<NewTimesheetRoute />} />
-                        <Route path="/attendance" element={<AttendancePage />} />
-                        <Route path="/team-attendance" element={<TeamAttendancePage />} />
-                        <Route path="/attendance-management" element={<CompanyAttendancePage />} />
+                        {/* Leave & Time — everyone but the System Administrator, who configures the
+                            workspace and neither files nor decides leave. The HR Administrator runs
+                            these pages company-wide; a Manager and an Employee see their own scope. */}
+                        <Route element={<ProtectedRoute roles={[...LEAVE_AND_TIME_ROLES]} />}>
+                            <Route path="/my-leave" element={<Navigate to="/my-leave/requests" replace />} />
+                            <Route path="/my-leave/:section" element={<MyLeaveRoute />} />
+                            <Route path="/apply-leave" element={<ApplyLeaveRoute />} />
+                            <Route path="/leave-management" element={<TeamLeaveRoute />} />
+                            <Route path="/timesheets" element={<TimesheetsRoute />} />
+                            <Route path="/timesheets-management" element={<TeamTimesheetsRoute />} />
+                            <Route path="/new-timesheet" element={<NewTimesheetRoute />} />
+                            <Route path="/attendance" element={<AttendancePage />} />
+                            <Route path="/team-attendance" element={<TeamAttendancePage />} />
+                            <Route path="/attendance-management" element={<CompanyAttendancePage />} />
+                        </Route>
 
-                        {/* System Administrator-only nested routes — gated by role inside ProtectedRoute */}
-                        <Route element={<ProtectedRoute roles={['System Administrator']} />}>
+                        {/* System Administrator-only nested routes — gated by role inside ProtectedRoute. An HR Administrator has the reach but not the configuration. */}
+                        <Route element={<ProtectedRoute roles={[...SYSTEM_ADMINISTRATOR_ROLES]} />}>
                             <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
                             <Route path="/admin/general" element={<Navigate to="/admin/reminders-notifications" replace />} />
                             <Route path="/admin/activity-types" element={<Navigate to="/admin/project-activities" replace />} />

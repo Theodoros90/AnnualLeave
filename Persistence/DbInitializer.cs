@@ -31,6 +31,7 @@ public class DbInitializer
     // (development); on a real deployment they're removed so only System Administrator remains.
     private static readonly string[] DemoSeedEmails =
     {
+        HrAdministratorDemoEmail,
         "manager1@annualleave.com",
         "manager2@annualleave.com",
         "employee1a@annualleave.com",
@@ -42,6 +43,13 @@ public class DbInitializer
         "employee2c@annualleave.com",
         "employee2d@annualleave.com"
     };
+
+    /// <summary>
+    /// A demo HR Administrator, so the second administrator role can be tried without
+    /// an invite email reaching anyone. Demo data only — stripped on a real deployment
+    /// like the demo managers and employees, since it carries the published seed password.
+    /// </summary>
+    public const string HrAdministratorDemoEmail = "hradmin@annualleave.com";
 
     private record SeedUser(string DisplayName, string Email, string Role);
 
@@ -82,6 +90,7 @@ public class DbInitializer
         // After SeedEmployeeProfiles, which bails out the moment any profile exists
         // — so on the databases that need this repair it is the only thing that runs.
         await RemoveAdminProfileDepartments(context);
+        await EnsureAdministratorProfiles(context);
         // A no-op until projects exist, which is why it belongs here rather than
         // inside SeedProjects: the rows it repairs are real ones, and they need
         // repairing whether or not this host wants demo data.
@@ -328,6 +337,7 @@ public class DbInitializer
         {
             users.AddRange(new[]
             {
+                new SeedUser("HR Admin", HrAdministratorDemoEmail, AppRoles.HrAdministrator),
                 new SeedUser("Manager One", "manager1@annualleave.com", AppRoles.Manager),
                 new SeedUser("Manager Two", "manager2@annualleave.com", AppRoles.Manager),
                 new SeedUser("Employee 1A", "employee1a@annualleave.com", AppRoles.Employee),
@@ -1090,19 +1100,19 @@ public class DbInitializer
     /// </summary>
     private static async Task RemoveAdminProfileDepartments(AppDbContext context)
     {
-        // SeedRoles has already run, so this is only null on a database whose roles
-        // failed to seed — in which case nobody is a System Administrator and there is nothing to
-        // repair.
-        var adminRoleId = await context.Roles
-            .Where(r => r.Name == AppRoles.SystemAdministrator)
+        // SeedRoles has already run, so this is only empty on a database whose roles
+        // failed to seed — in which case nobody is an administrator and there is nothing to
+        // repair. Both administrator roles: an HR Administrator has no department either.
+        var adminRoleIds = await context.Roles
+            .Where(r => AppRoles.Administrators.Contains(r.Name!))
             .Select(r => r.Id)
-            .FirstOrDefaultAsync();
+            .ToListAsync();
 
-        if (adminRoleId is null) return;
+        if (adminRoleIds.Count == 0) return;
 
         var stale = await context.EmployeeProfiles
             .Where(ep => ep.DepartmentId != null
-                && context.UserRoles.Any(ur => ur.UserId == ep.UserId && ur.RoleId == adminRoleId))
+                && context.UserRoles.Any(ur => ur.UserId == ep.UserId && adminRoleIds.Contains(ur.RoleId)))
             .ToListAsync();
 
         if (stale.Count == 0) return;
@@ -1110,6 +1120,54 @@ public class DbInitializer
         foreach (var profile in stale)
         {
             profile.DepartmentId = null;
+        }
+
+        await context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Every administrator — System or HR — gets a profile row with no department, if
+    /// they have none. <c>SeedEmployeeProfiles</c> writes the System Administrator's on a
+    /// fresh database and then never runs again, so an administrator account seeded
+    /// afterwards (the demo HR Administrator on a database that predates it) would be
+    /// left without one, and the pages that read the caller's profile would refuse
+    /// them. Runs in every environment, and is a no-op once the rows exist.
+    /// </summary>
+    private static async Task EnsureAdministratorProfiles(AppDbContext context)
+    {
+        var adminRoleIds = await context.Roles
+            .Where(r => AppRoles.Administrators.Contains(r.Name!))
+            .Select(r => r.Id)
+            .ToListAsync();
+
+        if (adminRoleIds.Count == 0) return;
+
+        var missing = await context.Users
+            .Where(u => context.UserRoles.Any(ur => ur.UserId == u.Id && adminRoleIds.Contains(ur.RoleId))
+                && !context.EmployeeProfiles.Any(ep => ep.UserId == u.Id))
+            .Select(u => u.Id)
+            .ToListAsync();
+
+        if (missing.Count == 0) return;
+
+        var allowance = await context.LeaveTypes
+            .Where(lt => lt.AffectsBalance && lt.IsActive && lt.DefaultAllowance > 0)
+            .OrderBy(lt => lt.Id)
+            .Select(lt => (int?)lt.DefaultAllowance)
+            .FirstOrDefaultAsync() ?? 20;
+
+        foreach (var userId in missing)
+        {
+            context.EmployeeProfiles.Add(new EmployeeProfile
+            {
+                Id = Guid.NewGuid().ToString(),
+                UserId = userId,
+                DepartmentId = null,
+                ManagerId = null,
+                AnnualLeaveEntitlement = allowance,
+                LeaveBalance = allowance,
+                CreatedAt = DateTime.UtcNow,
+            });
         }
 
         await context.SaveChangesAsync();

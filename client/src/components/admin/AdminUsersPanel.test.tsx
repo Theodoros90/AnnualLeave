@@ -423,10 +423,10 @@ describe('AdminUsersPanel — manager is derived from department', () => {
 // A user holds exactly one role, so the role picker must be radios rather than
 // checkboxes — checkboxes let an admin tick Manager *and* Employee.
 describe('AdminUsersPanel — role selection', () => {
-    it('offers the three roles as a single choice, not as checkboxes', async () => {
+    it('offers the four roles as a single choice, not as checkboxes', async () => {
         const dialog = await openCreateDialog()
 
-        for (const role of ['System Administrator', 'Manager', 'Employee']) {
+        for (const role of ['System Administrator', 'HR Administrator', 'Manager', 'Employee']) {
             expect(within(dialog).getByRole('radio', { name: role })).toBeInTheDocument()
             expect(within(dialog).queryByRole('checkbox', { name: role })).not.toBeInTheDocument()
         }
@@ -505,6 +505,22 @@ describe('AdminUsersPanel — System Administrator hides the Profile section', (
         // Not a one-way door: switching back off System Administrator restores the section.
         fireEvent.click(within(dialog).getByRole('radio', { name: 'Manager' }))
         expect(within(dialog).getByText('Profile')).toBeInTheDocument()
+    })
+
+    // HR Administrator is a copy of System Administrator, so the same section goes
+    // for the same reason — and Gender with it, which the API refuses for either.
+    it('drops the profile fields and Gender for an HR Administrator too', async () => {
+        const dialog = await openCreateDialog()
+
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'HR Administrator' }))
+
+        expect(within(dialog).queryByText('Profile')).not.toBeInTheDocument()
+        expect(within(dialog).queryByLabelText(/department/i)).not.toBeInTheDocument()
+        expect(within(dialog).queryByRole('radio', { name: /^male$/i })).not.toBeInTheDocument()
+
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'Employee' }))
+        expect(within(dialog).getByText('Profile')).toBeInTheDocument()
+        expect(within(dialog).getByRole('radio', { name: /^male$/i })).toBeInTheDocument()
     })
 
     /// The dialog hides the department for a System Administrator and used to send "the first
@@ -1867,18 +1883,18 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
         renderPanel()
         await screen.findByText('Zed System Administrator')
 
-        expect(screen.getByRole('heading', { name: 'System Administrators' })).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: 'Administrators' })).toBeInTheDocument()
         expect(screen.getByRole('heading', { name: 'Managers & teams' })).toBeInTheDocument()
         expect(screen.getByRole('heading', { name: 'No manager assigned' })).toBeInTheDocument()
     })
 
     it('drops the section labels when only one section has rows', async () => {
         renderPanel()
-        fireEvent.click(await screen.findByRole('button', { name: /^System Administrators/ }))
+        fireEvent.click(await screen.findByRole('button', { name: /^Administrators/ }))
 
         expect(screen.getByText('Zed System Administrator')).toBeInTheDocument()
-        // The System Administrators tab is still there; the section heading under the tabs is not.
-        expect(screen.queryByRole('heading', { name: 'System Administrators' })).not.toBeInTheDocument()
+        // The Administrators tab is still there; the section heading under the tabs is not.
+        expect(screen.queryByRole('heading', { name: 'Administrators' })).not.toBeInTheDocument()
         expect(screen.queryByRole('heading', { name: 'Managers & teams' })).not.toBeInTheDocument()
     })
 

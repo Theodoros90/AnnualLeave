@@ -76,7 +76,7 @@ public class AnnualLeavesController : BaseApiController
         var result = await Mediator.Send(new GetAnnualLeaveList.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+            IsAdmin = User.IsAdministrator(),
             IsManager = User.IsInRole(AppRoles.Manager),
             IsEmployee = User.IsInRole(AppRoles.Employee),
             Page = page,
@@ -92,7 +92,7 @@ public class AnnualLeavesController : BaseApiController
         return await Mediator.Send(new GetTeamAwayThisWeekCount.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+            IsAdmin = User.IsAdministrator(),
             IsManager = User.IsInRole(AppRoles.Manager),
             IsEmployee = User.IsInRole(AppRoles.Employee)
         });
@@ -107,7 +107,7 @@ public class AnnualLeavesController : BaseApiController
         {
             Id = id,
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+            IsAdmin = User.IsAdministrator(),
             IsManager = User.IsInRole(AppRoles.Manager),
             IsEmployee = User.IsInRole(AppRoles.Employee)
         });
@@ -120,8 +120,11 @@ public class AnnualLeavesController : BaseApiController
     [Authorize(Policy = "AnnualLeaveCreate")]
     public async Task<ActionResult<string>> CreateAnnualLeave(CreateAnnualLeaveRequest request)
     {
-        var isAdmin = User.IsInRole(AppRoles.SystemAdministrator);
-        // Non-admins always create for themselves; admins may supply a target user id.
+        var isAdmin = User.IsHrAdministrator();
+        // Everyone creates for themselves except the HR Administrator, who may supply a
+        // target user id. A System Administrator is not one: they configure the workspace
+        // and do not file leave on anybody's behalf, so their EmployeeId is ignored like
+        // an employee's.
         if (!isAdmin || string.IsNullOrWhiteSpace(request.EmployeeId))
             request.EmployeeId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 
@@ -234,7 +237,7 @@ public class AnnualLeavesController : BaseApiController
         {
             AnnualLeave = request,
             ChangedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+            IsAdmin = User.IsHrAdministrator(),
             IsManager = User.IsInRole(AppRoles.Manager)
         });
         if (result.IsSuccess)
@@ -254,7 +257,7 @@ public class AnnualLeavesController : BaseApiController
             LeaveId = id,
             Request = request,
             ChangedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+            IsAdmin = User.IsHrAdministrator(),
             IsManager = User.IsInRole(AppRoles.Manager),
         });
         if (result.IsSuccess)
@@ -281,7 +284,7 @@ public class AnnualLeavesController : BaseApiController
         {
             Id = id,
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+            IsAdmin = User.IsHrAdministrator(),
             IsManager = User.IsInRole(AppRoles.Manager)
         });
 

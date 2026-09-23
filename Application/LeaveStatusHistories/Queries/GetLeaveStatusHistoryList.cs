@@ -45,7 +45,7 @@ public class GetLeaveStatusHistoryList
                     ((h.AnnualLeave.DepartmentId.HasValue &&
                       managerScope.ManagedDepartmentIds.Contains(h.AnnualLeave.DepartmentId.Value))
                      || managerScope.DirectReportUserIds.Contains(h.AnnualLeave.EmployeeId))
-                    && (h.AnnualLeave.Employee == null || !h.AnnualLeave.Employee.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator)));
+                    && (h.AnnualLeave.Employee == null || !h.AnnualLeave.Employee.UserRoles.Any(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!))));
             }
             else
             {
