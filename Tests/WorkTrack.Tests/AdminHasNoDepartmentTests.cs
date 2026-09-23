@@ -91,7 +91,7 @@ public class AdminHasNoDepartmentTests : IDisposable
 
     private async Task GivenRolesAsync()
     {
-        foreach (var role in new[] { AppRoles.SystemAdministrator, AppRoles.Manager, AppRoles.Employee })
+        foreach (var role in AppRoles.All)
         {
             if (!await Roles.RoleExistsAsync(role))
             {
@@ -132,8 +132,8 @@ public class AdminHasNoDepartmentTests : IDisposable
         Roles = [role],
         // Required since the field became mandatory — see PersonFieldValidationTests.
         DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-30),
-        // Likewise for everyone but a System Administrator, who is refused one — see UserGenderTests.
-        Gender = role == AppRoles.SystemAdministrator ? null : Gender.Female,
+        // Likewise for everyone but an administrator (System or HR), who is refused one — see UserGenderTests.
+        Gender = AppRoles.IsAdministrator(role) ? null : Gender.Female,
     };
 
     private Task<FluentValidation.Results.ValidationResult> ValidateCreate(AdminCreateUserDto payload) =>
@@ -217,16 +217,18 @@ public class AdminHasNoDepartmentTests : IDisposable
     /// that carries a department for a System Administrator was built against the old shape — and
     /// silently ignoring it would recreate the invisible assignment this removes.
     /// </summary>
-    [Fact]
-    public async Task An_Admin_cannot_be_created_with_a_department()
+    [Theory]
+    [InlineData(AppRoles.SystemAdministrator)]
+    [InlineData(AppRoles.HrAdministrator)]
+    public async Task An_Admin_cannot_be_created_with_a_department(string role)
     {
         var departmentId = await GivenDepartmentAsync();
         await GivenRolesAsync();
 
-        var result = await ValidateCreate(CreatePayload(AppRoles.SystemAdministrator, departmentId));
+        var result = await ValidateCreate(CreatePayload(role, departmentId));
 
         Assert.False(result.IsValid);
-        Assert.Contains("A System Administrator cannot belong to a department.", Errors(result));
+        Assert.Contains("A System or HR Administrator cannot belong to a department.", Errors(result));
     }
 
     /* ── Editing a profile ──────────────────────────────────────────────────── */
@@ -311,11 +313,13 @@ public class AdminHasNoDepartmentTests : IDisposable
         Assert.Contains("DepartmentId is required.", Errors(result));
     }
 
-    [Fact]
-    public async Task An_Admin_profile_cannot_be_given_a_department()
+    [Theory]
+    [InlineData(AppRoles.SystemAdministrator)]
+    [InlineData(AppRoles.HrAdministrator)]
+    public async Task An_Admin_profile_cannot_be_given_a_department(string role)
     {
         var departmentId = await GivenDepartmentAsync();
-        var user = await GivenUserAsync("admin@test.local", AppRoles.SystemAdministrator);
+        var user = await GivenUserAsync("admin@test.local", role);
         var profile = await GivenProfileAsync(user.Id, departmentId: null);
 
         var result = await ValidateEdit(new EditEmployeeProfileRequest
@@ -325,7 +329,7 @@ public class AdminHasNoDepartmentTests : IDisposable
         });
 
         Assert.False(result.IsValid);
-        Assert.Contains("A System Administrator cannot belong to a department.", Errors(result));
+        Assert.Contains("A System or HR Administrator cannot belong to a department.", Errors(result));
     }
 
     /* ── The seeder, and rows already written ───────────────────────────────── */
@@ -354,13 +358,22 @@ public class AdminHasNoDepartmentTests : IDisposable
     {
         await DbInitializer.SeedData(Db, Users, Roles, SeedPolicy.Unrestricted(demoData: true));
 
-        var adminId = (await Db.Users.SingleAsync(u => u.Email == "systemadmin@annualleave.com")).Id;
+        // Both administrators — the System Administrator and the demo HR Administrator —
+        // sit outside the department structure, so the rule is asserted on everyone else.
+        var administratorEmails = new List<string> { "systemadmin@annualleave.com", DbInitializer.HrAdministratorDemoEmail };
+        var adminIds = await Db.Users.Where(u => administratorEmails.Contains(u.Email!)).Select(u => u.Id).ToListAsync();
+        Assert.Equal(2, adminIds.Count);
         var others = await Db.EmployeeProfiles.AsNoTracking()
-            .Where(ep => ep.UserId != adminId)
+            .Where(ep => !adminIds.Contains(ep.UserId))
             .ToListAsync();
 
         Assert.NotEmpty(others);
         Assert.All(others, profile => Assert.NotNull(profile.DepartmentId));
+
+        // And the demo HR Administrator got a department-less profile from EnsureAdministratorProfiles.
+        var hrAdminId = (await Db.Users.SingleAsync(u => u.Email == DbInitializer.HrAdministratorDemoEmail)).Id;
+        var hrProfile = await Db.EmployeeProfiles.AsNoTracking().SingleAsync(ep => ep.UserId == hrAdminId);
+        Assert.Null(hrProfile.DepartmentId);
     }
 
     /// <summary>

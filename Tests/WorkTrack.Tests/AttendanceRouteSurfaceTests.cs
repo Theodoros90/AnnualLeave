@@ -91,16 +91,17 @@ public class AttendanceRouteSurfaceTests(ApiRouteTableFixture routeTable)
     }
 
     /// <summary>
-    /// The team board and its history are System Administrator-or-Manager; presence and the
-    /// company dashboard are System Administrator only. Replacing the "System Administrator,Manager" string
+    /// The team board and its history are for whoever decides leave and time — the HR
+    /// Administrator or a Manager; presence and the company dashboard are read by both
+    /// administrators (the Users and Departments panels quote them). Replacing the roles string
     /// literals with AppRoles constants must not have changed which roles reach
     /// which route.
     /// </summary>
     [Theory]
-    [InlineData("api/Attendance/team", "System Administrator,Manager")]
-    [InlineData("api/Attendance/team/history", "System Administrator,Manager")]
-    [InlineData("api/Attendance/presence", "System Administrator")]
-    [InlineData("api/Attendance/company", "System Administrator")]
+    [InlineData("api/Attendance/team", "HR Administrator,Manager")]
+    [InlineData("api/Attendance/team/history", "HR Administrator,Manager")]
+    [InlineData("api/Attendance/presence", "System Administrator,HR Administrator")]
+    [InlineData("api/Attendance/company", "System Administrator,HR Administrator")]
     public void The_role_restricted_endpoints_keep_their_roles(string pattern, string expectedRoles)
     {
         var matches = routeTable.Routes

@@ -42,7 +42,7 @@ public class GetEmployeeProfileList
                     ((ep.DepartmentId != null && managerScope.ManagedDepartmentIds.Contains(ep.DepartmentId.Value))
                      || (ep.ManagerId != null && managerScope.ManagerProfileIds.Contains(ep.ManagerId))
                      || ep.UserId == request.RequestingUserId)
-                    && (ep.User == null || !ep.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator)));
+                    && (ep.User == null || !ep.User.UserRoles.Any(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!))));
             }
             else
             {

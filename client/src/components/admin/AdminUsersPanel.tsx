@@ -40,9 +40,10 @@ import type {
     AdminCreateUserRequest, AdminUser, Department, EmployeeProfile, Gender, LeaveStatusHistory, PresenceStatus,
     TimesheetStatusHistory, UpsertChildRequest, UserRole,
 } from '../../lib/types'
+import { isAdministratorRole } from '../../lib/roles'
 
 const PROTECTED_ADMIN_EMAIL = 'systemadmin@annualleave.com'
-const ALL_ROLES: UserRole[] = ['System Administrator', 'Manager', 'Employee']
+const ALL_ROLES: UserRole[] = ['System Administrator', 'HR Administrator', 'Manager', 'Employee']
 
 /**
  * Male / Female, styled as radios to match the Role row it sits above. This
@@ -106,6 +107,7 @@ function GenderRadioGroup(props: {
  */
 const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
     'System Administrator': 'Full access to every department. An admin has no department or manager of their own.',
+    'HR Administrator': 'Leave, attendance and timesheets across every department, but no access to Users, Departments, Configuration or System. Likewise has no department or manager of their own.',
     Manager: "Manages their department's people, leave and timesheets.",
     Employee: "Files their own leave and timesheets; approvals go to their department's manager.",
 }
@@ -306,7 +308,7 @@ interface DerivedUser {
     user: AdminUser
     profile?: EmployeeProfile
     departmentName: string | null
-    primaryRole: 'System Administrator' | 'Manager' | 'Employee'
+    primaryRole: UserRole
     presence: Presence
     isAutoBreak: boolean
     lastSeenLabel: string
@@ -352,7 +354,7 @@ function groupByReportingLine(filtered: DerivedUser[], all: DerivedUser[]): Grou
     const managerByProfileId = new Map(managers.map((m) => [m.profile!.id, m]))
     const filteredIds = new Set(filtered.map((d) => d.user.id))
 
-    const admins = filtered.filter((d) => d.primaryRole === 'System Administrator').sort(byName)
+    const admins = filtered.filter((d) => isAdministratorRole(d.primaryRole)).sort(byName)
     const employees = filtered.filter((d) => d.primaryRole === 'Employee')
 
     const reportsByManagerProfileId = new Map<string, DerivedUser[]>()
@@ -399,8 +401,9 @@ function avatarBg(seed: string) {
     return palette[Math.abs(hash) % palette.length]
 }
 
-function primaryRoleOf(roles: UserRole[]): 'System Administrator' | 'Manager' | 'Employee' {
+function primaryRoleOf(roles: UserRole[]): UserRole {
     if (roles.includes('System Administrator')) return 'System Administrator'
+    if (roles.includes('HR Administrator')) return 'HR Administrator'
     if (roles.includes('Manager')) return 'Manager'
     return 'Employee'
 }
@@ -507,7 +510,9 @@ function AdminUsersPanel() {
     const counts = useMemo(() => {
         const c = {
             all: derivedAll.length,
-            admins: derivedAll.filter((d) => d.primaryRole === 'System Administrator').length,
+            admins: derivedAll.filter((d) => isAdministratorRole(d.primaryRole)).length,
+            systemAdmins: derivedAll.filter((d) => d.primaryRole === 'System Administrator').length,
+            hrAdmins: derivedAll.filter((d) => d.primaryRole === 'HR Administrator').length,
             managers: derivedAll.filter((d) => d.primaryRole === 'Manager').length,
             employees: derivedAll.filter((d) => d.primaryRole === 'Employee').length,
             online: derivedAll.filter((d) => d.presence === 'online').length,
@@ -520,7 +525,7 @@ function AdminUsersPanel() {
     /* Filtering */
     const filtered = useMemo(() => {
         let out = derivedAll
-        if (statusTab === 'admins') out = out.filter((d) => d.primaryRole === 'System Administrator')
+        if (statusTab === 'admins') out = out.filter((d) => isAdministratorRole(d.primaryRole))
         else if (statusTab === 'managers') out = out.filter((d) => d.primaryRole === 'Manager')
         else if (statusTab === 'employees') out = out.filter((d) => d.primaryRole === 'Employee')
         else if (statusTab === 'deactivated') out = out.filter((d) => !d.isActive)
@@ -540,7 +545,7 @@ function AdminUsersPanel() {
     }, [derivedAll, statusTab, roleFilter, deptFilter, searchText])
 
     const grouped = useMemo(() => groupByReportingLine(filtered, derivedAll), [filtered, derivedAll])
-    // A lone section needs no heading — the System Administrators tab already says "System Administrators".
+    // A lone section needs no heading — the Administrators tab already says "Administrators".
     const showSectionHeadings =
         [grouped.admins, grouped.teams, grouped.unassigned].filter((section) => section.length > 0).length > 1
 
@@ -858,7 +863,8 @@ function AdminUsersPanel() {
                 </Box>
                 <SelectFilter value={roleFilter} onChange={setRoleFilter} options={[
                     { value: 'all', label: 'All roles' },
-                    { value: 'System Administrator', label: `👑 System Administrator (${counts.admins})` },
+                    { value: 'System Administrator', label: `👑 System Administrator (${counts.systemAdmins})` },
+                    { value: 'HR Administrator', label: `🛡️ HR Administrator (${counts.hrAdmins})` },
                     { value: 'Manager', label: `👥 Manager (${counts.managers})` },
                     { value: 'Employee', label: `👤 Employee (${counts.employees})` },
                 ]} />
@@ -937,7 +943,7 @@ function AdminUsersPanel() {
             <Box sx={{ display: 'flex', gap: '2px', mb: '14px', borderBottom: '1px solid', borderColor: 'divider', px: '2px', flexWrap: 'wrap' }}>
                 {([
                     { value: 'all',       label: 'All',       count: counts.all },
-                    { value: 'admins',    label: 'System Administrators',    count: counts.admins },
+                    { value: 'admins',    label: 'Administrators',    count: counts.admins },
                     { value: 'managers',  label: 'Managers',  count: counts.managers },
                     { value: 'employees', label: 'Employees', count: counts.employees },
                     { value: 'deactivated', label: '⏸ Deactivated', count: counts.deactivated },
@@ -984,7 +990,7 @@ function AdminUsersPanel() {
                 <>
                     {grouped.admins.length > 0 && (
                         <>
-                            {showSectionHeadings && <SectionHeading>System Administrators</SectionHeading>}
+                            {showSectionHeadings && <SectionHeading>Administrators</SectionHeading>}
                             {grouped.admins.map(renderRow)}
                         </>
                     )}
@@ -1129,7 +1135,7 @@ function UserRow({
         return managerUser?.displayName || managerUser?.email || null
     }, [derived.profile, profiles, usersByName])
 
-    const accentColor = role === 'System Administrator' ? 'secondary.main'
+    const accentColor = isAdministratorRole(role) ? 'secondary.main'
         : role === 'Manager' ? 'warning.main' : 'primary.main'
 
     return (
@@ -1207,7 +1213,7 @@ function UserRow({
 
                 {/* Department — not applicable to admins, who sit outside the department structure */}
                 <Box sx={{ display: { xs: 'none', md: 'block' } }}>
-                    {role !== 'System Administrator' && derived.departmentName ? (
+                    {!isAdministratorRole(role) && derived.departmentName ? (
                         <Box component="span" sx={{
                             display: 'inline-block', bgcolor: softBg('info'), color: 'info.dark',
                             borderRadius: '4px', px: '8px', py: '2px',
@@ -1290,7 +1296,7 @@ function UserRow({
                         {/* System Administrators sit outside the department structure, so none of
                             these rows apply to them — including Gender, which is
                             only recorded to route leave the structure offers. */}
-                        {role !== 'System Administrator' && (
+                        {!isAdministratorRole(role) && (
                             <>
                                 <ExpandRow label="Gender" value={u.gender ?? '—'} />
                                 <ExpandRow label="Department" value={derived.departmentName ?? '—'} />
@@ -1332,8 +1338,8 @@ function UserRow({
                         )}
                     </ExpandBlock>
 
-                    <ExpandBlock title={role === 'Manager' || role === 'System Administrator' ? 'Reach' : 'Quick info'}>
-                        {role === 'Manager' || role === 'System Administrator' ? (
+                    <ExpandBlock title={role === 'Manager' || isAdministratorRole(role) ? 'Reach' : 'Quick info'}>
+                        {role === 'Manager' || isAdministratorRole(role) ? (
                             <DirectReports user={derived.user} role={role} />
                         ) : (
                             <>
@@ -1373,16 +1379,16 @@ function UserRow({
     )
 }
 
-function DirectReports({ user, role }: { user: AdminUser; role: 'System Administrator' | 'Manager' }) {
+function DirectReports({ user, role }: { user: AdminUser; role: UserRole }) {
     const { data: profiles = [] } = useQuery({ queryKey: ['employeeProfiles'], queryFn: getEmployeeProfiles })
     const { data: users = [] } = useQuery({ queryKey: ['adminUsers'], queryFn: getAdminUsers })
 
     const myProfile = profiles.find((p) => p.userId === user.id)
-    if (!myProfile && role !== 'System Administrator') {
+    if (!myProfile && !isAdministratorRole(role)) {
         return <Box sx={{ fontSize: 11, color: 'text.disabled', fontStyle: 'italic' }}>No profile linked</Box>
     }
 
-    const reports = role === 'System Administrator'
+    const reports = isAdministratorRole(role)
         ? users.filter((u) => u.id !== user.id)
         : profiles
             .filter((p) => p.managerId && myProfile && p.managerId === myProfile.id)
@@ -1399,7 +1405,7 @@ function DirectReports({ user, role }: { user: AdminUser; role: 'System Administ
     return (
         <>
             <Box sx={{ fontSize: 13, fontWeight: 600, color: 'text.primary', mb: '8px' }}>
-                {reports.length} {role === 'System Administrator' ? 'people in scope' : `report${reports.length === 1 ? '' : 's'}`}
+                {reports.length} {isAdministratorRole(role) ? 'people in scope' : `report${reports.length === 1 ? '' : 's'}`}
             </Box>
             <Box sx={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                 {visible.map((r) => (
@@ -1520,17 +1526,18 @@ function IconBtn({ title, onClick, disabled, danger, children }: {
     )
 }
 
-const roleStyles: Record<'System Administrator' | 'Manager' | 'Employee', { bg: SxColor; fg: string }> = {
-    'System Administrator':    { bg: softBg('secondary'), fg: 'secondary.dark' },
+const roleStyles: Record<UserRole, { bg: SxColor; fg: string }> = {
+    'System Administrator': { bg: softBg('secondary'), fg: 'secondary.dark' },
+    'HR Administrator': { bg: softBg('secondary'), fg: 'secondary.dark' },
     Manager:  { bg: softBg('warning'), fg: 'warning.dark' },
     Employee: { bg: softBg('info'), fg: 'info.dark' },
 }
 
-const roleIcons: Record<'System Administrator' | 'Manager' | 'Employee', string> = {
-    'System Administrator': '👑', Manager: '👥', Employee: '👤',
+const roleIcons: Record<UserRole, string> = {
+    'System Administrator': '👑', 'HR Administrator': '🛡️', Manager: '👥', Employee: '👤',
 }
 
-/** A caption over one section of the grouped list: System Administrators, Managers & teams, No manager assigned. */
+/** A caption over one section of the grouped list: Administrators, Managers & teams, No manager assigned. */
 function SectionHeading({ children }: { children: React.ReactNode }) {
     return (
         <Box component="h3" sx={{
@@ -1542,7 +1549,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 /** The role badge, shared by the list row and the Edit dialog's header. */
-function RolePill({ role }: { role: 'System Administrator' | 'Manager' | 'Employee' }) {
+function RolePill({ role }: { role: UserRole }) {
     return (
         <Box component="span" sx={{
             display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -1580,7 +1587,7 @@ function UserDialogHeader({ title, subtitle, avatarSeed, role }: {
     title: string
     subtitle: string
     avatarSeed?: string
-    role?: 'System Administrator' | 'Manager' | 'Employee'
+    role?: UserRole
 }) {
     return (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1715,7 +1722,7 @@ function EditUserDialog(props: {
     // back the stored value would strand a promoted user in the department they
     // just left, which is the whole thing being fixed: nothing may hold a
     // department for a System Administrator.
-    const isAdmin = role === 'System Administrator'
+    const isAdmin = isAdministratorRole(role)
     const effectiveDepartmentId = isAdmin ? null : departmentId
 
     // Derived from the live radio, not the stored role, so a demotion out of System Administrator
@@ -2015,7 +2022,7 @@ function CreateUserDialog(props: {
        required FK; that invented assignment then showed up as a real one, putting
        the admin in that department's team strip and headcount and blocking its
        deletion. A profile row is still written server-side, with no department. */
-    const isAdmin = role === 'System Administrator'
+    const isAdmin = isAdministratorRole(role)
     const effectiveDepartmentId = isAdmin ? null : departmentId
 
     // Only an employee reports to the department's manager — a manager *is* one, so

@@ -30,6 +30,7 @@ public class SeedDemoDataTeardownTests : IAsyncLifetime
     private const string AdminEmail = "systemadmin@annualleave.com";
     private static readonly string[] DemoEmails =
     [
+        DbInitializer.HrAdministratorDemoEmail,
         "manager1@annualleave.com",
         "manager2@annualleave.com",
         "employee1a@annualleave.com",
@@ -87,7 +88,7 @@ public class SeedDemoDataTeardownTests : IAsyncLifetime
     public async Task Turning_demo_data_off_removes_the_demo_accounts()
     {
         await StartupAsync(SeedPolicy.Unrestricted(demoData: true));
-        Assert.Equal(11, await Db.Users.CountAsync());
+        Assert.Equal(12, await Db.Users.CountAsync());
 
         await StartupAsync(SeedPolicy.Unrestricted(demoData: false));
 

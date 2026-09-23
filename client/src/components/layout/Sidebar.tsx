@@ -45,6 +45,7 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import { ThemeProvider } from '@mui/material/styles'
 import { buildTheme } from '../../lib/theme'
+import { isAdministrator, isSystemAdministrator } from '../../lib/roles'
 import { AppDialog, AppDialogTitle, AppDialogContent, AppDialogActions, cancelBtnSx, saveBtnSx } from '../ui'
 import ChildrenSection from './ChildrenSection'
 import { updateProfile, uploadProfileImage } from '../../lib/api'
@@ -93,7 +94,10 @@ const Sidebar = observer(function Sidebar() {
     // mode). Memoize so the nested theme only rebuilds when sidebarMode flips.
     const sidebarTheme = useMemo(() => buildTheme(uiStore.sidebarMode), [uiStore.sidebarMode])
 
-    const isAdminUser = authStore.user?.roles?.includes('System Administrator') ?? false
+    const isAdminUser = isAdministrator(authStore.user?.roles)
+    // The hand on the configuration, as opposed to the reach: an HR Administrator has the
+    // latter (Leave & Time, company-wide) and none of the former (People, Configuration, System).
+    const isSystemAdminUser = isSystemAdministrator(authStore.user?.roles)
     const isManagerUser = authStore.user?.roles?.includes('Manager') ?? false
     const shouldShowDepartment = !isAdminUser
     /* Same reasoning one step further down the dialog: the children question and
@@ -111,8 +115,10 @@ const Sidebar = observer(function Sidebar() {
         .slice(0, 2)
         .map((p) => p[0]?.toUpperCase() ?? '')
         .join('')
-    const roleLabel = isAdminUser
+    const roleLabel = isSystemAdminUser
         ? 'Administrator'
+        : isAdminUser
+            ? 'HR Administrator'
         : isManagerUser
             ? `Manager · ${authStore.user?.departmentName ?? ''}`
             : `Employee · ${authStore.user?.departmentName ?? ''}`
@@ -216,28 +222,41 @@ const Sidebar = observer(function Sidebar() {
             // One flat "Administration" list put eight unrelated pages in a row, four of
             // them opening with the same word. Split it by what each page administers,
             // which also lets the project pages drop the prefix their own header carries.
-            { kind: 'section', label: 'People' },
-            { kind: 'item', label: 'Users', icon: <PeopleRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('users'), active: onAdminSection('users') },
-            // Not the Apartment icon: "Attendance" below already reads as that.
-            { kind: 'item', label: 'Departments', icon: <AccountTreeRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('departments'), active: onAdminSection('departments') },
-            { kind: 'section', label: 'Leave & Time' },
-            { kind: 'item', label: 'Leave Management', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToTeamLeave(), active: onPage('/leave-management') },
-            { kind: 'item', label: 'Attendance', icon: <ApartmentRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToCompanyAttendance(), active: onPage('/attendance-management') },
-            { kind: 'item', label: 'Timesheets', icon: <AccessTimeRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToTeamTimesheets(), active: onPage('/timesheets-management') },
-            { kind: 'section', label: 'Configuration' },
-            { kind: 'section', label: 'Project Setting', sub: true },
-            { kind: 'item', label: 'Projects', icon: <FolderRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('projects'), active: onAdminSection('projects'), indent: true },
-            { kind: 'item', label: 'Activities', icon: <CategoryRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('project-activities'), active: onAdminSection('project-activities'), indent: true },
-            { kind: 'item', label: 'Components', icon: <ExtensionRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('components'), active: onAdminSection('components'), indent: true },
-            { kind: 'item', label: 'Project Types', icon: <StyleRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('project-types'), active: onAdminSection('project-types'), indent: true },
-            { kind: 'section', label: 'Leave Setting', sub: true },
-            { kind: 'item', label: 'Leave Types', icon: <LabelRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('leave-types'), active: onAdminSection('leave-types', 'leave'), indent: true },
-            { kind: 'section', label: 'System' },
-            // Named for everything it holds: the leave year, the timesheet policy, the
-            // public-holiday country and the working week all live on this one page.
-            { kind: 'item', label: 'Organization', icon: <EventRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('organization'), active: onAdminSection('organization') },
-            { kind: 'item', label: 'Notification Settings', icon: <NotificationsActiveRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('reminders-notifications'), active: onAdminSection('reminders-notifications') },
-            { kind: 'item', label: 'Data Maintenance', icon: <StorageRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('maintenance'), active: onAdminSection('maintenance') },
+            // People, Configuration and System are system administration — the System
+            // Administrator's alone. An HR Administrator gets Overview and Leave & Time
+            // instead; the /admin/* routes are gated the same way in App.tsx, so this
+            // hides nothing that would open anyway.
+            ...(isSystemAdminUser ? [
+                { kind: 'section', label: 'People' } as NavEntry,
+                { kind: 'item', label: 'Users', icon: <PeopleRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('users'), active: onAdminSection('users') } as NavEntry,
+                // Not the Apartment icon: "Attendance" below already reads as that.
+                { kind: 'item', label: 'Departments', icon: <AccountTreeRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('departments'), active: onAdminSection('departments') } as NavEntry,
+            ] : []),
+            // Leave & Time is the HR Administrator's. The System Administrator configures the
+            // workspace and neither files nor decides leave, so the section is not theirs —
+            // and App.tsx gates the routes behind it the same way.
+            ...(!isSystemAdminUser ? [
+                { kind: 'section', label: 'Leave & Time' } as NavEntry,
+                { kind: 'item', label: 'Leave Management', icon: <CalendarMonthRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToTeamLeave(), active: onPage('/leave-management') } as NavEntry,
+                { kind: 'item', label: 'Attendance', icon: <ApartmentRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToCompanyAttendance(), active: onPage('/attendance-management') } as NavEntry,
+                { kind: 'item', label: 'Timesheets', icon: <AccessTimeRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToTeamTimesheets(), active: onPage('/timesheets-management') } as NavEntry,
+            ] : []),
+            ...(isSystemAdminUser ? [
+                { kind: 'section', label: 'Configuration' } as NavEntry,
+                { kind: 'section', label: 'Project Setting', sub: true } as NavEntry,
+                { kind: 'item', label: 'Projects', icon: <FolderRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('projects'), active: onAdminSection('projects'), indent: true } as NavEntry,
+                { kind: 'item', label: 'Activities', icon: <CategoryRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('project-activities'), active: onAdminSection('project-activities'), indent: true } as NavEntry,
+                { kind: 'item', label: 'Components', icon: <ExtensionRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('components'), active: onAdminSection('components'), indent: true } as NavEntry,
+                { kind: 'item', label: 'Project Types', icon: <StyleRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('project-types'), active: onAdminSection('project-types'), indent: true } as NavEntry,
+                { kind: 'section', label: 'Leave Setting', sub: true } as NavEntry,
+                { kind: 'item', label: 'Leave Types', icon: <LabelRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('leave-types'), active: onAdminSection('leave-types', 'leave'), indent: true } as NavEntry,
+                { kind: 'section', label: 'System' } as NavEntry,
+                // Named for everything it holds: the leave year, the timesheet policy, the
+                // public-holiday country and the working week all live on this one page.
+                { kind: 'item', label: 'Organization', icon: <EventRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('organization'), active: onAdminSection('organization') } as NavEntry,
+                { kind: 'item', label: 'Notification Settings', icon: <NotificationsActiveRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('reminders-notifications'), active: onAdminSection('reminders-notifications') } as NavEntry,
+                { kind: 'item', label: 'Data Maintenance', icon: <StorageRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('maintenance'), active: onAdminSection('maintenance') } as NavEntry,
+            ] : []),
         ]
     } else if (isManagerUser) {
         // A manager reads two kinds of page: their own records and their team's.

@@ -28,7 +28,7 @@ public class AttendanceController : BaseApiController
         ?? User.Identity?.Name
         ?? string.Empty;
 
-    private bool IsAdmin => User.IsInRole(AppRoles.SystemAdministrator);
+    private bool IsAdmin => User.IsAdministrator();
 
     // GET: api/attendance/me/today
     [HttpGet("me/today")]
@@ -86,7 +86,7 @@ public class AttendanceController : BaseApiController
 
     // GET: api/attendance/team
     [HttpGet("team")]
-    [Authorize(Roles = AppRoles.SystemAdministrator + "," + AppRoles.Manager)]
+    [Authorize(Roles = AppRoles.LeaveAndTimeDecisionRoles)]
     [ProducesResponseType(typeof(TeamAttendanceDto), StatusCodes.Status200OK)]
     public async Task<ActionResult> GetTeam(CancellationToken cancellationToken) =>
         HandleResult(await Mediator.Send(
@@ -95,7 +95,7 @@ public class AttendanceController : BaseApiController
 
     // GET: api/attendance/team/history
     [HttpGet("team/history")]
-    [Authorize(Roles = AppRoles.SystemAdministrator + "," + AppRoles.Manager)]
+    [Authorize(Roles = AppRoles.LeaveAndTimeDecisionRoles)]
     [ProducesResponseType(typeof(TeamHistoryDto), StatusCodes.Status200OK)]
     public async Task<ActionResult> GetTeamHistory(
         [FromQuery] int days = GetTeamAttendanceHistory.DefaultDays,
@@ -111,14 +111,14 @@ public class AttendanceController : BaseApiController
 
     // GET: api/attendance/presence
     [HttpGet("presence")]
-    [Authorize(Roles = AppRoles.SystemAdministrator)]
+    [Authorize(Roles = AppRoles.AdministratorRoles)]
     [ProducesResponseType(typeof(List<UserPresenceDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult> GetPresence(CancellationToken cancellationToken) =>
         HandleResult(await Mediator.Send(new GetUserPresence.Query(), cancellationToken));
 
     // GET: api/attendance/company
     [HttpGet("company")]
-    [Authorize(Roles = AppRoles.SystemAdministrator)]
+    [Authorize(Roles = AppRoles.AdministratorRoles)]
     [ProducesResponseType(typeof(CompanyAttendanceDto), StatusCodes.Status200OK)]
     public async Task<ActionResult> GetCompany(CancellationToken cancellationToken) =>
         HandleResult(await Mediator.Send(new GetCompanyAttendance.Query(), cancellationToken));

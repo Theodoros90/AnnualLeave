@@ -54,7 +54,7 @@ public class GetTeammateList
                 .Where(ep =>
                     ep.DepartmentId == myDepartmentId
                     && ep.UserId != subjectUserId
-                    && (ep.User == null || !ep.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator)))
+                    && (ep.User == null || !ep.User.UserRoles.Any(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!))))
                 .Select(ep => new TeammateDto
                 {
                     UserId = ep.UserId,

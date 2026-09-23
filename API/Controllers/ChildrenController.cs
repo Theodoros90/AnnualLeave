@@ -21,7 +21,7 @@ public class ChildrenController : BaseApiController
 {
     private string CallerUserId => User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 
-    private bool IsAdmin => User.IsInRole(AppRoles.SystemAdministrator);
+    private bool IsAdmin => User.IsAdministrator();
     private bool IsManager => User.IsInRole(AppRoles.Manager);
 
     [HttpGet]

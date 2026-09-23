@@ -81,7 +81,7 @@ public static class AttendanceDay
     /// </summary>
     public static IQueryable<EmployeeProfile> ExcludeAdmins(IQueryable<EmployeeProfile> profiles) =>
         profiles.Where(p => p.User == null
-            || !p.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator));
+            || !p.User.UserRoles.Any(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!)));
 
     /// <summary>
     /// The refusal for a caller with no employee profile, phrased identically

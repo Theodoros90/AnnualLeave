@@ -65,7 +65,7 @@ public class UpdateAdminUserValidator : AbstractValidator<UpdateAdminUser.Comman
                     var isAdmin = await context.Users
                         .Where(u => u.Id == validationContext.InstanceToValidate.Id)
                         .SelectMany(u => u.UserRoles)
-                        .AnyAsync(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator, cancellationToken);
+                        .AnyAsync(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!), cancellationToken);
 
                     if (isAdmin)
                     {

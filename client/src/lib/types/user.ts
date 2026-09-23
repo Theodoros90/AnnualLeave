@@ -1,4 +1,4 @@
-export type UserRole = 'System Administrator' | 'Manager' | 'Employee'
+export type UserRole = 'System Administrator' | 'HR Administrator' | 'Manager' | 'Employee'
 
 /**
  * Recorded HR data an admin maintains. A string union rather than a number

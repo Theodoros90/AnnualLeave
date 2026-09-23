@@ -273,7 +273,7 @@ public class ReminderDispatcher(
             return;
         }
 
-        var admins = await GetUsersInRoleAsync(AppRoles.SystemAdministrator, ct);
+        var admins = await GetUsersInRolesAsync(AppRoles.Administrators, ct);
         var managers = await GetManagersWithDepartmentAsync(ct);
 
         string LineHtml(string name, DateOnly date, int age) =>
@@ -440,7 +440,7 @@ public class ReminderDispatcher(
             return;
         }
 
-        var admins = await GetUsersInRoleAsync(AppRoles.SystemAdministrator, ct);
+        var admins = await GetUsersInRolesAsync(AppRoles.Administrators, ct);
         if (admins.Count == 0)
         {
             logger.LogInformation("daily-attendance-report: no admin with an email address; nothing sent.");
@@ -771,14 +771,14 @@ public class ReminderDispatcher(
     private record UserContact(string UserId, string Email, string? DisplayName);
     private record ManagerContact(string UserId, string Email, string? DisplayName, int DepartmentId);
 
-    private async Task<List<UserContact>> GetUsersInRoleAsync(string roleName, CancellationToken ct)
+    private async Task<List<UserContact>> GetUsersInRolesAsync(IReadOnlyList<string> roleNames, CancellationToken ct)
     {
-        var roleId = await context.Roles.Where(r => r.Name == roleName).Select(r => r.Id).FirstOrDefaultAsync(ct);
-        if (roleId is null) return [];
+        var roleIds = await context.Roles.Where(r => roleNames.Contains(r.Name!)).Select(r => r.Id).ToListAsync(ct);
+        if (roleIds.Count == 0) return [];
 
         return await (
             from ur in context.UserRoles
-            where ur.RoleId == roleId
+            where roleIds.Contains(ur.RoleId)
             join u in context.Users on ur.UserId equals u.Id
             where u.Email != null && u.Email != ""
             select new UserContact(u.Id, u.Email!, u.DisplayName)

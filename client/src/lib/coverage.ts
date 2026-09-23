@@ -1,4 +1,5 @@
 import type { UserRole } from './types'
+import { isAdministrator } from './roles'
 
 /**
  * Whether a leave request has to name a colleague to cover it.
@@ -9,7 +10,7 @@ import type { UserRole } from './types'
  * disagreement shows up as a button that only fails when pressed, the same trap
  * `attachment-policy.ts` guards against.
  *
- * The rule: required for an Employee and a Manager, not for a System Administrator. A System Administrator
+ * The rule: required for an Employee and a Manager, not for an administrator (System or HR). An administrator
  * has no department, so the picker — which offers department colleagues — would
  * offer them nobody, and a required field with nothing to put in it is a form
  * that cannot be submitted. The server reads the *employee's* stored role, so an
@@ -26,7 +27,7 @@ export const COVERAGE_NOTE_MAX_LENGTH = 1000
 
 export function isCoverageRequired(roles: readonly UserRole[] | null | undefined): boolean {
     if (!roles) return false
-    return !roles.includes('System Administrator')
+    return !isAdministrator(roles)
 }
 
 /** The refusal for `delegateId` under `roles`, or null when there is none. Whitespace is not a delegate. */

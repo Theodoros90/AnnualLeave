@@ -6,7 +6,7 @@ import type { CompanyAttendance, UserInfo } from '../../lib/types'
 import CompanyAttendancePage from './CompanyAttendancePage'
 import DashboardHome from '../annual-leave/DashboardHome'
 
-// An admin reaching Company Attendance has just scrolled past the dashboard's
+// An HR Administrator reaching Company Attendance has just scrolled past the dashboard's
 // "Today's issues" and "Recent activity" cards, which read the same query. The
 // two surfaces used to disagree about the same person: this page marked everyone
 // without a check-in 🔴 and "flagged", while the dashboard's icon map tested
@@ -19,13 +19,16 @@ vi.mock('../../lib/mobx')
 const api = vi.mocked(await import('../../lib/api'))
 const mobx = vi.mocked(await import('../../lib/mobx'))
 
+// The HR Administrator: Leave & Time is theirs, so their dashboard is the one that
+// carries "Today's issues" and "Recent activity" beside this page. (The System
+// Administrator's dashboard is about the workspace and reads none of this.)
 const ADMIN: UserInfo = {
-    id: 'u-admin',
-    userName: 'systemadmin@annualleave.com',
-    email: 'systemadmin@annualleave.com',
-    displayName: 'Admin User',
+    id: 'u-hr',
+    userName: 'hradmin@annualleave.com',
+    email: 'hradmin@annualleave.com',
+    displayName: 'HR Admin',
     imageUrl: '',
-    roles: ['System Administrator'],
+    roles: ['HR Administrator'],
 }
 
 /* The 13:00 shape of one company day: two of twelve working, ten with no
@@ -102,6 +105,9 @@ beforeEach(() => {
     api.getAnnualLeaves.mockResolvedValue([])
     api.getTimesheets.mockResolvedValue([])
     api.getDepartments.mockResolvedValue([])
+    api.getLeaveTypes.mockResolvedValue([])
+    api.getEmployeeProfiles.mockResolvedValue([])
+    api.getAppSettings.mockResolvedValue({ leaveYearStartMonth: 1 } as never)
     mobx.useStore.mockReturnValue({
         authStore: { user: ADMIN },
         uiStore: { navigateToCompanyAttendance: vi.fn() },

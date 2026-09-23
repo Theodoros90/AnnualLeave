@@ -1,6 +1,7 @@
 import { useMemo, useState, type MouseEvent } from 'react'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import { softBg } from '../../lib/theme-tokens'
+import { isAdministrator } from '../../lib/roles'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
@@ -57,7 +58,7 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
     const [rejectComment, setRejectComment] = useState('')
     const [actionsAnchorEl, setActionsAnchorEl] = useState<null | HTMLElement>(null)
 
-    const isAdmin = user.roles.includes('System Administrator')
+    const isAdmin = isAdministrator(user.roles)
     const isManager = user.roles.includes('Manager')
     const isOwnLeave = leave.employeeId === user.id
 

@@ -20,7 +20,7 @@ public class ProjectsController : BaseApiController
         return await Mediator.Send(new GetProjectList.Query
         {
             RequestingUserId = ResolveUserId(),
-            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
+            IsAdmin = User.IsAdministrator(),
             IsManager = User.IsInRole(AppRoles.Manager),
         });
     }

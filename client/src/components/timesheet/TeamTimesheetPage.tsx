@@ -26,6 +26,7 @@ import { approveTimesheet, getDepartments, getProjects, getProjectActivityTypes,
 import type { TimesheetEntry, TimesheetStatus, UserInfo } from '../../lib/types'
 import type { Timesheet } from '../../lib/types/timesheet'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
+import { isAdministrator } from '../../lib/roles'
 
 
 const STATUS_COLORS: Record<string, { bg: SxColor; color: string }> = {
@@ -112,7 +113,7 @@ const TD = {
 }
 
 const TeamTimesheetPage = observer(function TeamTimesheetPage({ user }: { user: UserInfo }) {
-    const isAdmin = user.roles.includes('System Administrator')
+    const isAdmin = isAdministrator(user.roles)
     const isManager = user.roles.includes('Manager')
     const queryClient = useQueryClient()
 
