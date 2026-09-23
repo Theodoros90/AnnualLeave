@@ -43,7 +43,7 @@ import type {
     AdminCreateUserRequest, AdminUser, Department, EmployeeProfile, Gender, LeaveStatusHistory, PresenceStatus,
     TimesheetStatusHistory, UpsertChildRequest, UserRole,
 } from '../../lib/types'
-import { isAdministratorRole } from '../../lib/roles'
+import { isAdministrator, isAdministratorRole } from '../../lib/roles'
 
 const PROTECTED_ADMIN_EMAIL = 'systemadmin@annualleave.com'
 const ALL_ROLES: UserRole[] = ['System Administrator', 'HR Administrator', 'Manager', 'Employee']
@@ -1465,6 +1465,16 @@ function UserRow({
 function DirectReports({ user, role }: { user: AdminUser; role: UserRole }) {
     const { data: profiles = [] } = useQuery({ queryKey: ['employeeProfiles'], queryFn: getEmployeeProfiles })
     const { data: users = [] } = useQuery({ queryKey: ['adminUsers'], queryFn: getAdminUsers })
+    const { data: departments = [] } = useQuery({ queryKey: ['departments'], queryFn: getDepartments })
+
+    /* An HR Administrator's reach is the departments assigned to them, not the
+       company — so their block is an org chart of exactly those departments, the
+       way the main list draws a team: the manager as the parent, their employees
+       nested underneath. Counting every account here, as it once did for any
+       administrator, would have shown a reach the API no longer grants. */
+    if (role === 'HR Administrator') {
+        return <HrReach user={user} users={users} profiles={profiles} departments={departments} />
+    }
 
     const myProfile = profiles.find((p) => p.userId === user.id)
     if (!myProfile && !isAdministratorRole(role)) {
@@ -1510,6 +1520,98 @@ function DirectReports({ user, role }: { user: AdminUser; role: UserRole }) {
                 )}
             </Box>
         </>
+    )
+}
+
+/**
+ * The departments an HR Administrator runs, each drawn as a small team tree:
+ * the department's Manager first, their Employees indented beneath, and any
+ * employee of the department who reports to nobody at the department level.
+ * Administrators never appear — they sit outside every department — and the
+ * HR Administrator's own row is not their own reach.
+ */
+function HrReach({ user, users, profiles, departments }: {
+    user: AdminUser
+    users: AdminUser[]
+    profiles: EmployeeProfile[]
+    departments: Department[]
+}) {
+    const assigned = user.departmentIds ?? []
+    if (assigned.length === 0) {
+        return <Box sx={{ fontSize: 11, color: 'text.disabled', fontStyle: 'italic' }}>No departments assigned</Box>
+    }
+
+    const userById = new Map(users.map((u) => [u.id, u]))
+
+    const groups = assigned
+        .map((id) => departments.find((d) => d.id === id) ?? { id, name: `Department #${id}`, code: '', isActive: true, createdAt: '' })
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((department) => {
+            const members = profiles
+                .filter((p) => p.departmentId === department.id && p.userId !== user.id)
+                .map((p) => ({ profile: p, user: userById.get(p.userId) }))
+                .filter((m): m is { profile: EmployeeProfile; user: AdminUser } => !!m.user && !isAdministrator(m.user.roles))
+            const managers = members
+                .filter((m) => primaryRoleOf(m.user.roles) === 'Manager')
+                .sort((a, b) => (a.user.displayName || a.user.email).localeCompare(b.user.displayName || b.user.email))
+            const managerProfileIds = new Set(managers.map((m) => m.profile.id))
+            const reportsOf = (managerProfileId: string) => members
+                .filter((m) => m.profile.managerId === managerProfileId && !managerProfileIds.has(m.profile.id))
+                .sort((a, b) => (a.user.displayName || a.user.email).localeCompare(b.user.displayName || b.user.email))
+            const unassigned = members
+                .filter((m) => !managerProfileIds.has(m.profile.id)
+                    && !(m.profile.managerId && managerProfileIds.has(m.profile.managerId)))
+                .sort((a, b) => (a.user.displayName || a.user.email).localeCompare(b.user.displayName || b.user.email))
+            return { department, count: members.length, managers, reportsOf, unassigned }
+        })
+
+    const person = (u: AdminUser) => (
+        <Box key={u.id} sx={{ display: 'flex', alignItems: 'center', gap: '8px', py: '3px', minWidth: 0 }}>
+            <Box sx={{
+                width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                bgcolor: avatarBg(u.displayName || u.email), color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 600,
+            }}>{initials(u.displayName || u.email)}</Box>
+            <Box sx={{ fontSize: 12, fontWeight: 500, color: 'text.primary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {u.displayName || u.email}
+            </Box>
+            <Box sx={{ ml: 'auto', flexShrink: 0 }}><RolePill role={primaryRoleOf(u.roles)} /></Box>
+        </Box>
+    )
+
+    return (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {groups.map(({ department, count, managers, reportsOf, unassigned }) => (
+                <Box key={department.id}>
+                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: '6px', mb: '4px' }}>
+                        <Box sx={{ fontSize: 12, fontWeight: 600, color: 'text.primary' }}>
+                            {department.name}{department.code ? ` (${department.code})` : ''}
+                        </Box>
+                        <Box sx={{ fontSize: 11, color: 'text.secondary' }}>
+                            · {count} {count === 1 ? 'person' : 'people'}
+                        </Box>
+                    </Box>
+                    {count === 0 && (
+                        <Box sx={{ fontSize: 11, color: 'text.disabled', fontStyle: 'italic' }}>Nobody in this department</Box>
+                    )}
+                    {managers.map((m) => {
+                        const name = m.user.displayName || m.user.email
+                        const reports = reportsOf(m.profile.id)
+                        return (
+                            <Box key={m.user.id}>
+                                {person(m.user)}
+                                {reports.length > 0 && (
+                                    <Box role="group" aria-label={`${name}'s team`} sx={{ ml: '11px', pl: '12px', borderLeft: '2px solid', borderColor: 'divider' }}>
+                                        {reports.map((r) => person(r.user))}
+                                    </Box>
+                                )}
+                            </Box>
+                        )
+                    })}
+                    {unassigned.map((m) => person(m.user))}
+                </Box>
+            ))}
+        </Box>
     )
 }
 

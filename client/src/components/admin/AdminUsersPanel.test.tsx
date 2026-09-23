@@ -2057,4 +2057,69 @@ describe('AdminUsersPanel — HR Administrator departments', () => {
         expect(await within(dialog).findByText('Old Guard (OLD)')).toBeInTheDocument()
         expect(within(dialog).getByRole('button', { name: /^save$/i })).toBeEnabled()
     })
+
+    /* The expanded row's Reach block used to count every account for any
+       administrator. An HR Administrator's reach is the departments assigned to
+       them, so the block lists those departments as an org chart — the manager as
+       the parent, their employees nested underneath — and nobody from elsewhere. */
+    describe('Reach on the expanded row', () => {
+        const ENG_MANAGER = {
+            id: 'u-eng-mgr', userName: 'em@example.test', email: 'em@example.test', displayName: 'Eng Manager',
+            imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Manager'],
+        }
+        const ENG_EMPLOYEE = {
+            id: 'u-eng-emp', userName: 'ee@example.test', email: 'ee@example.test', displayName: 'Eng Employee',
+            imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'],
+        }
+        const FIN_EMPLOYEE = {
+            id: 'u-fin-emp', userName: 'fe@example.test', email: 'fe@example.test', displayName: 'Fin Employee',
+            imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'],
+        }
+        const profile = (id: string, userId: string, departmentId: number, managerId: string | null) => ({
+            id, userId, displayName: id, departmentId, managerId, annualLeaveEntitlement: 20, leaveBalance: 20,
+            jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01',
+        })
+
+        async function expandHrRow() {
+            api.getAdminUsers.mockResolvedValue([HR_USER, ENG_MANAGER, ENG_EMPLOYEE, FIN_EMPLOYEE] as never)
+            api.getEmployeeProfiles.mockResolvedValue([
+                HR_PROFILE,
+                profile('p-eng-mgr', ENG_MANAGER.id, DEPARTMENT.id, null),
+                profile('p-eng-emp', ENG_EMPLOYEE.id, DEPARTMENT.id, 'p-eng-mgr'),
+                profile('p-fin-emp', FIN_EMPLOYEE.id, FINANCE.id, null),
+            ] as never)
+            renderPanel()
+            fireEvent.click(await screen.findByText('Hana HR'))
+            const row = document.querySelector(`[data-testid="user-row"][data-user-id="${HR_USER.id}"]`) as HTMLElement
+            return within(row)
+        }
+
+        it("lists the assigned department's manager with their employees nested, and nobody else", async () => {
+            const row = await expandHrRow()
+
+            const reach = await row.findByText('Reach')
+            expect(reach).toBeInTheDocument()
+            expect(row.getByText(/Engineering \(ENG\)/)).toBeInTheDocument()
+            expect(row.getByText(/2 people/)).toBeInTheDocument()
+
+            const team = row.getByRole('group', { name: "Eng Manager's team" })
+            expect(within(team).getByText('Eng Employee')).toBeInTheDocument()
+            expect(row.getByText('Eng Manager')).toBeInTheDocument()
+
+            expect(row.queryByText('Fin Employee')).not.toBeInTheDocument()
+            expect(row.queryByText(/Finance/)).not.toBeInTheDocument()
+            expect(row.queryByText(/people in scope/)).not.toBeInTheDocument()
+        })
+
+        it('says so when no department is assigned', async () => {
+            api.getAdminUsers.mockResolvedValue([{ ...HR_USER, departmentIds: [] }, ENG_MANAGER] as never)
+            api.getEmployeeProfiles.mockResolvedValue([HR_PROFILE, profile('p-eng-mgr', ENG_MANAGER.id, DEPARTMENT.id, null)] as never)
+            renderPanel()
+            fireEvent.click(await screen.findByText('Hana HR'))
+            const row = within(document.querySelector(`[data-testid="user-row"][data-user-id="${HR_USER.id}"]`) as HTMLElement)
+
+            expect(await row.findByText('No departments assigned')).toBeInTheDocument()
+            expect(row.queryByText('Eng Manager')).not.toBeInTheDocument()
+        })
+    })
 })
