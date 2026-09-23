@@ -1,3 +1,4 @@
+using Application.Core;
 using Domain;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -10,7 +11,8 @@ namespace API.Hubs;
 [Authorize]
 public class NotificationsHub : Hub
 {
-    // One group for every administrator role, since they receive the same events.
+    // The unscoped audience: System Administrators. An HR Administrator is in the
+    // per-department groups below instead.
     public const string AdminGroup = "role:administrators";
 
     public static string DepartmentManagerGroup(int departmentId) => $"dept-mgr:{departmentId}";
@@ -45,22 +47,18 @@ public class NotificationsHub : Hub
 
         var roles = await _userManager.GetRolesAsync(user);
 
-        if (roles.Any(AppRoles.IsAdministrator))
+        // The admin group is the unscoped audience: System Administrators only.
+        if (roles.Contains(AppRoles.SystemAdministrator))
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, AdminGroup);
         }
 
-        if (roles.Contains(AppRoles.Manager))
+        // A Manager and an HR Administrator hear about their departments — the same
+        // set every query scopes them to, from the same resolver.
+        if (roles.Any(role => AppRoles.DepartmentScopedRoles.Contains(role)))
         {
-            // Manager's audience scope follows the existing visibility model:
-            // the department(s) attached to the manager's own EmployeeProfile.
-            var managedDeptIds = await _context.EmployeeProfiles
-                .Where(ep => ep.UserId == user.Id && ep.DepartmentId != null)
-                .Select(ep => ep.DepartmentId!.Value)
-                .Distinct()
-                .ToListAsync();
-
-            foreach (var deptId in managedDeptIds)
+            var scope = await ManagerAccessScopeResolver.ResolveAsync(_context, user.Id, Context.ConnectionAborted);
+            foreach (var deptId in scope.ManagedDepartmentIds)
             {
                 await Groups.AddToGroupAsync(Context.ConnectionId, DepartmentManagerGroup(deptId));
             }

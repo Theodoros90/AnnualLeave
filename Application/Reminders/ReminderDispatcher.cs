@@ -21,7 +21,8 @@ namespace Application.Reminders;
 //   • birthday-reminder — admins/managers told of upcoming employee birthdays
 //   • check-in          — employees who have not yet checked in today (never System Administrators)
 //   • check-out         — employees still checked in (no check-out) today (never System Administrators)
-//   • daily-attendance-report — admins told, each working morning, who was late,
+//   • daily-attendance-report — System Administrators told (company-wide) and HR Administrators
+//                         (their departments), each working morning, who was late,
 //                         absent, still checked in, over hours, behind on a
 //                         timesheet or on leave the previous working day
 // Other ids are accepted but logged as not-implemented rather than failing.
@@ -244,8 +245,8 @@ public class ReminderDispatcher(
     }
 
     // ── birthday-reminder ────────────────────────────────────────────────────
-    // Notifies admins (whole org) and managers (their department) of employees
-    // whose birthday falls within the next BirthdayLookaheadDays.
+    // Notifies System Administrators (whole org), HR Administrators (their departments) and managers (their department)
+    // of employees whose birthday falls within the next BirthdayLookaheadDays.
     private async Task BirthdayRemindersAsync(AppSettings settings, CancellationToken ct)
     {
         var people = await context.EmployeeProfiles
@@ -273,7 +274,8 @@ public class ReminderDispatcher(
             return;
         }
 
-        var admins = await GetUsersInRolesAsync(AppRoles.Administrators, ct);
+        var admins = await GetUsersInRolesAsync([AppRoles.SystemAdministrator], ct);
+        var hrAdmins = await GetHrAdministratorsAsync(ct);
         var managers = await GetManagersWithDepartmentAsync(ct);
 
         string LineHtml(string name, DateOnly date, int age) =>
@@ -291,9 +293,18 @@ public class ReminderDispatcher(
                 if (await SendEmailAsync(admin.Email, "Jenus People: upcoming birthdays 🎂", html, text, ct)) sent++;
             }
 
+            foreach (var hr in hrAdmins)
+            {
+                var scoped = upcoming.Where(u => u.DepartmentId != null && hr.DepartmentIds.Contains(u.DepartmentId.Value)).ToList();
+                if (scoped.Count == 0) continue;
+                var html = $"<p>Hello {WebUtility.HtmlEncode(hr.DisplayName ?? hr.Email)},</p><p>Upcoming birthdays in your departments:</p><ul>{string.Join("", scoped.Select(u => LineHtml(u.Name, u.Date, u.TurningAge)))}</ul>";
+                var text = $"Hello {hr.DisplayName ?? hr.Email},\n\nUpcoming birthdays in your departments:\n{string.Join("\n", scoped.Select(u => LineText(u.Name, u.Date, u.TurningAge)))}";
+                if (await SendEmailAsync(hr.Email, "Jenus People: upcoming birthdays 🎂", html, text, ct)) sent++;
+            }
+
             foreach (var mgr in managers)
             {
-                if (admins.Any(a => a.UserId == mgr.UserId)) continue;
+                if (admins.Any(a => a.UserId == mgr.UserId) || hrAdmins.Any(h => h.UserId == mgr.UserId)) continue;
                 var deptUpcoming = upcoming.Where(u => u.DepartmentId == mgr.DepartmentId).ToList();
                 if (deptUpcoming.Count == 0) continue;
                 var html = $"<p>Hello {WebUtility.HtmlEncode(mgr.DisplayName ?? mgr.Email)},</p><p>Upcoming birthdays in your department:</p><ul>{string.Join("", deptUpcoming.Select(u => LineHtml(u.Name, u.Date, u.TurningAge)))}</ul>";
@@ -440,25 +451,33 @@ public class ReminderDispatcher(
             return;
         }
 
-        var admins = await GetUsersInRolesAsync(AppRoles.Administrators, ct);
-        if (admins.Count == 0)
+        var admins = await GetUsersInRolesAsync([AppRoles.SystemAdministrator], ct);
+        var hrAdmins = await GetHrAdministratorsAsync(ct);
+        if (admins.Count == 0 && hrAdmins.Count == 0)
         {
-            logger.LogInformation("daily-attendance-report: no admin with an email address; nothing sent.");
+            logger.LogInformation("daily-attendance-report: no administrator with an email address; nothing sent.");
             return;
         }
-
-        var report = await BuildDailyAttendanceReportAsync(settings, reportDay.Value, ct);
 
         var sent = 0;
         if (settings.EmailNotificationsEnabled)
         {
-            var subject = $"Jenus People: attendance report for {report.Day:ddd dd MMM yyyy}";
+            DailyReport? company = admins.Count > 0 ? await BuildDailyAttendanceReportAsync(settings, reportDay.Value, null, ct) : null;
+            var subject = $"Jenus People: attendance report for {reportDay.Value:ddd dd MMM yyyy}";
             foreach (var admin in admins)
             {
-                var html = RenderDailyReportHtml(admin.DisplayName ?? admin.Email, report);
-                var text = RenderDailyReportText(admin.DisplayName ?? admin.Email, report);
-                if (await SendEmailAsync(admin.Email, subject, html, text, ct))
-                    sent++;
+                var html = RenderDailyReportHtml(admin.DisplayName ?? admin.Email, company!);
+                var text = RenderDailyReportText(admin.DisplayName ?? admin.Email, company!);
+                if (await SendEmailAsync(admin.Email, subject, html, text, ct)) sent++;
+            }
+
+            // One report per HR Administrator, over their departments alone.
+            foreach (var hr in hrAdmins)
+            {
+                var scoped = await BuildDailyAttendanceReportAsync(settings, reportDay.Value, hr.DepartmentIds, ct);
+                var html = RenderDailyReportHtml(hr.DisplayName ?? hr.Email, scoped);
+                var text = RenderDailyReportText(hr.DisplayName ?? hr.Email, scoped);
+                if (await SendEmailAsync(hr.Email, subject, html, text, ct)) sent++;
             }
         }
         else
@@ -466,7 +485,7 @@ public class ReminderDispatcher(
             logger.LogInformation("daily-attendance-report: email notifications disabled; skipping emails.");
         }
 
-        logger.LogInformation("daily-attendance-report: dispatched for {Day}. Emails sent: {Sent}.", report.Day, sent);
+        logger.LogInformation("daily-attendance-report: dispatched for {Day}. Emails sent: {Sent}.", reportDay.Value, sent);
     }
 
     private sealed record DailyReport(
@@ -479,10 +498,16 @@ public class ReminderDispatcher(
         List<string> TimesheetNotSubmitted,
         List<string> OnLeave);
 
-    private async Task<DailyReport> BuildDailyAttendanceReportAsync(AppSettings settings, DateOnly day, CancellationToken ct)
+    private async Task<DailyReport> BuildDailyAttendanceReportAsync(AppSettings settings, DateOnly day, IReadOnlyCollection<int>? departmentIds, CancellationToken ct)
     {
-        var people = await AttendanceDay.ExcludeAdmins(context.EmployeeProfiles)
-            .Where(p => p.User != null && p.User.IsActive)
+        var peopleQuery = AttendanceDay.ExcludeAdmins(context.EmployeeProfiles)
+            .Where(p => p.User != null && p.User.IsActive);
+        if (departmentIds is not null)
+        {
+            var ids = departmentIds.ToList();
+            peopleQuery = peopleQuery.Where(p => p.DepartmentId != null && ids.Contains(p.DepartmentId.Value));
+        }
+        var people = await peopleQuery
             .OrderBy(p => p.User!.DisplayName)
             .Select(p => new
             {
@@ -770,6 +795,24 @@ public class ReminderDispatcher(
 
     private record UserContact(string UserId, string Email, string? DisplayName);
     private record ManagerContact(string UserId, string Email, string? DisplayName, int DepartmentId);
+    private record ScopedContact(string UserId, string Email, string? DisplayName, List<int> DepartmentIds);
+
+    /// <summary>Every HR Administrator with an email, and the departments assigned to them. One with none is not mailed a digest: there is nobody in it to tell them about.</summary>
+    private async Task<List<ScopedContact>> GetHrAdministratorsAsync(CancellationToken ct)
+    {
+        var hr = await GetUsersInRolesAsync([AppRoles.HrAdministrator], ct);
+        if (hr.Count == 0) return [];
+        var ids = hr.Select(h => h.UserId).ToList();
+        var rows = await context.UserDepartments
+            .Where(ud => ids.Contains(ud.UserId))
+            .Select(ud => new { ud.UserId, ud.DepartmentId })
+            .ToListAsync(ct);
+        return hr
+            .Select(h => new ScopedContact(h.UserId, h.Email, h.DisplayName,
+                rows.Where(r => r.UserId == h.UserId).Select(r => r.DepartmentId).Distinct().ToList()))
+            .Where(h => h.DepartmentIds.Count > 0)
+            .ToList();
+    }
 
     private async Task<List<UserContact>> GetUsersInRolesAsync(IReadOnlyList<string> roleNames, CancellationToken ct)
     {
