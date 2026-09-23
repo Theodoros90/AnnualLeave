@@ -26,6 +26,12 @@ export interface AdminUser {
     isActive: boolean
     roles: UserRole[]
     /**
+     * The departments assigned through UserDepartment: an HR Administrator's whole
+     * scope, a Manager's extra departments, empty otherwise. Optional only for an
+     * API predating the field.
+     */
+    departmentIds?: number[]
+    /**
      * Present only on the create response: whether the welcome email carrying
      * the set-your-password link actually went out.
      */
@@ -50,6 +56,12 @@ export interface AdminCreateUserRequest {
      * way round. See `genderError` in `lib/validation/person.ts`.
      */
     gender: Gender | null
+    /**
+     * The departments an HR Administrator runs — at least one for that role, and
+     * null for every other, which the API refuses the field for. See
+     * `hrDepartmentsError` in `lib/validation/person.ts`.
+     */
+    departmentIds: number[] | null
     managerId?: string | null
     jobTitle?: string | null
     /**
@@ -82,6 +94,11 @@ export interface AdminUpdateUserRequest {
 
 export interface AdminSetUserRolesRequest {
     roles: UserRole[]
+}
+
+/** A replace, not a patch: the full set an HR Administrator is assigned. */
+export interface AdminSetUserDepartmentsRequest {
+    departmentIds: number[]
 }
 
 /**

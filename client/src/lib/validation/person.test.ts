@@ -6,6 +6,8 @@ import {
     employmentStartDateError,
     emailError,
     phoneNumberError,
+    hrDepartmentsError,
+    HR_DEPARTMENTS_REQUIRED_MESSAGE,
 } from './person'
 
 describe('phoneNumberError', () => {
@@ -118,5 +120,18 @@ describe('employmentStartDateError', () => {
 
     it('still requires the date when no date of birth is on file', () => {
         expect(employmentStartDateError('', '')).toBe('Employment start date is required.')
+    })
+})
+
+describe('hrDepartmentsError', () => {
+    it('requires at least one department for an HR Administrator', () => {
+        expect(hrDepartmentsError('HR Administrator', [])).toBe(HR_DEPARTMENTS_REQUIRED_MESSAGE)
+        expect(hrDepartmentsError('HR Administrator', [3])).toBeUndefined()
+    })
+
+    it('asks nothing of any other role', () => {
+        expect(hrDepartmentsError('Employee', [])).toBeUndefined()
+        expect(hrDepartmentsError('Manager', [])).toBeUndefined()
+        expect(hrDepartmentsError('System Administrator', [])).toBeUndefined()
     })
 })

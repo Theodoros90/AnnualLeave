@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Gender } from '../types/user'
+import type { Gender, UserRole } from '../types/user'
 
 /**
  * The rules for the identity fields collected about a person, shared by every
@@ -150,4 +150,16 @@ export function employmentStartDateError(
 
     const earliest = earliestAllowedStartDate(dateOfBirth)
     return earliest && value < earliest ? START_DATE_TOO_YOUNG_MESSAGE : undefined
+}
+
+export const HR_DEPARTMENTS_REQUIRED_MESSAGE = 'Select at least one department.'
+
+/**
+ * Mirrors `HrDepartmentScopeRules` and the two validators that apply it. An HR
+ * Administrator's reach is the departments assigned to them, so one is required;
+ * the API also refuses the field for every other role, but the dialogs never send
+ * it for them, so there is nothing for this to say about those.
+ */
+export function hrDepartmentsError(role: UserRole, departmentIds: readonly number[]): string | undefined {
+    return role === 'HR Administrator' && departmentIds.length === 0 ? HR_DEPARTMENTS_REQUIRED_MESSAGE : undefined
 }
