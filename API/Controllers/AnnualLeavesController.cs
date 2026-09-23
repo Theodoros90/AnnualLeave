@@ -48,6 +48,15 @@ public class AnnualLeavesController : BaseApiController
                 .Group(NotificationsHub.DepartmentManagerGroup(departmentId.Value))
                 .SendAsync("notificationsUpdated", cancellationToken));
         }
+        else
+        {
+            // Department-less: an administrator's own leave. No department group
+            // covers it, but any HR Administrator may decide it (UpdateLeaveStatus's
+            // isUnscopedAdminLeave), so their own group has to hear it live.
+            dispatch.Add(_notificationsHub.Clients
+                .Group(NotificationsHub.HrAdministratorGroup)
+                .SendAsync("notificationsUpdated", cancellationToken));
+        }
 
         await Task.WhenAll(dispatch);
     }

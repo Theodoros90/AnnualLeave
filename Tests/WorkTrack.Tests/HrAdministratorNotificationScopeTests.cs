@@ -90,7 +90,9 @@ public class HrAdministratorNotificationScopeTests : IDisposable
         var joined = await GroupsJoinedBy(hr);
 
         Assert.DoesNotContain(NotificationsHub.AdminGroup, joined);
-        Assert.Equal(new[] { NotificationsHub.DepartmentManagerGroup(3), NotificationsHub.DepartmentManagerGroup(5) }, joined.OrderBy(g => g));
+        Assert.Equal(
+            new[] { NotificationsHub.DepartmentManagerGroup(3), NotificationsHub.DepartmentManagerGroup(5), NotificationsHub.HrAdministratorGroup },
+            joined.OrderBy(g => g));
     }
 
     [Fact]

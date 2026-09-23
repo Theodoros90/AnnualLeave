@@ -15,6 +15,12 @@ public class NotificationsHub : Hub
     // per-department groups below instead.
     public const string AdminGroup = "role:administrators";
 
+    // Every HR Administrator. Not a reach — their reach is the per-department
+    // groups — but the audience for a department-less event (an administrator's
+    // own leave or timesheet), which no department group covers and which any
+    // HR Administrator may decide.
+    public const string HrAdministratorGroup = "role:hr-administrators";
+
     public static string DepartmentManagerGroup(int departmentId) => $"dept-mgr:{departmentId}";
 
     private readonly UserManager<User> _userManager;
@@ -62,6 +68,14 @@ public class NotificationsHub : Hub
             {
                 await Groups.AddToGroupAsync(Context.ConnectionId, DepartmentManagerGroup(deptId));
             }
+        }
+
+        // An HR Administrator also joins the unscoped HR group, for the
+        // department-less events (an administrator's own leave/timesheet) that
+        // no department group covers.
+        if (roles.Contains(AppRoles.HrAdministrator))
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, HrAdministratorGroup);
         }
 
         await base.OnConnectedAsync();

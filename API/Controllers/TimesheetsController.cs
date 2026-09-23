@@ -74,6 +74,16 @@ namespace API.Controllers
                     .Group(NotificationsHub.DepartmentManagerGroup(departmentId))
                     .SendAsync("notificationsUpdated", cancellationToken));
             }
+            else
+            {
+                // Department-less: an administrator's own timesheet. Any HR
+                // Administrator may decide it (TimesheetScope's
+                // `t.DepartmentId == null && isHrAdministrator`), so their own
+                // group has to hear it live too.
+                dispatch.Add(_notificationsHub.Clients
+                    .Group(NotificationsHub.HrAdministratorGroup)
+                    .SendAsync("notificationsUpdated", cancellationToken));
+            }
 
             if (!string.IsNullOrWhiteSpace(audience.EmployeeUserId))
             {
