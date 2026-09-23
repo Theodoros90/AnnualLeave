@@ -42,6 +42,13 @@ public class HrAdministratorScopeTests
             // reach exists for.
             new EmployeeProfile { Id = "hr2-p", UserId = Hr2, DepartmentId = null, AnnualLeaveEntitlement = 20, LeaveBalance = 20 });
         db.UserDepartments.Add(new UserDepartment { UserId = Hr, DepartmentId = A });
+        // Both HR accounts hold the role for real. The scoped profile list excludes
+        // administrators from the rows it returns, so without these the exclusion is
+        // never exercised and the caller's own row comes back by accident.
+        db.Roles.Add(new Role { Id = "r-hr", Name = AppRoles.HrAdministrator, NormalizedName = AppRoles.HrAdministrator.ToUpperInvariant() });
+        db.UserRoles.AddRange(
+            new UserRole { UserId = Hr, RoleId = "r-hr" },
+            new UserRole { UserId = Hr2, RoleId = "r-hr" });
         db.LeaveTypes.Add(new LeaveType { Id = 1, Name = "Annual Leave", IsActive = true, AffectsBalance = true, DefaultAllowance = 20, RequiresApproval = true });
         db.AnnualLeaves.AddRange(
             new AnnualLeave { Id = "la", EmployeeId = "ua", EmployeeProfileId = "pa", DepartmentId = A, LeaveTypeId = 1, StartDate = new DateTime(2026, 10, 5), EndDate = new DateTime(2026, 10, 6), Status = AnnualLeaveStatus.Pending, CreatedAt = DateTime.UtcNow },
@@ -411,5 +418,33 @@ public class HrAdministratorScopeTests
         var childOutside = await Application.Children.Support.ChildAccessResolver.ResolveAsync(
             db, Hr, "ub", isAdmin: false, isManager: true, forWrite: false, CancellationToken.None);
         Assert.False(childOutside.IsSuccess);
+    }
+
+    /// <summary>
+    /// The scoped profile list drops administrators — an HR Administrator has no
+    /// department and belongs on nobody's team board — but never the caller's own
+    /// row. Dashboard, My Leave and Apply Leave read the signed-in person's
+    /// entitlement out of this list, so an HR Administrator missing from it reads
+    /// as an entitlement of zero on all three.
+    /// </summary>
+    [Fact]
+    public async Task An_hr_administrator_still_sees_their_own_profile()
+    {
+        using var db = SeedWorld();
+
+        var profiles = await new Application.EmployeeProfiles.Queries.GetEmployeeProfileList.Handler(db).Handle(
+            new Application.EmployeeProfiles.Queries.GetEmployeeProfileList.Query
+            {
+                RequestingUserId = Hr, IsAdmin = false, IsManager = true,
+            }, CancellationToken.None);
+
+        var userIds = profiles.Select(p => p.UserId).ToList();
+        Assert.Contains(Hr, userIds);
+        Assert.Contains("ua", userIds);
+        // The exclusion still holds for everyone else: the other administrator is
+        // dropped even though a department-less profile matches no scope anyway,
+        // and department B is out of reach.
+        Assert.DoesNotContain(Hr2, userIds);
+        Assert.DoesNotContain("ub", userIds);
     }
 }

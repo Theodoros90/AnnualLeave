@@ -37,12 +37,18 @@ public class GetEmployeeProfileList
                     request.RequestingUserId,
                     cancellationToken);
 
-                // Restrict to only employees in the manager's own department(s)
+                // Restrict to only employees in the manager's own department(s), plus
+                // the caller's own row — always, whatever role they hold. The
+                // administrator exclusion keeps administrators off other people's team
+                // lists; ANDing it with the self clause instead would take an HR
+                // Administrator's own profile away from them, and Dashboard, My Leave
+                // and Apply Leave read this list for the signed-in person's
+                // entitlement, so a missing row reads as an entitlement of zero.
                 query = query.Where(ep =>
-                    ((ep.DepartmentId != null && managerScope.ManagedDepartmentIds.Contains(ep.DepartmentId.Value))
-                     || (ep.ManagerId != null && managerScope.ManagerProfileIds.Contains(ep.ManagerId))
-                     || ep.UserId == request.RequestingUserId)
-                    && (ep.User == null || !ep.User.UserRoles.Any(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!))));
+                    ep.UserId == request.RequestingUserId
+                    || (((ep.DepartmentId != null && managerScope.ManagedDepartmentIds.Contains(ep.DepartmentId.Value))
+                         || (ep.ManagerId != null && managerScope.ManagerProfileIds.Contains(ep.ManagerId)))
+                        && (ep.User == null || !ep.User.UserRoles.Any(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!)))));
             }
             else
             {
