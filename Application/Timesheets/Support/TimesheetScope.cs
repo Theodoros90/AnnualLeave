@@ -22,6 +22,12 @@ public static class TimesheetScope
     /// Narrows <paramref name="query"/> to the timesheets this caller may see.
     /// Async because resolving a manager's scope needs its own round trip.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="isHrAdministrator"/> sits after <paramref name="cancellationToken"/>
+    /// on purpose: both are optional, and every existing positional caller supplies
+    /// exactly six arguments (ending in the cancellation token), so appending the new
+    /// parameter after it keeps those call sites compiling unchanged.
+    /// </remarks>
     public static async Task<IQueryable<Timesheet>> ApplyAsync(
         AppDbContext context,
         IQueryable<Timesheet> query,

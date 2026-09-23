@@ -272,6 +272,34 @@ public class HrAdministratorScopeTests
             db, db.Timesheets, Hr, isAdmin: false, isManager: true, isHrAdministrator: false);
         Assert.DoesNotContain("th", visibleToPlainManager.Select(t => t.Id).ToList());
 
+        // The two read endpoints have to agree with the scope filter, or an HR
+        // Administrator could approve a request they can neither list nor open.
+        var listHandler = new Application.Timesheets.Queries.GetTimesheetList.Handler(db);
+        var listedForHr = await listHandler.Handle(new Application.Timesheets.Queries.GetTimesheetList.Query
+        {
+            RequestingUserId = Hr, IsAdmin = false, IsManager = true, IsHrAdministrator = true,
+        }, CancellationToken.None);
+        Assert.Contains("th", listedForHr.Items.Select(t => t.Id));
+
+        var listedForPlainManager = await listHandler.Handle(new Application.Timesheets.Queries.GetTimesheetList.Query
+        {
+            RequestingUserId = Hr, IsAdmin = false, IsManager = true, IsHrAdministrator = false,
+        }, CancellationToken.None);
+        Assert.DoesNotContain("th", listedForPlainManager.Items.Select(t => t.Id));
+
+        var detailHandler = new Application.Timesheets.Queries.GetTimesheetDetail.Handler(db);
+        var detailForHr = await detailHandler.Handle(new Application.Timesheets.Queries.GetTimesheetDetail.Query
+        {
+            Id = "th", RequestingUserId = Hr, IsAdmin = false, IsManager = true, IsHrAdministrator = true,
+        }, CancellationToken.None);
+        Assert.True(detailForHr.IsSuccess, detailForHr.Error);
+
+        var detailForPlainManager = await detailHandler.Handle(new Application.Timesheets.Queries.GetTimesheetDetail.Query
+        {
+            Id = "th", RequestingUserId = Hr, IsAdmin = false, IsManager = true, IsHrAdministrator = false,
+        }, CancellationToken.None);
+        Assert.False(detailForPlainManager.IsSuccess);
+
         var handler = new Application.Timesheets.Commands.UpdateTimesheetStatus.Handler(
             db, new FakeEmailService(), Microsoft.Extensions.Logging.Abstractions.NullLogger<Application.Timesheets.Commands.UpdateTimesheetStatus.Handler>.Instance);
 
@@ -280,6 +308,29 @@ public class HrAdministratorScopeTests
             Id = "th", NewStatus = TimesheetStatus.Approved, RequestingUserId = Hr, IsAdmin = false, IsManager = true, IsHrAdministrator = true,
         }, CancellationToken.None);
         Assert.True(approved.IsSuccess, approved.Error);
+    }
+
+    /// <summary>
+    /// The write-side counterpart of the read scope above:
+    /// <see cref="Application.Timesheets.Support.TimesheetAccess.AuthorizeWriteAsync"/>
+    /// reaches "th" for an HR Administrator and refuses it for a plain Manager,
+    /// exactly like <see cref="Application.Timesheets.Support.TimesheetScope.ApplyAsync"/> does.
+    /// </summary>
+    [Fact]
+    public async Task Authorize_write_also_reaches_a_department_less_timesheet_for_an_hr_administrator_only()
+    {
+        using var db = SeedWorld();
+        AddDepartmentLessTimesheet(db);
+        await db.SaveChangesAsync();
+
+        var asHr = await Application.Timesheets.Support.TimesheetAccess.AuthorizeWriteAsync(
+            db, "th", Hr, isAdmin: false, isManager: true, isHrAdministrator: true);
+        Assert.True(asHr.IsSuccess, asHr.Error);
+
+        var asPlainManager = await Application.Timesheets.Support.TimesheetAccess.AuthorizeWriteAsync(
+            db, "th", Hr, isAdmin: false, isManager: true, isHrAdministrator: false);
+        Assert.False(asPlainManager.IsSuccess);
+        Assert.Equal(ResultErrorKind.Forbidden, asPlainManager.ErrorKind);
     }
 
     [Fact]

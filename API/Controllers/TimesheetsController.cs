@@ -97,6 +97,7 @@ namespace API.Controllers
                 RequestingUserId = userId,
                 IsAdmin = !myOnly && isAdmin,
                 IsManager = !myOnly && isManager,
+                IsHrAdministrator = !myOnly && User.IsHrAdministrator(),
                 Page = page,
                 PageSize = pageSize,
             });
@@ -116,6 +117,7 @@ namespace API.Controllers
                 RequestingUserId = ResolveUserId(),
                 IsAdmin = User.IsSystemAdministrator(),
                 IsManager = User.IsDepartmentScoped(),
+                IsHrAdministrator = User.IsHrAdministrator(),
             }, cancellationToken);
 
             return HandleResult(result);
