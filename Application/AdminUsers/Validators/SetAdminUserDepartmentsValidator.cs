@@ -23,8 +23,13 @@ public class SetAdminUserDepartmentsValidator : AbstractValidator<SetAdminUserDe
                 .Cascade(CascadeMode.Stop)
                 .Must(ids => HrDepartmentScopeRules.Normalize(ids).Count > 0)
                 .WithMessage(HrDepartmentScopeRules.DepartmentsRequiredMessage)
-                .MustAsync(async (ids, ct) =>
-                    await HrDepartmentScopeRules.AllActiveAsync(context, HrDepartmentScopeRules.Normalize(ids), ct))
+                // AllAssignable, not AllActive: the ids this user already holds pass
+                // whatever the department's status, because the dialog re-sends the
+                // whole set on every save. A create has nothing held yet and keeps
+                // the stricter rule.
+                .MustAsync(async (command, ids, _, ct) =>
+                    await HrDepartmentScopeRules.AllAssignableAsync(
+                        context, command.Id, HrDepartmentScopeRules.Normalize(ids), ct))
                 .WithMessage(HrDepartmentScopeRules.UnknownDepartmentMessage);
         });
     }

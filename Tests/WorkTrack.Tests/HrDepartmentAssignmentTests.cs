@@ -106,6 +106,41 @@ public class HrDepartmentAssignmentTests : IDisposable
             e => e.ErrorMessage == HrDepartmentScopeRules.UnknownDepartmentMessage);
     }
 
+    /// <summary>
+    /// A department deactivated after it was assigned is still the HR
+    /// Administrator's to keep. The dialog keeps such a department selectable and
+    /// the edit mutation re-sends the whole set on every save, so demanding
+    /// IsActive for it would 400 a phone-number edit — after the role call had
+    /// already committed.
+    /// </summary>
+    [Fact]
+    public async Task Keeping_an_already_assigned_department_that_was_deactivated_is_allowed()
+    {
+        await SeedAsync();
+        var hr = await GivenUserAsync("hr@test.local", AppRoles.HrAdministrator);
+        Db.UserDepartments.Add(new UserDepartment { UserId = hr.Id, DepartmentId = Archived });
+        await Db.SaveChangesAsync();
+
+        var result = await ValidateAssign(hr.Id, Engineering, Archived);
+
+        Assert.True(result.IsValid, string.Join(", ", result.Errors.Select(e => e.ErrorMessage)));
+    }
+
+    /// <summary>
+    /// And only for the one they already hold: a deactivated department is not
+    /// something a System Administrator may newly assign.
+    /// </summary>
+    [Fact]
+    public async Task Newly_assigning_a_deactivated_department_is_still_refused()
+    {
+        await SeedAsync();
+        var hr = await GivenUserAsync("hr@test.local", AppRoles.HrAdministrator);
+
+        var result = await ValidateAssign(hr.Id, Archived);
+
+        Assert.Contains(result.Errors, e => e.ErrorMessage == HrDepartmentScopeRules.UnknownDepartmentMessage);
+    }
+
     [Fact]
     public async Task Assigning_replaces_the_set_and_records_who_did_it()
     {

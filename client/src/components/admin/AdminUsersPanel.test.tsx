@@ -48,6 +48,9 @@ const DEPARTMENT = { id: 7, name: 'Engineering', code: 'ENG', isActive: true }
 /* A second one, so the HR Administrator's picker has something to pick *from*:
    a multi-select with a single option cannot show that it takes a set. */
 const FINANCE = { id: 8, name: 'Finance', code: 'FIN', isActive: true }
+/* Deactivated, and deliberately not in the default getDepartments mock: it exists
+   only for the HR Administrator who was assigned it before it was retired. */
+const RETIRED = { id: 9, name: 'Old Guard', code: 'OLD', isActive: false }
 
 /* The annual-leave allowance an employee's entitlement is measured against comes from
    Leave Types (25 days/year as seeded), not from a number hard-coded in the panel. */
@@ -1998,8 +2001,8 @@ describe('AdminUsersPanel — HR Administrator departments', () => {
         annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: null, createdAt: '2026-01-01',
     }
 
-    async function openEditForHr() {
-        api.getAdminUsers.mockResolvedValue([HR_USER] as never)
+    async function openEditForHr(user: typeof HR_USER = HR_USER) {
+        api.getAdminUsers.mockResolvedValue([user] as never)
         api.getEmployeeProfiles.mockResolvedValue([HR_PROFILE] as never)
         renderPanel()
         const nameEl = await screen.findByText('Hana HR')
@@ -2041,5 +2044,17 @@ describe('AdminUsersPanel — HR Administrator departments', () => {
         expect(api.updateEmployeeProfile).toHaveBeenCalledWith(
             expect.objectContaining({ id: 'p-hr', departmentId: null }),
         )
+    })
+
+    /* A department deactivated after it was assigned stays on the chips and does
+       not hold the form: the dialog offers it because the person holds it, and the
+       server now accepts a set that keeps one (HrDepartmentScopeRules.AllAssignable).
+       Without both halves, editing this person's phone number is impossible. */
+    it('keeps a department deactivated after it was assigned, with Save still enabled', async () => {
+        api.getDepartments.mockResolvedValue([DEPARTMENT, FINANCE, RETIRED] as never)
+        const dialog = await openEditForHr({ ...HR_USER, departmentIds: [7, 9] })
+
+        expect(await within(dialog).findByText('Old Guard (OLD)')).toBeInTheDocument()
+        expect(within(dialog).getByRole('button', { name: /^save$/i })).toBeEnabled()
     })
 })
