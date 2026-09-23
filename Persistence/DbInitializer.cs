@@ -1055,7 +1055,7 @@ public class DbInitializer
     ///
     /// This is the development half only. <c>Seed:Enabled</c> is false in
     /// <c>appsettings.Production.json</c>, so nothing here runs on the IIS host —
-    /// the <c>RemoveUnscopedUserDepartments</c> migration is what repairs a
+    /// the <c>RemoveNonManagerUserDepartments</c> migration is what repairs a
     /// deployed database, since <c>MigrateAsync</c> runs unconditionally.
     ///
     /// Deleting rather than merely ignoring them is the point. Leaving the row and

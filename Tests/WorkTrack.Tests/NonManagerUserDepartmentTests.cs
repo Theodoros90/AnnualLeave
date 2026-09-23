@@ -14,11 +14,10 @@ using Xunit;
 namespace WorkTrack.Tests;
 
 /// <summary>
-/// A <see cref="UserDepartment"/> row means one thing: an extra department a
-/// <b>manager</b> covers, beyond the one on their own profile. Nothing reads it
-/// for anyone else — <c>ProjectScope.DepartmentIdsForAsync</c> consults the table
-/// only when the caller is a manager, and a System Administrator short-circuits to "sees
-/// everything" before departments are resolved at all.
+/// A <see cref="UserDepartment"/> row means one thing: a department this
+/// <b>Manager</b> or <b>HR Administrator</b> covers beyond their own profile.
+/// <c>ManagerAccessScopeResolver</c> reads it for both; nothing reads it for
+/// anyone else.
 ///
 /// One place did read it for everyone: <c>DeleteDepartment</c>, which counts every
 /// row as an "assignment" blocker. So a row that granted nothing still made
