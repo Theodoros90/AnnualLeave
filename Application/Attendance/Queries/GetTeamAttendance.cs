@@ -13,7 +13,7 @@ namespace Application.Attendance.Queries;
 /// The team board: today's status per member, plus a Mon–Fri minutes grid for the
 /// current ISO week.
 ///
-/// An Admin sees everybody. A Manager sees their managed departments and their
+/// A System Administrator sees everybody. A Manager sees their managed departments and their
 /// direct reports, and never themselves — the board is for the people they are
 /// responsible for, and their own day is on their personal page.
 /// </summary>

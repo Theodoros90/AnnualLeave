@@ -19,7 +19,7 @@ public class ProjectComponentsController : BaseApiController
     }
 
     [HttpPost]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<ProjectComponentDto>> CreateProjectComponent(UpsertProjectComponentRequest request)
     {
         var result = await Mediator.Send(new CreateProjectComponent.Command { Component = request });
@@ -27,7 +27,7 @@ public class ProjectComponentsController : BaseApiController
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<ProjectComponentDto>> UpdateProjectComponent(int id, UpsertProjectComponentRequest request)
     {
         var result = await Mediator.Send(new UpdateProjectComponent.Command { Id = id, Component = request });
@@ -35,7 +35,7 @@ public class ProjectComponentsController : BaseApiController
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult> DeleteProjectComponent(int id)
     {
         var result = await Mediator.Send(new DeleteProjectComponent.Command { Id = id });

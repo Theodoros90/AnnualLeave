@@ -237,7 +237,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
 
     /* Whose colleagues the coverage picker offers: the employee the leave is for.
        Somebody else's list is asked for by id, which the server honours for an
-       Admin only. */
+       System Administrator only. */
     const coverageSubjectId = leave
         ? leave.employeeId
         : requireEmployee ? watchedEmployeeId : authStore.user?.id

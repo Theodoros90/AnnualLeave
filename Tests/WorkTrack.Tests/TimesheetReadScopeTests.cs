@@ -329,7 +329,7 @@ public class TimesheetReadScopeTests
         using var db = SeedWorld();
         using var provider = BuildProvider(db);
 
-        var asAdmin = await ControllerFor(provider, AdminUserId, AppRoles.Admin)
+        var asAdmin = await ControllerFor(provider, AdminUserId, AppRoles.SystemAdministrator)
             .GetTimesheet(OwnerTimesheetId, CancellationToken.None);
         Assert.Equal(StatusCodes.Status200OK, StatusOf(asAdmin.Result!));
 

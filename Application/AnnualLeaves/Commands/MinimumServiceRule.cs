@@ -19,7 +19,7 @@ namespace Application.AnnualLeaves.Commands;
 /// period this is safe to re-check on every edit: a request accepted once can
 /// never later fail it.
 ///
-/// A <c>null</c> start date passes. It means nobody entered it — an Admin never
+/// A <c>null</c> start date passes. It means nobody entered it — a System Administrator never
 /// has one (the validators refuse it for the role), and an Employee row predating
 /// the column has none until it is next saved — and refusing on a blank would take
 /// the type away from everyone until an admin filled the field in one person at a

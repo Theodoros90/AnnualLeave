@@ -501,7 +501,7 @@ export default function AppSettingsPanel() {
                 const { carried: carryover, expired: expires } = splitAtCarryoverCap(closing, carryoverCap)
                 // Each employee reopens on their own entitlement, not on one shared figure.
                 const newBalance = carryover + employeeAnnualEntitlement(p, annualAllowance)
-                // An Admin has no department, so the id can be absent as well as
+                // A System Administrator has no department, so the id can be absent as well as
                 // unknown — both read as "—".
                 const dept = (p.departmentId === null
                     ? undefined
@@ -534,7 +534,7 @@ export default function AppSettingsPanel() {
                     <Box sx={{ bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: '10px', overflow: 'hidden' }}>
                         <Box sx={{ px: 2.25, py: 1.75, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <Typography sx={{ fontSize: 14, fontWeight: 600, color: 'text.primary' }}>Leave Year Configuration</Typography>
-                            <Box component="span" sx={{ fontSize: 11, fontWeight: 500, px: 1.1, py: 0.4, borderRadius: '20px', bgcolor: softBg('info'), color: 'info.dark' }}>Admin Only</Box>
+                            <Box component="span" sx={{ fontSize: 11, fontWeight: 500, px: 1.1, py: 0.4, borderRadius: '20px', bgcolor: softBg('info'), color: 'info.dark' }}>System Administrator Only</Box>
                         </Box>
                         <Box sx={{ p: 2.25 }}>
                             <Stack spacing={2}>
@@ -708,7 +708,7 @@ export default function AppSettingsPanel() {
                         page this card sits on — see Sidebar's admin item and Topbar's page
                         title — so the header repeated its own container. */}
                     <Typography sx={{ fontSize: 14, fontWeight: 600, color: 'text.primary' }}>Working Week &amp; Policy</Typography>
-                    <Box component="span" sx={{ fontSize: 11, fontWeight: 500, px: 1.1, py: 0.4, borderRadius: '20px', bgcolor: softBg('info'), color: 'info.dark' }}>Admin Only</Box>
+                    <Box component="span" sx={{ fontSize: 11, fontWeight: 500, px: 1.1, py: 0.4, borderRadius: '20px', bgcolor: softBg('info'), color: 'info.dark' }}>System Administrator Only</Box>
                 </Box>
                 <Box sx={{ p: 2.25 }}>
                     <Typography sx={{ fontSize: 12, color: 'text.secondary', mb: 2 }}>

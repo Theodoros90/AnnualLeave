@@ -193,9 +193,9 @@ public class CompanyAttendanceAggregationTests
     /// test pinned exactly that, and flagged the silent disappearance as the thing
     /// that would matter if a database ever did carry a dangling id.
     ///
-    /// The column is nullable now, so an Admin can have no department at all. That
+    /// The column is nullable now, so a System Administrator can have no department at all. That
     /// makes the join a left join, and a profile with no reachable department is
-    /// counted and shown under "Unassigned" instead of vanishing. An Admin never
+    /// counted and shown under "Unassigned" instead of vanishing. A System Administrator never
     /// reaches this grouping — <c>AttendanceDay.ExcludeAdmins</c> drops them first —
     /// so what lands here is a genuinely unassigned or dangling row, which is better
     /// surfaced than swallowed.

@@ -14,7 +14,7 @@ import ApplyLeavePage from './ApplyLeavePage'
  * the step is required for either role (`CoverageRule`, mirrored by
  * `lib/coverage.ts`), submit stays disabled until somebody is chosen, and once
  * they are the employee can leave them a note and a document — both of which go
- * into the payload, the document via its own upload endpoint. An Admin's own
+ * into the payload, the document via its own upload endpoint. A System Administrator's own
  * request is the one exemption: they have no department to pick from.
  */
 vi.mock('../../lib/api', () => ({
@@ -48,8 +48,8 @@ const EMPLOYEE: UserInfo = {
 
 const MANAGER: UserInfo = { ...EMPLOYEE, id: 'mgr-1', displayName: 'Nikos Manager', roles: ['Manager'] }
 
-/** An Admin has no department, so the teammates list is empty for them. */
-const ADMIN: UserInfo = { ...EMPLOYEE, id: 'adm-1', displayName: 'Chris Admin', roles: ['Admin'], departmentId: null }
+/** A System Administrator has no department, so the teammates list is empty for them. */
+const ADMIN: UserInfo = { ...EMPLOYEE, id: 'adm-1', displayName: 'Chris System Administrator', roles: ['System Administrator'], departmentId: null }
 
 const TEAMMATE: Teammate = { userId: 'u-delegate', displayName: 'Maria Ioannou', jobTitle: 'Accountant', departmentId: 2 }
 

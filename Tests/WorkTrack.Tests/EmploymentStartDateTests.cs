@@ -25,8 +25,8 @@ namespace WorkTrack.Tests;
 /// the account in — not a hire date, and wrong for everybody migrated in at once.
 ///
 /// So <c>EmployeeProfile.EmploymentStartDate</c>, mandatory for an Employee and a
-/// Manager and refused for an Admin, exactly as <c>DepartmentId</c> is: it lives in
-/// the Profile section of the admin dialogs, which is already hidden for an Admin,
+/// Manager and refused for a System Administrator, exactly as <c>DepartmentId</c> is: it lives in
+/// the Profile section of the admin dialogs, which is already hidden for a System Administrator,
 /// so the role scoping needs no new surface. See
 /// <see cref="AdminHasNoDepartmentTests"/> for the department half of the same rule.
 ///
@@ -96,7 +96,7 @@ public class EmploymentStartDateTests : IDisposable
 
     private async Task GivenRolesAsync()
     {
-        foreach (var role in new[] { AppRoles.Admin, AppRoles.Manager, AppRoles.Employee })
+        foreach (var role in new[] { AppRoles.SystemAdministrator, AppRoles.Manager, AppRoles.Employee })
         {
             if (!await Roles.RoleExistsAsync(role))
             {
@@ -147,14 +147,14 @@ public class EmploymentStartDateTests : IDisposable
         DateOnly? employmentStartDate,
         DateOnly? dateOfBirth = null) => new()
         {
-            Email = $"{role.ToLowerInvariant()}@test.local",
+            Email = $"{role.Replace(" ", "").ToLowerInvariant()}@test.local",
             DisplayName = $"New {role}",
             DepartmentId = departmentId,
             Roles = [role],
             DateOfBirth = dateOfBirth ?? BornThirtyYearsAgo,
             EmploymentStartDate = employmentStartDate,
-            // Required for everyone but an Admin, who is refused one — see UserGenderTests.
-            Gender = role == AppRoles.Admin ? null : Gender.Female,
+            // Required for everyone but a System Administrator, who is refused one — see UserGenderTests.
+            Gender = role == AppRoles.SystemAdministrator ? null : Gender.Female,
         };
 
     private Task<FluentValidation.Results.ValidationResult> ValidateCreate(AdminCreateUserDto payload) =>
@@ -190,8 +190,8 @@ public class EmploymentStartDateTests : IDisposable
     }
 
     /// <summary>
-    /// And an Admin is never asked. The dialog hides the Profile section for them,
-    /// so a rule that demanded one would make an Admin impossible to create through
+    /// And a System Administrator is never asked. The dialog hides the Profile section for them,
+    /// so a rule that demanded one would make a System Administrator impossible to create through
     /// the only screen that creates users.
     /// </summary>
     [Fact]
@@ -200,7 +200,7 @@ public class EmploymentStartDateTests : IDisposable
         await GivenRolesAsync();
 
         var result = await ValidateCreate(
-            CreatePayload(AppRoles.Admin, departmentId: null, employmentStartDate: null));
+            CreatePayload(AppRoles.SystemAdministrator, departmentId: null, employmentStartDate: null));
 
         Assert.True(result.IsValid, Errors(result));
     }
@@ -216,7 +216,7 @@ public class EmploymentStartDateTests : IDisposable
         await GivenRolesAsync();
 
         var result = await ValidateCreate(
-            CreatePayload(AppRoles.Admin, departmentId: null, employmentStartDate: Today));
+            CreatePayload(AppRoles.SystemAdministrator, departmentId: null, employmentStartDate: Today));
 
         Assert.False(result.IsValid);
         Assert.Contains(PersonFieldRules.EmploymentStartDateNotForAdminMessage, Errors(result));
@@ -341,7 +341,7 @@ public class EmploymentStartDateTests : IDisposable
     public async Task A_non_Admin_profile_cannot_have_its_employment_start_date_cleared(string role)
     {
         var departmentId = await GivenDepartmentAsync();
-        var user = await GivenUserAsync($"{role.ToLowerInvariant()}@edit.local", role, BornThirtyYearsAgo);
+        var user = await GivenUserAsync($"{role.Replace(" ", "").ToLowerInvariant()}@edit.local", role, BornThirtyYearsAgo);
         var profile = await GivenProfileAsync(user.Id, departmentId);
 
         var result = await ValidateEdit(new EditEmployeeProfileRequest
@@ -356,14 +356,14 @@ public class EmploymentStartDateTests : IDisposable
     }
 
     /// <summary>
-    /// A promotion to Admin arrives here with both profile fields blank — the
-    /// dialog sets roles first, so the user is already an Admin by the time this
+    /// A promotion to System Administrator arrives here with both profile fields blank — the
+    /// dialog sets roles first, so the user is already a System Administrator by the time this
     /// runs, and the Profile section it would have read them from is gone.
     /// </summary>
     [Fact]
     public async Task An_Admin_profile_can_be_saved_with_no_employment_start_date()
     {
-        var user = await GivenUserAsync("admin@edit.local", AppRoles.Admin, BornThirtyYearsAgo);
+        var user = await GivenUserAsync("admin@edit.local", AppRoles.SystemAdministrator, BornThirtyYearsAgo);
         var profile = await GivenProfileAsync(user.Id, departmentId: null);
 
         var result = await ValidateEdit(new EditEmployeeProfileRequest
@@ -376,11 +376,11 @@ public class EmploymentStartDateTests : IDisposable
         Assert.True(result.IsValid, Errors(result));
     }
 
-    /// <summary>Refused for an Admin on this path too, matching the department.</summary>
+    /// <summary>Refused for a System Administrator on this path too, matching the department.</summary>
     [Fact]
     public async Task An_Admin_profile_cannot_be_saved_with_an_employment_start_date()
     {
-        var user = await GivenUserAsync("admin2@edit.local", AppRoles.Admin, BornThirtyYearsAgo);
+        var user = await GivenUserAsync("admin2@edit.local", AppRoles.SystemAdministrator, BornThirtyYearsAgo);
         var profile = await GivenProfileAsync(user.Id, departmentId: null);
 
         var result = await ValidateEdit(new EditEmployeeProfileRequest
@@ -482,7 +482,7 @@ public class EmploymentStartDateTests : IDisposable
     {
         await DbInitializer.SeedData(Db, Users, Roles, SeedPolicy.Unrestricted(demoData: true));
 
-        var adminId = (await Db.Users.SingleAsync(u => u.Email == "admin@annualleave.com")).Id;
+        var adminId = (await Db.Users.SingleAsync(u => u.Email == "systemadmin@annualleave.com")).Id;
         var others = await Db.EmployeeProfiles.AsNoTracking()
             .Where(ep => ep.UserId != adminId)
             .ToListAsync();
@@ -491,21 +491,21 @@ public class EmploymentStartDateTests : IDisposable
         Assert.All(others, profile => Assert.NotNull(profile.EmploymentStartDate));
     }
 
-    /// <summary>And the seeded Admin does not, since the rule refuses them one.</summary>
+    /// <summary>And the seeded System Administrator does not, since the rule refuses them one.</summary>
     [Fact]
     public async Task A_demo_seed_gives_the_Admin_no_employment_start_date()
     {
         await DbInitializer.SeedData(Db, Users, Roles, SeedPolicy.Unrestricted(demoData: true));
 
-        var adminUser = await Db.Users.SingleAsync(u => u.Email == "admin@annualleave.com");
+        var adminUser = await Db.Users.SingleAsync(u => u.Email == "systemadmin@annualleave.com");
         var profile = await Db.EmployeeProfiles.AsNoTracking().SingleAsync(ep => ep.UserId == adminUser.Id);
 
         Assert.Null(profile.EmploymentStartDate);
     }
 
     /// <summary>
-    /// A promotion to Admin clears the date it leaves behind, rather than stranding
-    /// a row that still claims a start date the Admin's own dialog cannot show.
+    /// A promotion to System Administrator clears the date it leaves behind, rather than stranding
+    /// a row that still claims a start date the System Administrator's own dialog cannot show.
     /// </summary>
     [Fact]
     public async Task Promoting_an_employee_to_Admin_clears_their_employment_start_date()
@@ -517,7 +517,7 @@ public class EmploymentStartDateTests : IDisposable
         var tracked = await Users.FindByIdAsync(user.Id);
         Assert.NotNull(tracked);
         Assert.True((await Users.RemoveFromRoleAsync(tracked, AppRoles.Employee)).Succeeded);
-        Assert.True((await Users.AddToRoleAsync(tracked, AppRoles.Admin)).Succeeded);
+        Assert.True((await Users.AddToRoleAsync(tracked, AppRoles.SystemAdministrator)).Succeeded);
 
         var request = new EditEmployeeProfileRequest
         {

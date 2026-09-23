@@ -28,7 +28,7 @@ public class Timesheet : IAuditable
     /// <summary>
     /// The department the sheet was filed under, kept for history so it outlives
     /// its author's move to another one. Null when the author has no department —
-    /// an Admin — matching <see cref="AnnualLeave.DepartmentId"/>, which is
+    /// a System Administrator — matching <see cref="AnnualLeave.DepartmentId"/>, which is
     /// nullable for the same reason.
     /// </summary>
     public int? DepartmentId { get; set; }

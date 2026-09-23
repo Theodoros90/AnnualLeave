@@ -93,12 +93,12 @@ const Sidebar = observer(function Sidebar() {
     // mode). Memoize so the nested theme only rebuilds when sidebarMode flips.
     const sidebarTheme = useMemo(() => buildTheme(uiStore.sidebarMode), [uiStore.sidebarMode])
 
-    const isAdminUser = authStore.user?.roles?.includes('Admin') ?? false
+    const isAdminUser = authStore.user?.roles?.includes('System Administrator') ?? false
     const isManagerUser = authStore.user?.roles?.includes('Manager') ?? false
     const shouldShowDepartment = !isAdminUser
     /* Same reasoning one step further down the dialog: the children question and
        the list behind it exist to decide who is offered Maternity and Paternity
-       Leave. An Admin is offered neither — the role's navigation below carries no
+       Leave. A System Administrator is offered neither — the role's navigation below carries no
        "Request Leave" and no "My Leave" — so on their own profile the block asked
        about their family and then fed nothing. They still maintain *employees'*
        children on Users → Edit User → Profile, which is a different surface. */

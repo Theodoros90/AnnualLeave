@@ -7,11 +7,11 @@ using Xunit;
 namespace WorkTrack.Tests;
 
 /// <summary>
-/// The pending-approvals digest mailed every Admin an organisation-wide summary
+/// The pending-approvals digest mailed every System Administrator an organisation-wide summary
 /// of leave and timesheets awaiting review, on top of the department summary it
 /// mails each Manager. The people who action a submission are the managers, so
-/// the Admin's copy was noise arriving every morning about queues that are not
-/// theirs. The digest now goes to managers only. Admins are seeded with a real
+/// the System Administrator's copy was noise arriving every morning about queues that are not
+/// theirs. The digest now goes to managers only. System Administrators are seeded with a real
 /// UserRole row, which is what the recipient lookup reads.
 /// </summary>
 public class PendingApprovalsDigestExcludesAdminsTests
@@ -23,7 +23,7 @@ public class PendingApprovalsDigestExcludesAdminsTests
     private static readonly AppSettings Enabled = new() { EmailNotificationsEnabled = true };
 
     /// <summary>
-    /// One Admin, one Manager of Engineering, one Engineering employee with a
+    /// One System Administrator, one Manager of Engineering, one Engineering employee with a
     /// pending leave request and a submitted timesheet.
     /// </summary>
     private static AppDbContext SeedWorld()
@@ -32,11 +32,11 @@ public class PendingApprovalsDigestExcludesAdminsTests
 
         db.Departments.Add(new Department { Id = DepartmentId, Name = "Engineering", Code = "ENG" });
 
-        var adminRole = new Role { Id = "r-admin", Name = AppRoles.Admin, NormalizedName = AppRoles.Admin.ToUpperInvariant() };
+        var adminRole = new Role { Id = "r-admin", Name = AppRoles.SystemAdministrator, NormalizedName = AppRoles.SystemAdministrator.ToUpperInvariant() };
         var managerRole = new Role { Id = "r-manager", Name = AppRoles.Manager, NormalizedName = AppRoles.Manager.ToUpperInvariant() };
         db.Roles.AddRange(adminRole, managerRole);
 
-        SeedProfile(db, "admin-u", "admin-p", "Ada Admin", AdminEmail, departmentId: null);
+        SeedProfile(db, "admin-u", "admin-p", "Ada System Administrator", AdminEmail, departmentId: null);
         db.UserRoles.Add(new UserRole { UserId = "admin-u", RoleId = adminRole.Id });
 
         SeedProfile(db, "manager-u", "manager-p", "Mia Manager", ManagerEmail, DepartmentId);

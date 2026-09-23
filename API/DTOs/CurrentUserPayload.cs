@@ -33,7 +33,7 @@ public class CurrentUserPayload
     /// </summary>
     public Gender? Gender { get; init; }
 
-    /// <summary>Null for an Admin, who has no employee profile.</summary>
+    /// <summary>Null for a System Administrator, who has no employee profile.</summary>
     public int? DepartmentId { get; init; }
 
     public string? DepartmentName { get; init; }
@@ -47,7 +47,7 @@ public class CurrentUserPayload
     /// <summary>
     /// When the employee started, so the leave forms can hide a type wanting more
     /// service than they have (<c>MinimumServiceRule</c>, mirrored in
-    /// <c>lib/leave-limits.ts</c>). Null for an Admin, who has no employee profile,
+    /// <c>lib/leave-limits.ts</c>). Null for a System Administrator, who has no employee profile,
     /// and for an Employee row predating the column and not saved since — the
     /// client reads either as "not recorded" and offers every type, as the server
     /// does.

@@ -20,7 +20,7 @@ export interface AnnualLeaveBase {
     /**
      * User id of the colleague nominated to cover while the employee is away.
      * Required for an Employee or a Manager (`CoverageRule` on the server,
-     * `lib/coverage.ts` here); an Admin's own request may leave it out.
+     * `lib/coverage.ts` here); a System Administrator's own request may leave it out.
      */
     delegateId?: string | null
     /** A handover note for the delegate. Mailed to them alone; dropped by the server when no delegate is named. */

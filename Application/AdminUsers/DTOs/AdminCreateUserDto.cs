@@ -18,13 +18,13 @@ public class AdminCreateUserDto
     [StringLength(100, MinimumLength = 2)]
     public string DisplayName { get; set; } = string.Empty;
 
-    /// <summary>Exactly one role per user (Admin, Manager or Employee).</summary>
+    /// <summary>Exactly one role per user (System Administrator, Manager or Employee).</summary>
     [MinLength(1, ErrorMessage = "A role is required.")]
     [MaxLength(1, ErrorMessage = "A user can have only one role.")]
     public List<string> Roles { get; set; } = new();
 
     /// <summary>
-    /// Required for an Employee or Manager, and must be absent for an Admin, who
+    /// Required for an Employee or Manager, and must be absent for a System Administrator, who
     /// sits outside the department structure. Role-dependent either way, so
     /// <c>CreateAdminUserValidator</c> settles it rather than an annotation.
     /// </summary>
@@ -38,14 +38,14 @@ public class AdminCreateUserDto
     public DateOnly? DateOfBirth { get; set; }
 
     /// <summary>
-    /// Required for an Employee or a Manager, refused for an Admin — the same
+    /// Required for an Employee or a Manager, refused for a System Administrator — the same
     /// role-dependent rule as <see cref="DepartmentId"/>, enforced by
     /// <c>CreateAdminUserValidator</c>. Decides which leave types this person is
     /// offered: Maternity and Paternity Leave, and any other type an admin
     /// restricted through <c>LeaveType.AvailableTo</c> — see
     /// <c>Application.AnnualLeaves.Commands.ParentalLeaveEligibility</c>. Nullable
     /// so the JSON binder can report "missing" rather than defaulting a real
-    /// person to <c>Male</c> (the enum's 0), and so an Admin has something to send.
+    /// person to <c>Male</c> (the enum's 0), and so a System Administrator has something to send.
     /// </summary>
     public Gender? Gender { get; set; }
 
@@ -62,7 +62,7 @@ public class AdminCreateUserDto
     public string? JobTitle { get; set; }
 
     /// <summary>
-    /// Required for an Employee or a Manager, and must be absent for an Admin —
+    /// Required for an Employee or a Manager, and must be absent for a System Administrator —
     /// the same role-dependent rule as <see cref="DepartmentId"/>, and settled by
     /// <c>CreateAdminUserValidator</c> for the same reason.
     /// </summary>

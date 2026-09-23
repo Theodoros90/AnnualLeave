@@ -19,7 +19,7 @@ namespace WorkTrack.Tests;
 /// <summary>
 /// DELETE api/timesheets/{id} applied its own ownership rule inline, and it was
 /// narrower than TimesheetAccess: only the employee the timesheet belonged to
-/// could delete it. An Admin could not, and neither could the manager responsible
+/// could delete it. A System Administrator could not, and neither could the manager responsible
 /// for that employee — even though both may add, edit and delete the timesheet's
 /// entries through TimesheetEntriesController, which has always used
 /// TimesheetAccess. Someone able to empty a timesheet one entry at a time could
@@ -278,7 +278,7 @@ public class DeleteTimesheetTests
     /// </summary>
     [Theory]
     [InlineData(OwnerUserId, AppRoles.Employee, StatusCodes.Status200OK)]
-    [InlineData(AdminUserId, AppRoles.Admin, StatusCodes.Status200OK)]
+    [InlineData(AdminUserId, AppRoles.SystemAdministrator, StatusCodes.Status200OK)]
     [InlineData(DeptManagerUserId, AppRoles.Manager, StatusCodes.Status200OK)]
     [InlineData(OutsiderUserId, AppRoles.Employee, StatusCodes.Status403Forbidden)]
     [InlineData(OtherManagerUserId, AppRoles.Manager, StatusCodes.Status403Forbidden)]

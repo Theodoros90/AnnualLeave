@@ -163,7 +163,7 @@ describe('DepartmentsPanel — department status', () => {
 
         const hr = card('Human Resources')
         expect(within(hr).getByText('No manager assigned')).toBeInTheDocument()
-        expect(within(hr).getByText('Approvals are routed to Admin')).toBeInTheDocument()
+        expect(within(hr).getByText('Approvals are routed to System Administrator')).toBeInTheDocument()
         expect(within(hr).queryByText(/Manager position vacant/)).not.toBeInTheDocument()
     })
 
@@ -234,7 +234,7 @@ describe('DepartmentsPanel — an admin belongs to no department', () => {
 
     beforeEach(() => {
         api.getEmployeeProfiles.mockResolvedValue([...PROFILES, ADMIN_PROFILE])
-        api.getAdminUsers.mockResolvedValue([...USERS, user('admin', ['Admin'])])
+        api.getAdminUsers.mockResolvedValue([...USERS, user('admin', ['System Administrator'])])
     })
 
     it('leaves the admin out of every department card', async () => {

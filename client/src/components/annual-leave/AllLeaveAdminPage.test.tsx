@@ -142,8 +142,8 @@ const PROFILES = [
 ]
 
 const ADMIN: UserInfo = {
-    id: 'admin-1', userName: 'admin@annualleave.com', email: 'admin@annualleave.com',
-    displayName: 'Admin User', imageUrl: '', roles: ['Admin'],
+    id: 'admin-1', userName: 'systemadmin@annualleave.com', email: 'systemadmin@annualleave.com',
+    displayName: 'Admin User', imageUrl: '', roles: ['System Administrator'],
 }
 
 beforeEach(() => {

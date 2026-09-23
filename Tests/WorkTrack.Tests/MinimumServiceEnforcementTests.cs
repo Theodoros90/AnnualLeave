@@ -182,7 +182,7 @@ public class MinimumServiceEnforcementTests
     }
 
     /// <summary>
-    /// Nobody entered it — an Admin, or an Employee row predating the column. Same
+    /// Nobody entered it — a System Administrator, or an Employee row predating the column. Same
     /// reading as a null gender: it is not "started today".
     /// </summary>
     [Fact]

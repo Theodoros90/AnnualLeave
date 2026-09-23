@@ -11,10 +11,10 @@ namespace Application.EmployeeProfiles.Queries;
 /// Returns names and job titles only, so any authenticated user can call it —
 /// it backs the "nominate someone to cover my leave" picker.
 ///
-/// An Admin filing leave on somebody's behalf needs <em>that</em> person's
-/// colleagues, not their own (an Admin has no department, so their own list is
+/// A System Administrator filing leave on somebody's behalf needs <em>that</em> person's
+/// colleagues, not their own (a System Administrator has no department, so their own list is
 /// empty), which is what <see cref="Query.ForUserId"/> is for. The controller
-/// only passes it through for an Admin.
+/// only passes it through for a System Administrator.
 /// </summary>
 public class GetTeammateList
 {
@@ -25,7 +25,7 @@ public class GetTeammateList
         /// <summary>
         /// Whose colleagues to list, when not the caller's own. Null means the
         /// caller. Honoured only when the controller has established the caller
-        /// is an Admin.
+        /// is a System Administrator.
         /// </summary>
         public string? ForUserId { get; set; }
     }
@@ -54,7 +54,7 @@ public class GetTeammateList
                 .Where(ep =>
                     ep.DepartmentId == myDepartmentId
                     && ep.UserId != subjectUserId
-                    && (ep.User == null || !ep.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin)))
+                    && (ep.User == null || !ep.User.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator)))
                 .Select(ep => new TeammateDto
                 {
                     UserId = ep.UserId,

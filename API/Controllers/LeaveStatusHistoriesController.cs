@@ -19,7 +19,7 @@ public class LeaveStatusHistoriesController : BaseApiController
         var result = await Mediator.Send(new GetLeaveStatusHistoryList.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
             IsManager = User.IsInRole(AppRoles.Manager),
             Page = page,
             PageSize = pageSize,

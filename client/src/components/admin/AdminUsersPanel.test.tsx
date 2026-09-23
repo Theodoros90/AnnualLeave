@@ -426,7 +426,7 @@ describe('AdminUsersPanel — role selection', () => {
     it('offers the three roles as a single choice, not as checkboxes', async () => {
         const dialog = await openCreateDialog()
 
-        for (const role of ['Admin', 'Manager', 'Employee']) {
+        for (const role of ['System Administrator', 'Manager', 'Employee']) {
             expect(within(dialog).getByRole('radio', { name: role })).toBeInTheDocument()
             expect(within(dialog).queryByRole('checkbox', { name: role })).not.toBeInTheDocument()
         }
@@ -442,8 +442,8 @@ describe('AdminUsersPanel — role selection', () => {
         expect(within(dialog).getByRole('radio', { name: 'Manager' })).toBeChecked()
         expect(within(dialog).getByRole('radio', { name: 'Employee' })).not.toBeChecked()
 
-        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
-        expect(within(dialog).getByRole('radio', { name: 'Admin' })).toBeChecked()
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
+        expect(within(dialog).getByRole('radio', { name: 'System Administrator' })).toBeChecked()
         expect(within(dialog).getByRole('radio', { name: 'Manager' })).not.toBeChecked()
 
         // Exactly one role checked at any time. Scoped to the role group by its
@@ -483,16 +483,16 @@ describe('AdminUsersPanel — role selection', () => {
     })
 })
 
-// Admins sit outside the department structure, so Create User hides the whole
+// System Administrators sit outside the department structure, so Create User hides the whole
 // Profile section for them. A profile row is still written server-side and its
 // DepartmentId is a required FK, so the panel has to supply one without asking.
-describe('AdminUsersPanel — Admin hides the Profile section', () => {
-    it('drops the profile fields when Admin is picked, and brings them back otherwise', async () => {
+describe('AdminUsersPanel — System Administrator hides the Profile section', () => {
+    it('drops the profile fields when System Administrator is picked, and brings them back otherwise', async () => {
         const dialog = await openCreateDialog()
 
         expect(within(dialog).getByText('Profile')).toBeInTheDocument()
 
-        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
 
         expect(within(dialog).queryByText('Profile')).not.toBeInTheDocument()
         expect(within(dialog).queryByLabelText(/department/i)).not.toBeInTheDocument()
@@ -502,12 +502,12 @@ describe('AdminUsersPanel — Admin hides the Profile section', () => {
         // "Manager" also names one of the role radios above.
         expect(within(dialog).queryByText(/set by the department's manager/i)).not.toBeInTheDocument()
 
-        // Not a one-way door: switching back off Admin restores the section.
+        // Not a one-way door: switching back off System Administrator restores the section.
         fireEvent.click(within(dialog).getByRole('radio', { name: 'Manager' }))
         expect(within(dialog).getByText('Profile')).toBeInTheDocument()
     })
 
-    /// The dialog hides the department for an Admin and used to send "the first
+    /// The dialog hides the department for a System Administrator and used to send "the first
     /// active department" in its place, because the column was a required foreign
     /// key. That invented assignment was not invisible: it put the admin in that
     /// department's team strip and headcount on the Departments panel, in its "not
@@ -520,17 +520,17 @@ describe('AdminUsersPanel — Admin hides the Profile section', () => {
             id: 'u1',
             userName: 'newadmin@example.test',
             email: 'newadmin@example.test',
-            displayName: 'New Admin',
+            displayName: 'New System Administrator',
             imageUrl: '',
             emailConfirmed: true,
             isActive: true,
-            roles: ['Admin'],
+            roles: ['System Administrator'],
             inviteEmailSent: true,
         })
 
         fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'newadmin@example.test' } })
-        fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Admin' } })
-        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+        fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New System Administrator' } })
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
         setDateOfBirth(dialog)
         setEmploymentStartDate(dialog)
 
@@ -543,7 +543,7 @@ describe('AdminUsersPanel — Admin hides the Profile section', () => {
         await waitFor(() => expect(createAdminUser).toHaveBeenCalledTimes(1))
 
         expect(api.createAdminUser.mock.calls[0][0]).toMatchObject({
-            roles: ['Admin'],
+            roles: ['System Administrator'],
             departmentId: null,
             managerId: null,
             jobTitle: null,
@@ -553,16 +553,16 @@ describe('AdminUsersPanel — Admin hides the Profile section', () => {
 
     /* Gender sits in Personal details rather than Profile, but it follows the same
        rule: it is recorded to decide who is offered gender-restricted leave, which
-       an Admin is outside of, and the API refuses one for them outright. So the
+       a System Administrator is outside of, and the API refuses one for them outright. So the
        radios go with the role, and Create must not gate on a field it is not
-       showing — the report that started this was an Edit User dialog for an Admin
+       showing — the report that started this was an Edit User dialog for a System Administrator
        stuck on "Gender is required." with nothing the admin could do about it. */
-    it('hides Gender when Admin is picked, and brings it back otherwise', async () => {
+    it('hides Gender when System Administrator is picked, and brings it back otherwise', async () => {
         const dialog = await openCreateDialog()
 
         expect(within(dialog).getByRole('radio', { name: 'Female' })).toBeInTheDocument()
 
-        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
 
         expect(within(dialog).queryByRole('radio', { name: 'Male' })).not.toBeInTheDocument()
         expect(within(dialog).queryByRole('radio', { name: 'Female' })).not.toBeInTheDocument()
@@ -572,26 +572,26 @@ describe('AdminUsersPanel — Admin hides the Profile section', () => {
         expect(within(dialog).getByRole('radio', { name: 'Female' })).toBeInTheDocument()
     })
 
-    // A gender picked *before* the role was switched to Admin is not sent: the API
-    // refuses one for an Admin, and the dialog stopped showing it.
-    it('does not send a gender picked before the role was switched to Admin', async () => {
+    // A gender picked *before* the role was switched to System Administrator is not sent: the API
+    // refuses one for a System Administrator, and the dialog stopped showing it.
+    it('does not send a gender picked before the role was switched to System Administrator', async () => {
         const dialog = await openCreateDialog()
 
         api.createAdminUser.mockResolvedValue({
-            id: 'u1', userName: 'newadmin@example.test', email: 'newadmin@example.test', displayName: 'New Admin',
-            imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Admin'], inviteEmailSent: true,
+            id: 'u1', userName: 'newadmin@example.test', email: 'newadmin@example.test', displayName: 'New System Administrator',
+            imageUrl: '', emailConfirmed: true, isActive: true, roles: ['System Administrator'], inviteEmailSent: true,
         })
 
         fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'newadmin@example.test' } })
-        fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Admin' } })
+        fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New System Administrator' } })
         setDateOfBirth(dialog)
         setGender(dialog, 'Male')
-        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
 
         fireEvent.click(within(dialog).getByRole('button', { name: /^create$/i }))
 
         await waitFor(() => expect(createAdminUser).toHaveBeenCalledTimes(1))
-        expect(api.createAdminUser.mock.calls[0][0]).toMatchObject({ roles: ['Admin'], gender: null })
+        expect(api.createAdminUser.mock.calls[0][0]).toMatchObject({ roles: ['System Administrator'], gender: null })
     })
 
     // An Employee or Manager still has to be placed in one: it is where their
@@ -610,13 +610,13 @@ describe('AdminUsersPanel — Admin hides the Profile section', () => {
     })
 })
 
-// An Admin sits outside the department structure, so the edit dialog has to be
+// A System Administrator sits outside the department structure, so the edit dialog has to be
 // able to move a profile out of a department as well as into one — and must not
 // send back the department a promoted user is leaving behind.
-describe('AdminUsersPanel — editing across the Admin boundary', () => {
+describe('AdminUsersPanel — editing across the System Administrator boundary', () => {
     const EMPLOYEE_USER = { id: 'u-employee', userName: 'employee@example.test', email: 'employee@example.test', displayName: 'Theodoros Iona', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'], dateOfBirth: '1990-03-04', gender: 'Female' }
-    // No gender: an Admin is never asked one, and the API refuses one for them.
-    const ADMIN_USER = { id: 'u-admin', userName: 'admin@example.test', email: 'admin@example.test', displayName: 'Admin User', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Admin'], dateOfBirth: '1990-03-04', gender: null }
+    // No gender: a System Administrator is never asked one, and the API refuses one for them.
+    const ADMIN_USER = { id: 'u-admin', userName: 'admin@example.test', email: 'admin@example.test', displayName: 'Admin User', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['System Administrator'], dateOfBirth: '1990-03-04', gender: null }
 
     const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
     // What the server now returns for an admin: a profile, and no department.
@@ -635,11 +635,11 @@ describe('AdminUsersPanel — editing across the Admin boundary', () => {
         return screen.getByRole('dialog')
     }
 
-    it('clears the department when an employee is promoted to Admin', async () => {
+    it('clears the department when an employee is promoted to System Administrator', async () => {
         const dialog = await openEditFor('Theodoros Iona')
 
         await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Employee' })).toBeChecked())
-        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
 
         fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
@@ -655,7 +655,7 @@ describe('AdminUsersPanel — editing across the Admin boundary', () => {
     it('saves an admin with no department rather than inventing one', async () => {
         const dialog = await openEditFor('Admin User')
 
-        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Admin' })).toBeChecked())
+        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'System Administrator' })).toBeChecked())
         fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
         await waitFor(() => expect(api.updateEmployeeProfile).toHaveBeenCalledTimes(1))
@@ -671,7 +671,7 @@ describe('AdminUsersPanel — editing across the Admin boundary', () => {
     it('will not save a demoted admin until a department is picked', async () => {
         const dialog = await openEditFor('Admin User')
 
-        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Admin' })).toBeChecked())
+        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'System Administrator' })).toBeChecked())
         fireEvent.click(within(dialog).getByRole('radio', { name: 'Employee' }))
 
         expect(within(dialog).getByText('Department is required')).toBeInTheDocument()
@@ -693,13 +693,13 @@ describe('AdminUsersPanel — editing across the Admin boundary', () => {
     })
 
     /* Gender follows the role the same way, though it sits in Personal details:
-       an Admin is never asked one and the API refuses one for them. The report
-       that started this was exactly this dialog, opened on an Admin, stuck on
+       a System Administrator is never asked one and the API refuses one for them. The report
+       that started this was exactly this dialog, opened on a System Administrator, stuck on
        "Gender is required." with Save disabled and no way past it. */
     it('hides Gender for an admin and saves them with none', async () => {
         const dialog = await openEditFor('Admin User')
 
-        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Admin' })).toBeChecked())
+        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'System Administrator' })).toBeChecked())
         expect(within(dialog).queryByRole('radio', { name: 'Male' })).not.toBeInTheDocument()
         expect(within(dialog).queryByRole('radio', { name: 'Female' })).not.toBeInTheDocument()
         expect(within(dialog).queryByText('Gender is required.')).not.toBeInTheDocument()
@@ -714,11 +714,11 @@ describe('AdminUsersPanel — editing across the Admin boundary', () => {
 
     // Same as the department and the start date: the stored answer is cleared on
     // a promotion, not sent back from a field the dialog stopped showing.
-    it('clears the gender when an employee is promoted to Admin', async () => {
+    it('clears the gender when an employee is promoted to System Administrator', async () => {
         const dialog = await openEditFor('Theodoros Iona')
 
         await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Female' })).toBeChecked())
-        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
 
         expect(within(dialog).queryByRole('radio', { name: 'Female' })).not.toBeInTheDocument()
         fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
@@ -731,7 +731,7 @@ describe('AdminUsersPanel — editing across the Admin boundary', () => {
     it('will not save a demoted admin until a gender is picked', async () => {
         const dialog = await openEditFor('Admin User')
 
-        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Admin' })).toBeChecked())
+        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'System Administrator' })).toBeChecked())
         fireEvent.click(within(dialog).getByRole('radio', { name: 'Employee' }))
         await selectDepartment(dialog)
         setEmploymentStartDate(dialog)
@@ -760,7 +760,7 @@ describe('AdminUsersPanel — editing across the Admin boundary', () => {
         const dialog = await openEditFor('Theodoros Iona')
 
         await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Employee' })).toBeChecked())
-        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
         fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
 
         await waitFor(() => expect(api.updateEmployeeProfile).toHaveBeenCalledTimes(1))
@@ -786,7 +786,7 @@ describe('AdminUsersPanel — editing across the Admin boundary', () => {
 // rewrites history (every approval they gave is nulled out), and leaving the
 // account enabled leaves working credentials behind.
 describe('AdminUsersPanel — activating and deactivating', () => {
-    const ADMIN = { id: 'u-admin', userName: 'admin@annualleave.com', email: 'admin@annualleave.com', displayName: 'Admin User', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Admin'] }
+    const ADMIN = { id: 'u-admin', userName: 'systemadmin@annualleave.com', email: 'systemadmin@annualleave.com', displayName: 'Admin User', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['System Administrator'] }
     const ACTIVE = { id: 'u-active', userName: 'active@example.test', email: 'active@example.test', displayName: 'Still Here', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'] }
     const INACTIVE = { id: 'u-inactive', userName: 'gone@example.test', email: 'gone@example.test', displayName: 'Long Gone', imageUrl: '', emailConfirmed: true, isActive: false, roles: ['Employee'] }
 
@@ -1082,7 +1082,7 @@ function setGender(dialog: HTMLElement, value: 'Male' | 'Female' = 'Female') {
 
 /* The Profile section's mandatory start date, filled so a test about something
    else can still reach Save. Tolerant of the field's absence, because the whole
-   Profile section is hidden for an Admin and several of these tests pick that
+   Profile section is hidden for a System Administrator and several of these tests pick that
    role — the dedicated cases below are what hold the rule itself. */
 function setEmploymentStartDate(dialog: HTMLElement, value = '2024-02-01') {
     const field = within(dialog).queryByLabelText(/employment start date/i)
@@ -1106,7 +1106,7 @@ async function selectDepartment(dialog: HTMLElement) {
  */
 describe('AdminUsersPanel — managing an employee\'s children', () => {
     const EMPLOYEE = { id: 'u-employee', userName: 'e@example.test', email: 'e@example.test', displayName: 'Theodoros Iona', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'] }
-    const ADMIN = { id: 'u-admin', userName: 'a@example.test', email: 'a@example.test', displayName: 'Admin User', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Admin'] }
+    const ADMIN = { id: 'u-admin', userName: 'a@example.test', email: 'a@example.test', displayName: 'Admin User', imageUrl: '', emailConfirmed: true, isActive: true, roles: ['System Administrator'] }
 
     const EMPLOYEE_PROFILE = { id: 'p-employee', userId: 'u-employee', displayName: 'Theodoros Iona', departmentId: DEPARTMENT.id, managerId: null, annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01' }
     // An admin sits outside the department structure and gets no Profile section.
@@ -1160,13 +1160,13 @@ describe('AdminUsersPanel — managing an employee\'s children', () => {
         ))
     })
 
-    // It rides with the Profile section, which an Admin does not get -- they sit
+    // It rides with the Profile section, which a System Administrator does not get -- they sit
     // outside the department structure and take no per-child leave through it.
     it('offers no children section for an admin account', async () => {
         const dialog = await openEditFor('Admin User')
 
-        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Admin' })).toBeChecked())
-        // The Profile section is what carries it, and an Admin gets none of it.
+        await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'System Administrator' })).toBeChecked())
+        // The Profile section is what carries it, and a System Administrator gets none of it.
         expect(within(dialog).queryByText('Profile')).not.toBeInTheDocument()
         expect(within(dialog).queryByText("Admin User's children")).not.toBeInTheDocument()
         expect(within(dialog).queryByRole('button', { name: 'Add child' })).not.toBeInTheDocument()
@@ -1278,16 +1278,16 @@ describe('AdminUsersPanel — adding children while creating a user', () => {
         expect(screen.queryByText(/could not create user/i)).not.toBeInTheDocument()
     })
 
-    // Admins get no Profile section, so anything collected before the role was
+    // System Administrators get no Profile section, so anything collected before the role was
     // switched must not be sent -- the same rule jobTitle already follows.
     it('sends no children for an admin account', async () => {
-        api.createAdminUser.mockResolvedValue({ ...CREATED, roles: ['Admin'] } as never)
+        api.createAdminUser.mockResolvedValue({ ...CREATED, roles: ['System Administrator'] } as never)
 
         const dialog = await openCreateDialog()
         await fillCreateForm(dialog)
         await addPendingChild(dialog, 'Maria', '2021-06-01')
 
-        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
         expect(within(dialog).queryByRole('button', { name: 'Add child' })).not.toBeInTheDocument()
 
         fireEvent.click(within(dialog).getByRole('button', { name: /^create$/i }))
@@ -1300,7 +1300,7 @@ describe('AdminUsersPanel — adding children while creating a user', () => {
 // The dialogs say what each field is for, rather than leaving an admin to infer
 // it from a label. Two things were genuinely misleading: Gender sits directly
 // above Role, and what it gates — which parental leave types the employee is
-// offered — is nowhere near this dialog; and picking Admin silently removes the
+// offered — is nowhere near this dialog; and picking System Administrator silently removes the
 // whole Profile section.
 describe('AdminUsersPanel — dialogs explain themselves', () => {
     const EMPLOYEE_USER = { id: 'u-employee', userName: 'employee@example.test', email: 'employee@example.test', displayName: 'Theodoros Iona', imageUrl: '', emailConfirmed: true, roles: ['Employee'], dateOfBirth: '1990-03-04', gender: 'Female' }
@@ -1344,13 +1344,13 @@ describe('AdminUsersPanel — dialogs explain themselves', () => {
         expect(hint.textContent).not.toMatch(/not specified/i)
     })
 
-    // The Profile section disappearing on Admin was the surprise this explains.
+    // The Profile section disappearing on System Administrator was the surprise this explains.
     it('explains the selected role, and says an admin has no department', async () => {
         const dialog = await openEdit()
 
         expect(within(dialog).getByText(/approvals go to their department's manager/i)).toBeInTheDocument()
 
-        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
 
         expect(within(dialog).getByText(/no department or manager/i)).toBeInTheDocument()
         expect(within(dialog).queryByText(/approvals go to their department's manager/i)).not.toBeInTheDocument()
@@ -1623,7 +1623,7 @@ describe('AdminUsersPanel — date of birth is required', () => {
  * When somebody joined was recorded nowhere — EmployeeProfile.CreatedAt is when the
  * row was written, not a hire date. So Employment start date, in the Profile section
  * beside the department and the job title, mandatory for an Employee and a Manager
- * and absent for an Admin, exactly as the department is.
+ * and absent for a System Administrator, exactly as the department is.
  *
  * Mirrors Application/Core/PersonFieldRules.cs and the two validators that apply it;
  * these keep the dialogs from offering a submit the API is certain to refuse.
@@ -1698,14 +1698,14 @@ describe('AdminUsersPanel — employment start date', () => {
         })
     })
 
-    it('does not ask an Admin for one, and does not send one', async () => {
+    it('does not ask a System Administrator for one, and does not send one', async () => {
         const dialog = await openCreateDialog()
 
         fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'boss@example.test' } })
-        fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New Admin' } })
+        fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'New System Administrator' } })
         setDateOfBirth(dialog)
         setGender(dialog)
-        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
 
         // The whole Profile section goes with the role, so the field goes with it.
         expect(within(dialog).queryByLabelText(/employment start date/i)).not.toBeInTheDocument()
@@ -1787,12 +1787,12 @@ describe('AdminUsersPanel — employment start date', () => {
     })
 
     /* Same rule as the department beside it: nothing may hold a start date for an
-       Admin, so a promotion must not send the one it stopped showing. */
-    it('clears the start date when an employee is promoted to Admin', async () => {
+       System Administrator, so a promotion must not send the one it stopped showing. */
+    it('clears the start date when an employee is promoted to System Administrator', async () => {
         const dialog = await openEditDialog()
 
         await waitFor(() => expect(startDateField(dialog)).toHaveValue(START_DATE))
-        fireEvent.click(within(dialog).getByRole('radio', { name: 'Admin' }))
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
 
         expect(within(dialog).queryByLabelText(/employment start date/i)).not.toBeInTheDocument()
 
@@ -1830,7 +1830,7 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
             user('dora', 'Dora Loner', 'Employee'),
             user('bob', 'Bob Manager', 'Manager'),
             user('carl', 'Carl Report', 'Employee'),
-            user('zed', 'Zed Admin', 'Admin'),
+            user('zed', 'Zed System Administrator', 'System Administrator'),
         ] as never)
         api.getEmployeeProfiles.mockResolvedValue([
             profile('anna', 'p-mia'),
@@ -1848,7 +1848,7 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
 
     it('lists admins, then each manager followed by their reports, then anyone without a manager', async () => {
         renderPanel()
-        await screen.findByText('Zed Admin')
+        await screen.findByText('Zed System Administrator')
 
         expect(rowOrder()).toEqual(['zed', 'bob', 'carl', 'mia', 'anna', 'dora'])
     })
@@ -1865,20 +1865,20 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
 
     it('labels the three sections when more than one of them has rows', async () => {
         renderPanel()
-        await screen.findByText('Zed Admin')
+        await screen.findByText('Zed System Administrator')
 
-        expect(screen.getByRole('heading', { name: 'Admins' })).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: 'System Administrators' })).toBeInTheDocument()
         expect(screen.getByRole('heading', { name: 'Managers & teams' })).toBeInTheDocument()
         expect(screen.getByRole('heading', { name: 'No manager assigned' })).toBeInTheDocument()
     })
 
     it('drops the section labels when only one section has rows', async () => {
         renderPanel()
-        fireEvent.click(await screen.findByRole('button', { name: /^Admins/ }))
+        fireEvent.click(await screen.findByRole('button', { name: /^System Administrators/ }))
 
-        expect(screen.getByText('Zed Admin')).toBeInTheDocument()
-        // The Admins tab is still there; the section heading under the tabs is not.
-        expect(screen.queryByRole('heading', { name: 'Admins' })).not.toBeInTheDocument()
+        expect(screen.getByText('Zed System Administrator')).toBeInTheDocument()
+        // The System Administrators tab is still there; the section heading under the tabs is not.
+        expect(screen.queryByRole('heading', { name: 'System Administrators' })).not.toBeInTheDocument()
         expect(screen.queryByRole('heading', { name: 'Managers & teams' })).not.toBeInTheDocument()
     })
 

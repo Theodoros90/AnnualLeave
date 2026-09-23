@@ -52,7 +52,7 @@ public class UpdateChild
             // A date-of-birth change moves the eligibility window (an entitlement
             // already granted against the old date could become one that never
             // should have been). Refused once leave has been recorded against the
-            // child, same as DeleteChild -- unless the caller is an Admin, matching
+            // child, same as DeleteChild -- unless the caller is a System Administrator, matching
             // how EditAnnualLeave lets an admin edit an approved request. A name
             // change carries no such risk and stays free.
             if (child.DateOfBirth != request.Child.DateOfBirth && !request.IsAdmin)

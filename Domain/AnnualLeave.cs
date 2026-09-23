@@ -26,7 +26,7 @@ public class AnnualLeave : IAuditable
     ///
     /// Nullable in the column, required by the rule: <c>CoverageRule</c> refuses a
     /// request from an Employee or a Manager that names nobody, on create and on
-    /// edit. An Admin's own leave is the one standing null — an Admin has no
+    /// edit. A System Administrator's own leave is the one standing null — a System Administrator has no
     /// department, so there is nobody to offer — and every row predating the rule
     /// keeps whatever it had.
     /// </summary>

@@ -163,8 +163,8 @@ public class GetStoredFileTests
     public async Task Evidence_is_readable_by_the_employee_the_leave_is_for_even_when_an_admin_uploaded_it()
     {
         using var db = TestDb.Create();
-        // An Admin may create leave on behalf of someone else, which makes the
-        // Admin the uploader — the employee it concerns must still see it.
+        // A System Administrator may create leave on behalf of someone else, which makes the
+        // System Administrator the uploader — the employee it concerns must still see it.
         var file = SeedFile(db, StoredFilePurpose.LeaveEvidence, uploaderId: "admin-1");
         SeedLeaveReferencing(db, file, OwnerId, departmentId: 1);
 

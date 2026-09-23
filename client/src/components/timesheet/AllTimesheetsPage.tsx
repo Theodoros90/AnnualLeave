@@ -536,7 +536,7 @@ export default function AllTimesheetsPage() {
     })
 
     const deptById = useMemo(() => new Map(departments.map((d) => [d.id, d.name])), [departments])
-    /* A sheet filed by someone with no department — an Admin — carries none, so the
+    /* A sheet filed by someone with no department — a System Administrator — carries none, so the
        id can be absent as well as unknown. The caller says how that should read. */
     const deptNameOf = (id: number | null, fallback: string) =>
         (id === null ? undefined : deptById.get(id)) ?? fallback

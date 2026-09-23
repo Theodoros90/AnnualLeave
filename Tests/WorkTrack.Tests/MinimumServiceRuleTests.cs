@@ -64,7 +64,7 @@ public class MinimumServiceRuleTests
     }
 
     /// <summary>
-    /// Nobody has entered it — an Admin never has one, and an Employee row predating
+    /// Nobody has entered it — a System Administrator never has one, and an Employee row predating
     /// the column has none until it is next saved. The same reading as a null
     /// gender in <see cref="ParentalLeaveEligibility"/>: refusing on a blank would
     /// take the type away from everyone until an admin filled the field in one

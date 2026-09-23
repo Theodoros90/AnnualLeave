@@ -11,7 +11,7 @@ namespace Application.Children.Support;
 ///
 /// <list type="bullet">
 ///   <item>Self — always, read and write.</item>
-///   <item>Admin — any employee, read and write.</item>
+///   <item>System Administrator — any employee, read and write.</item>
 ///   <item>Manager — read only, and only inside their existing department scope. A
 ///     manager approving a paternity request has to be able to see the ledger it is
 ///     measured against, but the employee owns the family record.</item>

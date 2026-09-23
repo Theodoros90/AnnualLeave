@@ -123,7 +123,7 @@ const TeamLeaveRoute = observer(() => {
     const { authStore } = useStore()
     const user = authStore.user
     if (!user) return null
-    return user.roles.includes('Admin')
+    return user.roles.includes('System Administrator')
         ? <AllLeaveAdminPage user={user} />
         : <TeamLeavePage user={user} />
 })
@@ -132,7 +132,7 @@ const TimesheetsRoute = observer(() => {
     const { authStore } = useStore()
     const user = authStore.user
     if (!user) return null
-    return user.roles.includes('Admin')
+    return user.roles.includes('System Administrator')
         ? <TeamTimesheetPage user={user} />
         : <MyTimesheetPage user={user} />
 })
@@ -141,7 +141,7 @@ const TeamTimesheetsRoute = observer(() => {
     const { authStore } = useStore()
     const user = authStore.user
     if (!user) return null
-    return user.roles.includes('Admin')
+    return user.roles.includes('System Administrator')
         ? <AllTimesheetsPage />
         : <TeamTimesheetPage user={user} />
 })
@@ -274,8 +274,8 @@ const AppInner = observer(function AppInner() {
                         <Route path="/team-attendance" element={<TeamAttendancePage />} />
                         <Route path="/attendance-management" element={<CompanyAttendancePage />} />
 
-                        {/* Admin-only nested routes — gated by role inside ProtectedRoute */}
-                        <Route element={<ProtectedRoute roles={['Admin']} />}>
+                        {/* System Administrator-only nested routes — gated by role inside ProtectedRoute */}
+                        <Route element={<ProtectedRoute roles={['System Administrator']} />}>
                             <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
                             <Route path="/admin/general" element={<Navigate to="/admin/reminders-notifications" replace />} />
                             <Route path="/admin/activity-types" element={<Navigate to="/admin/project-activities" replace />} />

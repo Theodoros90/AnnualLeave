@@ -32,7 +32,7 @@ public class AccountController(
 {
     // There is deliberately no public registration endpoint. Accounts are
     // created only by an administrator via POST /api/AdminUsers, which is
-    // gated by [Authorize(Roles = AppRoles.Admin)].
+    // gated by [Authorize(Roles = AppRoles.SystemAdministrator)].
 
     [AllowAnonymous]
     [HttpGet("verify-email")]

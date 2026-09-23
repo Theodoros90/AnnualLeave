@@ -48,16 +48,16 @@ public class UpdateAdminUserValidator : AbstractValidator<UpdateAdminUser.Comman
             RuleFor(x => x.User.PhoneNumber).MaximumLength(PersonFieldRules.PhoneNumberMaxLength).ValidPhoneNumber();
             RuleFor(x => x.User.DateOfBirth).ValidDateOfBirth();
 
-            // Required for an Employee and a Manager, refused for an Admin — the
+            // Required for an Employee and a Manager, refused for a System Administrator — the
             // department's rule, applied to the one Personal-details field the
-            // dialog hides for an Admin. The payload carries no role, so this reads
+            // dialog hides for a System Administrator. The payload carries no role, so this reads
             // the stored one, which is why the edit dialog sets roles *before* it
             // saves the user: a promotion arrives with a null gender and must meet
-            // the Admin rule, a demotion arrives with one and must meet the other.
+            // the System Administrator rule, a demotion arrives with one and must meet the other.
             // Reordering those two calls refuses every role change with a message
             // about a field the admin cannot see.
             //
-            // An id that matches nobody is held to the non-Admin rule; the handler
+            // An id that matches nobody is held to the non-System Administrator rule; the handler
             // then reports the account as not found.
             RuleFor(x => x.User.Gender)
                 .CustomAsync(async (gender, validationContext, cancellationToken) =>
@@ -65,7 +65,7 @@ public class UpdateAdminUserValidator : AbstractValidator<UpdateAdminUser.Comman
                     var isAdmin = await context.Users
                         .Where(u => u.Id == validationContext.InstanceToValidate.Id)
                         .SelectMany(u => u.UserRoles)
-                        .AnyAsync(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin, cancellationToken);
+                        .AnyAsync(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator, cancellationToken);
 
                     if (isAdmin)
                     {

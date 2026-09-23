@@ -29,7 +29,7 @@ public class SingleRolePerUserTests
     };
 
     [Theory]
-    [InlineData(AppRoles.Admin)]
+    [InlineData(AppRoles.SystemAdministrator)]
     [InlineData(AppRoles.Manager)]
     [InlineData(AppRoles.Employee)]
     public void Creating_a_user_with_one_role_is_valid(string role)
@@ -58,7 +58,7 @@ public class SingleRolePerUserTests
     }
 
     [Theory]
-    [InlineData(AppRoles.Admin)]
+    [InlineData(AppRoles.SystemAdministrator)]
     [InlineData(AppRoles.Manager)]
     [InlineData(AppRoles.Employee)]
     public void Reassigning_to_one_role_is_valid(string role)
@@ -71,7 +71,7 @@ public class SingleRolePerUserTests
     [Fact]
     public void Reassigning_to_two_roles_is_rejected()
     {
-        var results = Validate(new AdminSetUserRolesDto { Roles = [AppRoles.Admin, AppRoles.Manager] });
+        var results = Validate(new AdminSetUserRolesDto { Roles = [AppRoles.SystemAdministrator, AppRoles.Manager] });
 
         Assert.Contains(results, r =>
             r.MemberNames.Contains(nameof(AdminSetUserRolesDto.Roles))
@@ -93,7 +93,7 @@ public class SingleRolePerUserTests
     [Fact]
     public void All_three_roles_stay_assignable()
     {
-        string[] roles = [AppRoles.Admin, AppRoles.Manager, AppRoles.Employee];
+        string[] roles = [AppRoles.SystemAdministrator, AppRoles.Manager, AppRoles.Employee];
 
         Assert.Equal(3, roles.Distinct().Count());
         Assert.All(roles, role => Assert.Empty(Validate(new AdminSetUserRolesDto { Roles = [role] })));

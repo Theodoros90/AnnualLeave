@@ -99,21 +99,21 @@ public static partial class PersonFieldRules
     public const string GenderRequiredMessage = "Gender is required.";
 
     /// <summary>
-    /// And an Admin is never asked. The field exists to route leave that is
-    /// offered by gender, and an Admin sits outside every leave rule the
+    /// And a System Administrator is never asked. The field exists to route leave that is
+    /// offered by gender, and a System Administrator sits outside every leave rule the
     /// department structure applies — so the dialogs hide it for them, exactly as
     /// they hide the department and the start date, and a payload that carries
-    /// one for an Admin was built against a shape the dialog does not have.
+    /// one for a System Administrator was built against a shape the dialog does not have.
     /// Refused rather than ignored for the same reason those two are: a promotion
-    /// to Admin then <i>clears</i> the stored answer instead of stranding a value
-    /// the Admin's own dialog can no longer show or take back.
+    /// to System Administrator then <i>clears</i> the stored answer instead of stranding a value
+    /// the System Administrator's own dialog can no longer show or take back.
     /// </summary>
-    public const string GenderNotForAdminMessage = "An Admin has no recorded gender.";
+    public const string GenderNotForAdminMessage = "A System Administrator has no recorded gender.";
 
     public const string EmploymentStartDateRequiredMessage = "Employment start date is required.";
 
     public const string EmploymentStartDateNotForAdminMessage =
-        "An Admin has no employment start date.";
+        "A System Administrator has no employment start date.";
 
     public static readonly string EmploymentStartDateTooYoungMessage =
         $"Employment start date must be on or after their {MinimumAgeYears}th birthday.";

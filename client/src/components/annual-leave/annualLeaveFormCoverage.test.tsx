@@ -47,7 +47,7 @@ const EMPLOYEE: UserInfo = {
     displayName: 'Andreas Georgiou', imageUrl: '', roles: ['Employee'], departmentId: 2,
 }
 
-const ADMIN: UserInfo = { ...EMPLOYEE, id: 'adm-1', displayName: 'Chris Admin', roles: ['Admin'], departmentId: null }
+const ADMIN: UserInfo = { ...EMPLOYEE, id: 'adm-1', displayName: 'Chris System Administrator', roles: ['System Administrator'], departmentId: null }
 
 const TEAMMATE: Teammate = { userId: 'u-delegate', displayName: 'Maria Ioannou', jobTitle: 'Accountant', departmentId: 2 }
 

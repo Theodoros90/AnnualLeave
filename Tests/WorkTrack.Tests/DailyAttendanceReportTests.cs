@@ -8,10 +8,10 @@ using Xunit;
 namespace WorkTrack.Tests;
 
 /// <summary>
-/// The daily attendance report: every Admin is emailed each working morning
+/// The daily attendance report: every System Administrator is emailed each working morning
 /// about the previous working day — who checked in late, who never checked in,
 /// who never checked out, whose timesheet for the last week past its deadline is
-/// still unsubmitted, and who was on leave. Admins and deactivated accounts are
+/// still unsubmitted, and who was on leave. System Administrators and deactivated accounts are
 /// reported on by nobody: they are not part of the tracked workforce.
 /// </summary>
 public class DailyAttendanceReportTests
@@ -63,10 +63,10 @@ public class DailyAttendanceReportTests
         db.Departments.Add(new Department { Id = DepartmentId, Name = "Engineering", Code = "ENG" });
         db.LeaveTypes.Add(new LeaveType { Id = 1, Name = "Annual Leave", IsActive = true });
 
-        var adminRole = new Role { Id = "r-admin", Name = AppRoles.Admin, NormalizedName = AppRoles.Admin.ToUpperInvariant() };
+        var adminRole = new Role { Id = "r-admin", Name = AppRoles.SystemAdministrator, NormalizedName = AppRoles.SystemAdministrator.ToUpperInvariant() };
         db.Roles.Add(adminRole);
 
-        SeedPerson(db, "admin", "Ada Admin", AdminEmail, departmentId: null);
+        SeedPerson(db, "admin", "Ada System Administrator", AdminEmail, departmentId: null);
         db.UserRoles.Add(new UserRole { UserId = "admin-u", RoleId = adminRole.Id });
         // An admin checking in late must not be reported: the widget is hidden for the role.
         db.AttendanceEvents.Add(AttendanceDay.NewEvent("admin-p", Yesterday.AddHours(11), AttendanceEventType.CheckIn));
@@ -154,7 +154,7 @@ public class DailyAttendanceReportTests
 
         // The greeting names the admin; the report below it must not.
         var body = mail.HtmlBody[mail.HtmlBody.IndexOf("<h3>", StringComparison.Ordinal)..];
-        Assert.DoesNotContain("Ada Admin", body);
+        Assert.DoesNotContain("Ada System Administrator", body);
         Assert.DoesNotContain("Zed Leaver", body);
     }
 

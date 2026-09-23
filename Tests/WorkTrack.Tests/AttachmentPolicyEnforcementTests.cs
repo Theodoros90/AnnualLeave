@@ -86,7 +86,7 @@ public class AttachmentPolicyEnforcementTests
             Id = AdminId,
             UserName = "admin-1@example.com",
             Email = "admin-1@example.com",
-            DisplayName = "Admin",
+            DisplayName = "System Administrator",
         });
 
         db.EmployeeProfiles.Add(new EmployeeProfile

@@ -79,7 +79,7 @@ public class PersonFieldValidationTests : IDisposable
 
     private async Task GivenRolesAsync()
     {
-        foreach (var role in new[] { AppRoles.Admin, AppRoles.Manager, AppRoles.Employee })
+        foreach (var role in new[] { AppRoles.SystemAdministrator, AppRoles.Manager, AppRoles.Employee })
         {
             if (!await Roles.RoleExistsAsync(role))
             {
@@ -111,7 +111,7 @@ public class PersonFieldValidationTests : IDisposable
 
     /// <summary>
     /// No stored user behind "u-1": the validator holds an unknown id to the
-    /// non-Admin rule, so the gender below is required and satisfied, and these
+    /// non-System Administrator rule, so the gender below is required and satisfied, and these
     /// tests stay about the phone number and the date of birth.
     /// </summary>
     private Task<FluentValidation.Results.ValidationResult> ValidateUpdate(
@@ -125,7 +125,7 @@ public class PersonFieldValidationTests : IDisposable
                 DisplayName = "Theodoros Iona",
                 PhoneNumber = phoneNumber,
                 DateOfBirth = dateOfBirth,
-                // Required for a non-Admin — see UserGenderTests.
+                // Required for a non-System Administrator — see UserGenderTests.
                 Gender = Gender.Female,
             },
         });

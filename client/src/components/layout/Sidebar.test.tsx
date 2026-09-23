@@ -8,11 +8,11 @@ import Sidebar from './Sidebar'
 /**
  * The children block on the sidebar's own Edit profile dialog exists for one
  * reason: `HasChildren` and the rows behind it are what decide whether Maternity
- * and Paternity Leave are offered to that person. An Admin is never offered
+ * and Paternity Leave are offered to that person. A System Administrator is never offered
  * either — the role's navigation carries no "Request Leave" and no "My Leave" —
  * so the question asked them about their own family and then fed nothing.
  *
- * These tests fail if the block comes back for an Admin, or if hiding it ever
+ * These tests fail if the block comes back for a System Administrator, or if hiding it ever
  * costs an employee theirs.
  */
 vi.mock('../../lib/api')
@@ -26,10 +26,10 @@ const ADMIN: UserInfo = {
     email: 'admin@worktrack.com',
     displayName: 'Admin User',
     imageUrl: '',
-    // Null, not false — an Admin has no department, which is what makes the
+    // Null, not false — a System Administrator has no department, which is what makes the
     // department field below the children block hidden for them too.
     departmentId: null,
-    roles: ['Admin'],
+    roles: ['System Administrator'],
 }
 
 const EMPLOYEE: UserInfo = {
@@ -68,7 +68,7 @@ function openEditProfile(user: UserInfo) {
 }
 
 describe('Edit profile asks about children only where the answer is used', () => {
-    it('does not ask an Admin about their own children', () => {
+    it('does not ask a System Administrator about their own children', () => {
         openEditProfile(ADMIN)
 
         expect(screen.getByRole('dialog')).toBeTruthy()

@@ -24,7 +24,7 @@ public class EmployeeProfileDto
     public string? JobTitle { get; set; }
 
     /// <summary>
-    /// Null for an Admin, and for any profile predating the column. Distinct from
+    /// Null for a System Administrator, and for any profile predating the column. Distinct from
     /// <see cref="CreatedAt"/>, which is when the row was written rather than when
     /// the person started.
     /// </summary>

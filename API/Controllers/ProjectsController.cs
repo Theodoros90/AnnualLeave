@@ -20,13 +20,13 @@ public class ProjectsController : BaseApiController
         return await Mediator.Send(new GetProjectList.Query
         {
             RequestingUserId = ResolveUserId(),
-            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
             IsManager = User.IsInRole(AppRoles.Manager),
         });
     }
 
     [HttpPost]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<ProjectDto>> CreateProject(UpsertProjectRequest request)
     {
         var result = await Mediator.Send(new CreateProject.Command { Project = request });
@@ -34,7 +34,7 @@ public class ProjectsController : BaseApiController
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult<ProjectDto>> UpdateProject(int id, UpsertProjectRequest request)
     {
         var result = await Mediator.Send(new UpdateProject.Command { Id = id, Project = request });
@@ -42,7 +42,7 @@ public class ProjectsController : BaseApiController
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = AppRoles.Admin)]
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     public async Task<ActionResult> DeleteProject(int id)
     {
         var result = await Mediator.Send(new DeleteProject.Command { Id = id });

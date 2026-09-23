@@ -11,7 +11,7 @@ using Asp.Versioning;
 
 namespace API.Controllers;
 
-[Authorize(Roles = AppRoles.Admin)]
+[Authorize(Roles = AppRoles.SystemAdministrator)]
 [ApiVersion("1.0")]
 public class AdminUsersController : BaseApiController
 {

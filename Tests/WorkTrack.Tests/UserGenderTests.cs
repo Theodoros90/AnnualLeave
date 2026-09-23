@@ -21,7 +21,7 @@ namespace WorkTrack.Tests;
 /// <see cref="ParentalLeaveEligibilityTests"/> for that rule. What this file covers
 /// is the plumbing around the column: it survives a create and an edit, it is
 /// <b>required</b> on both for an Employee and a Manager, and it is <b>refused</b>
-/// on both for an Admin.
+/// on both for a System Administrator.
 ///
 /// The requirement is the load-bearing part. The dialog used to offer an explicit
 /// "Not specified", and the eligibility rule reads a stored null as "offer
@@ -32,11 +32,11 @@ namespace WorkTrack.Tests;
 /// null can only be a legacy row, and it goes away the next time that account is
 /// saved.
 ///
-/// The Admin half follows the department and the employment start date (see
+/// The System Administrator half follows the department and the employment start date (see
 /// <see cref="AdminHasNoDepartmentTests"/> and <see cref="EmploymentStartDateTests"/>):
-/// the dialogs never ask an Admin, so a payload carrying one was built against a
+/// the dialogs never ask a System Administrator, so a payload carrying one was built against a
 /// shape the dialog does not have, and refusing rather than ignoring it means a
-/// promotion to Admin clears the stored answer instead of stranding it. The edit
+/// promotion to System Administrator clears the stored answer instead of stranding it. The edit
 /// validator reads the stored role, which is why the dialog sets roles before it
 /// saves the user.
 /// </summary>
@@ -87,7 +87,7 @@ public class UserGenderTests : IDisposable
         db.Departments.Add(new Department { Id = 1, Name = "Engineering", Code = "ENG" });
         await db.SaveChangesAsync();
 
-        foreach (var role in new[] { AppRoles.Admin, AppRoles.Manager, AppRoles.Employee })
+        foreach (var role in new[] { AppRoles.SystemAdministrator, AppRoles.Manager, AppRoles.Employee })
         {
             await Roles.CreateAsync(new Role { Name = role });
         }
@@ -139,7 +139,7 @@ public class UserGenderTests : IDisposable
     }
 
     /// <summary>
-    /// The Profile fields go with the role: an Admin has no department and no
+    /// The Profile fields go with the role: a System Administrator has no department and no
     /// start date (both refused for them), so the payload must not carry either
     /// or the failure being tested would be drowned by two it is not about.
     /// </summary>
@@ -147,10 +147,10 @@ public class UserGenderTests : IDisposable
     {
         Email = "newjoiner@test.local",
         DisplayName = "New Joiner",
-        DepartmentId = role == AppRoles.Admin ? null : 1,
+        DepartmentId = role == AppRoles.SystemAdministrator ? null : 1,
         Roles = [role],
         DateOfBirth = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-30),
-        EmploymentStartDate = role == AppRoles.Admin ? null : DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-2),
+        EmploymentStartDate = role == AppRoles.SystemAdministrator ? null : DateOnly.FromDateTime(DateTime.UtcNow).AddYears(-2),
         Gender = gender,
     };
 
@@ -260,7 +260,7 @@ public class UserGenderTests : IDisposable
 
     /// <summary>
     /// The one path with no stored role to read: nothing behind the id. Held to
-    /// the non-Admin rule rather than waved through, so the shape tests that use a
+    /// the non-System Administrator rule rather than waved through, so the shape tests that use a
     /// made-up id (<see cref="PersonFieldValidationTests"/>) keep meaning what they
     /// say, and the handler is the one to report the account as missing.
     /// </summary>
@@ -275,20 +275,20 @@ public class UserGenderTests : IDisposable
         AssertGenderRequired(result);
     }
 
-    /* ── Admin: never asked, so refused ─────────────────────────────────────── */
+    /* ── System Administrator: never asked, so refused ─────────────────────────────────────── */
 
     /// <summary>
-    /// The dialogs hide the field for an Admin, so a rule that demanded one would
-    /// make an Admin impossible to create or save through the only screen that
+    /// The dialogs hide the field for a System Administrator, so a rule that demanded one would
+    /// make a System Administrator impossible to create or save through the only screen that
     /// does either.
     /// </summary>
     [Fact]
     public async Task An_Admin_can_be_created_without_a_gender() =>
-        AssertGenderAccepted(await ValidateCreateAsync(null, AppRoles.Admin));
+        AssertGenderAccepted(await ValidateCreateAsync(null, AppRoles.SystemAdministrator));
 
     [Fact]
     public async Task An_Admin_can_be_saved_without_a_gender() =>
-        AssertGenderAccepted(await ValidateUpdateAsync(null, AppRoles.Admin));
+        AssertGenderAccepted(await ValidateUpdateAsync(null, AppRoles.SystemAdministrator));
 
     /// <summary>
     /// Refused rather than quietly dropped, matching the department and the start
@@ -299,18 +299,18 @@ public class UserGenderTests : IDisposable
     [InlineData(Gender.Male)]
     [InlineData(Gender.Female)]
     public async Task An_Admin_cannot_be_created_with_a_gender(Gender gender) =>
-        AssertGenderNotForAdmin(await ValidateCreateAsync(gender, AppRoles.Admin));
+        AssertGenderNotForAdmin(await ValidateCreateAsync(gender, AppRoles.SystemAdministrator));
 
     [Theory]
     [InlineData(Gender.Male)]
     [InlineData(Gender.Female)]
     public async Task An_Admin_cannot_be_saved_with_a_gender(Gender gender) =>
-        AssertGenderNotForAdmin(await ValidateUpdateAsync(gender, AppRoles.Admin));
+        AssertGenderNotForAdmin(await ValidateUpdateAsync(gender, AppRoles.SystemAdministrator));
 
     /// <summary>
-    /// What "refused rather than ignored" buys: a promotion to Admin arrives, roles
+    /// What "refused rather than ignored" buys: a promotion to System Administrator arrives, roles
     /// already switched, with the null the dialog now sends — and the full-replace
-    /// handler clears the stored answer rather than stranding one the Admin's own
+    /// handler clears the stored answer rather than stranding one the System Administrator's own
     /// dialog can no longer show or take back.
     /// </summary>
     [Fact]
@@ -322,7 +322,7 @@ public class UserGenderTests : IDisposable
         var tracked = await Users.FindByIdAsync(id);
         Assert.NotNull(tracked);
         Assert.True((await Users.RemoveFromRoleAsync(tracked, AppRoles.Employee)).Succeeded);
-        Assert.True((await Users.AddToRoleAsync(tracked, AppRoles.Admin)).Succeeded);
+        Assert.True((await Users.AddToRoleAsync(tracked, AppRoles.SystemAdministrator)).Succeeded);
         Db.ChangeTracker.Clear();
 
         var validation = await new UpdateAdminUserValidator(Db)

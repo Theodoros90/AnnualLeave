@@ -213,7 +213,7 @@ public class ProRatedFirstYearPlumbingTests : IDisposable
     public async Task A_new_hire_this_month_is_stamped_the_full_entitlement_and_a_pro_rated_balance()
     {
         await GivenAnnualLeaveAsync(proRate: true);
-        foreach (var role in new[] { AppRoles.Admin, AppRoles.Manager, AppRoles.Employee })
+        foreach (var role in new[] { AppRoles.SystemAdministrator, AppRoles.Manager, AppRoles.Employee })
             Assert.True((await Roles.CreateAsync(new Role { Name = role })).Succeeded);
         var department = new Department { Name = "Engineering", Code = "ENG", IsActive = true };
         Db.Departments.Add(department);

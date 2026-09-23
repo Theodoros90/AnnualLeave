@@ -41,8 +41,8 @@ import type {
     TimesheetStatusHistory, UpsertChildRequest, UserRole,
 } from '../../lib/types'
 
-const PROTECTED_ADMIN_EMAIL = 'admin@annualleave.com'
-const ALL_ROLES: UserRole[] = ['Admin', 'Manager', 'Employee']
+const PROTECTED_ADMIN_EMAIL = 'systemadmin@annualleave.com'
+const ALL_ROLES: UserRole[] = ['System Administrator', 'Manager', 'Employee']
 
 /**
  * Male / Female, styled as radios to match the Role row it sits above. This
@@ -101,11 +101,11 @@ function GenderRadioGroup(props: {
 
 /**
  * What each role actually gets, shown under the Role radios for whichever is
- * selected. Admin's line is the load-bearing one: picking it removes the entire
+ * selected. System Administrator's line is the load-bearing one: picking it removes the entire
  * Profile section, and until it said so that was a surprise rather than a rule.
  */
 const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
-    Admin: 'Full access to every department. An admin has no department or manager of their own.',
+    'System Administrator': 'Full access to every department. An admin has no department or manager of their own.',
     Manager: "Manages their department's people, leave and timesheets.",
     Employee: "Files their own leave and timesheets; approvals go to their department's manager.",
 }
@@ -178,9 +178,9 @@ interface PersonalDetails {
  * what the employee is offered, so it belongs beside what else they are granted.
  *
  * Gender is also the one field here that follows the role: it exists to decide
- * who is offered gender-restricted leave, and an Admin sits outside every leave
+ * who is offered gender-restricted leave, and a System Administrator sits outside every leave
  * rule the department structure applies, so it is hidden for them the way the
- * whole Profile section is — and the API refuses one for an Admin outright, the
+ * whole Profile section is — and the API refuses one for a System Administrator outright, the
  * same as the department and the start date. The callers pass `showGender` off
  * their live role radio, and send null in its place.
  */
@@ -199,7 +199,7 @@ function PersonalDetailsFields({ idPrefix, values, onChange, flag, emailHelperTe
      * waiting for `flag`. Edit passes true, Create false — see the note below.
      */
     announceMissing: boolean
-    /** False for an Admin, for whom the field is neither asked nor accepted. */
+    /** False for a System Administrator, for whom the field is neither asked nor accepted. */
     showGender: boolean
 }) {
     const emailMissing = !values.email.trim()
@@ -306,7 +306,7 @@ interface DerivedUser {
     user: AdminUser
     profile?: EmployeeProfile
     departmentName: string | null
-    primaryRole: 'Admin' | 'Manager' | 'Employee'
+    primaryRole: 'System Administrator' | 'Manager' | 'Employee'
     presence: Presence
     isAutoBreak: boolean
     lastSeenLabel: string
@@ -352,7 +352,7 @@ function groupByReportingLine(filtered: DerivedUser[], all: DerivedUser[]): Grou
     const managerByProfileId = new Map(managers.map((m) => [m.profile!.id, m]))
     const filteredIds = new Set(filtered.map((d) => d.user.id))
 
-    const admins = filtered.filter((d) => d.primaryRole === 'Admin').sort(byName)
+    const admins = filtered.filter((d) => d.primaryRole === 'System Administrator').sort(byName)
     const employees = filtered.filter((d) => d.primaryRole === 'Employee')
 
     const reportsByManagerProfileId = new Map<string, DerivedUser[]>()
@@ -399,8 +399,8 @@ function avatarBg(seed: string) {
     return palette[Math.abs(hash) % palette.length]
 }
 
-function primaryRoleOf(roles: UserRole[]): 'Admin' | 'Manager' | 'Employee' {
-    if (roles.includes('Admin')) return 'Admin'
+function primaryRoleOf(roles: UserRole[]): 'System Administrator' | 'Manager' | 'Employee' {
+    if (roles.includes('System Administrator')) return 'System Administrator'
     if (roles.includes('Manager')) return 'Manager'
     return 'Employee'
 }
@@ -507,7 +507,7 @@ function AdminUsersPanel() {
     const counts = useMemo(() => {
         const c = {
             all: derivedAll.length,
-            admins: derivedAll.filter((d) => d.primaryRole === 'Admin').length,
+            admins: derivedAll.filter((d) => d.primaryRole === 'System Administrator').length,
             managers: derivedAll.filter((d) => d.primaryRole === 'Manager').length,
             employees: derivedAll.filter((d) => d.primaryRole === 'Employee').length,
             online: derivedAll.filter((d) => d.presence === 'online').length,
@@ -520,7 +520,7 @@ function AdminUsersPanel() {
     /* Filtering */
     const filtered = useMemo(() => {
         let out = derivedAll
-        if (statusTab === 'admins') out = out.filter((d) => d.primaryRole === 'Admin')
+        if (statusTab === 'admins') out = out.filter((d) => d.primaryRole === 'System Administrator')
         else if (statusTab === 'managers') out = out.filter((d) => d.primaryRole === 'Manager')
         else if (statusTab === 'employees') out = out.filter((d) => d.primaryRole === 'Employee')
         else if (statusTab === 'deactivated') out = out.filter((d) => !d.isActive)
@@ -540,7 +540,7 @@ function AdminUsersPanel() {
     }, [derivedAll, statusTab, roleFilter, deptFilter, searchText])
 
     const grouped = useMemo(() => groupByReportingLine(filtered, derivedAll), [filtered, derivedAll])
-    // A lone section needs no heading — the Admins tab already says "Admins".
+    // A lone section needs no heading — the System Administrators tab already says "System Administrators".
     const showSectionHeadings =
         [grouped.admins, grouped.teams, grouped.unassigned].filter((section) => section.length > 0).length > 1
 
@@ -605,13 +605,13 @@ function AdminUsersPanel() {
             managerId: string | null
             phoneNumber: string | null
             dateOfBirth: string | null
-            /** Null for an Admin — the API refuses one for that role. */
+            /** Null for a System Administrator — the API refuses one for that role. */
             gender: Gender | null
             employmentStartDate: string | null
         }) => {
             // The order of these three is load-bearing. Roles go first: the user
             // validator reads the *stored* role to decide whether a gender is
-            // required or refused, so a promotion to Admin (sent with a null gender)
+            // required or refused, so a promotion to System Administrator (sent with a null gender)
             // and a demotion out of it (sent with one) both have to land after the
             // role they were built for, or every role change 400s on a field the
             // admin cannot see. The user then goes before the profile: the profile
@@ -858,7 +858,7 @@ function AdminUsersPanel() {
                 </Box>
                 <SelectFilter value={roleFilter} onChange={setRoleFilter} options={[
                     { value: 'all', label: 'All roles' },
-                    { value: 'Admin', label: `👑 Admin (${counts.admins})` },
+                    { value: 'System Administrator', label: `👑 System Administrator (${counts.admins})` },
                     { value: 'Manager', label: `👥 Manager (${counts.managers})` },
                     { value: 'Employee', label: `👤 Employee (${counts.employees})` },
                 ]} />
@@ -937,7 +937,7 @@ function AdminUsersPanel() {
             <Box sx={{ display: 'flex', gap: '2px', mb: '14px', borderBottom: '1px solid', borderColor: 'divider', px: '2px', flexWrap: 'wrap' }}>
                 {([
                     { value: 'all',       label: 'All',       count: counts.all },
-                    { value: 'admins',    label: 'Admins',    count: counts.admins },
+                    { value: 'admins',    label: 'System Administrators',    count: counts.admins },
                     { value: 'managers',  label: 'Managers',  count: counts.managers },
                     { value: 'employees', label: 'Employees', count: counts.employees },
                     { value: 'deactivated', label: '⏸ Deactivated', count: counts.deactivated },
@@ -984,7 +984,7 @@ function AdminUsersPanel() {
                 <>
                     {grouped.admins.length > 0 && (
                         <>
-                            {showSectionHeadings && <SectionHeading>Admins</SectionHeading>}
+                            {showSectionHeadings && <SectionHeading>System Administrators</SectionHeading>}
                             {grouped.admins.map(renderRow)}
                         </>
                     )}
@@ -1129,7 +1129,7 @@ function UserRow({
         return managerUser?.displayName || managerUser?.email || null
     }, [derived.profile, profiles, usersByName])
 
-    const accentColor = role === 'Admin' ? 'secondary.main'
+    const accentColor = role === 'System Administrator' ? 'secondary.main'
         : role === 'Manager' ? 'warning.main' : 'primary.main'
 
     return (
@@ -1207,7 +1207,7 @@ function UserRow({
 
                 {/* Department — not applicable to admins, who sit outside the department structure */}
                 <Box sx={{ display: { xs: 'none', md: 'block' } }}>
-                    {role !== 'Admin' && derived.departmentName ? (
+                    {role !== 'System Administrator' && derived.departmentName ? (
                         <Box component="span" sx={{
                             display: 'inline-block', bgcolor: softBg('info'), color: 'info.dark',
                             borderRadius: '4px', px: '8px', py: '2px',
@@ -1287,10 +1287,10 @@ function UserRow({
                         <ExpandRow label="Joined" value={fmtJoined(derived.profile?.createdAt)} />
                         <ExpandRow label="Phone" value={u.phoneNumber || '—'} />
                         <ExpandRow label="Date of birth" value={u.dateOfBirth ? new Date(u.dateOfBirth).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
-                        {/* Admins sit outside the department structure, so none of
+                        {/* System Administrators sit outside the department structure, so none of
                             these rows apply to them — including Gender, which is
                             only recorded to route leave the structure offers. */}
-                        {role !== 'Admin' && (
+                        {role !== 'System Administrator' && (
                             <>
                                 <ExpandRow label="Gender" value={u.gender ?? '—'} />
                                 <ExpandRow label="Department" value={derived.departmentName ?? '—'} />
@@ -1332,8 +1332,8 @@ function UserRow({
                         )}
                     </ExpandBlock>
 
-                    <ExpandBlock title={role === 'Manager' || role === 'Admin' ? 'Reach' : 'Quick info'}>
-                        {role === 'Manager' || role === 'Admin' ? (
+                    <ExpandBlock title={role === 'Manager' || role === 'System Administrator' ? 'Reach' : 'Quick info'}>
+                        {role === 'Manager' || role === 'System Administrator' ? (
                             <DirectReports user={derived.user} role={role} />
                         ) : (
                             <>
@@ -1373,16 +1373,16 @@ function UserRow({
     )
 }
 
-function DirectReports({ user, role }: { user: AdminUser; role: 'Admin' | 'Manager' }) {
+function DirectReports({ user, role }: { user: AdminUser; role: 'System Administrator' | 'Manager' }) {
     const { data: profiles = [] } = useQuery({ queryKey: ['employeeProfiles'], queryFn: getEmployeeProfiles })
     const { data: users = [] } = useQuery({ queryKey: ['adminUsers'], queryFn: getAdminUsers })
 
     const myProfile = profiles.find((p) => p.userId === user.id)
-    if (!myProfile && role !== 'Admin') {
+    if (!myProfile && role !== 'System Administrator') {
         return <Box sx={{ fontSize: 11, color: 'text.disabled', fontStyle: 'italic' }}>No profile linked</Box>
     }
 
-    const reports = role === 'Admin'
+    const reports = role === 'System Administrator'
         ? users.filter((u) => u.id !== user.id)
         : profiles
             .filter((p) => p.managerId && myProfile && p.managerId === myProfile.id)
@@ -1399,7 +1399,7 @@ function DirectReports({ user, role }: { user: AdminUser; role: 'Admin' | 'Manag
     return (
         <>
             <Box sx={{ fontSize: 13, fontWeight: 600, color: 'text.primary', mb: '8px' }}>
-                {reports.length} {role === 'Admin' ? 'people in scope' : `report${reports.length === 1 ? '' : 's'}`}
+                {reports.length} {role === 'System Administrator' ? 'people in scope' : `report${reports.length === 1 ? '' : 's'}`}
             </Box>
             <Box sx={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                 {visible.map((r) => (
@@ -1520,17 +1520,17 @@ function IconBtn({ title, onClick, disabled, danger, children }: {
     )
 }
 
-const roleStyles: Record<'Admin' | 'Manager' | 'Employee', { bg: SxColor; fg: string }> = {
-    Admin:    { bg: softBg('secondary'), fg: 'secondary.dark' },
+const roleStyles: Record<'System Administrator' | 'Manager' | 'Employee', { bg: SxColor; fg: string }> = {
+    'System Administrator':    { bg: softBg('secondary'), fg: 'secondary.dark' },
     Manager:  { bg: softBg('warning'), fg: 'warning.dark' },
     Employee: { bg: softBg('info'), fg: 'info.dark' },
 }
 
-const roleIcons: Record<'Admin' | 'Manager' | 'Employee', string> = {
-    Admin: '👑', Manager: '👥', Employee: '👤',
+const roleIcons: Record<'System Administrator' | 'Manager' | 'Employee', string> = {
+    'System Administrator': '👑', Manager: '👥', Employee: '👤',
 }
 
-/** A caption over one section of the grouped list: Admins, Managers & teams, No manager assigned. */
+/** A caption over one section of the grouped list: System Administrators, Managers & teams, No manager assigned. */
 function SectionHeading({ children }: { children: React.ReactNode }) {
     return (
         <Box component="h3" sx={{
@@ -1542,7 +1542,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 /** The role badge, shared by the list row and the Edit dialog's header. */
-function RolePill({ role }: { role: 'Admin' | 'Manager' | 'Employee' }) {
+function RolePill({ role }: { role: 'System Administrator' | 'Manager' | 'Employee' }) {
     return (
         <Box component="span" sx={{
             display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -1580,7 +1580,7 @@ function UserDialogHeader({ title, subtitle, avatarSeed, role }: {
     title: string
     subtitle: string
     avatarSeed?: string
-    role?: 'Admin' | 'Manager' | 'Employee'
+    role?: 'System Administrator' | 'Manager' | 'Employee'
 }) {
     return (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1647,7 +1647,7 @@ function EditUserDialog(props: {
         managerId: string | null
         phoneNumber: string | null
         dateOfBirth: string | null
-        /** Null for an Admin — the API refuses one for that role. */
+        /** Null for a System Administrator — the API refuses one for that role. */
         gender: Gender | null
         employmentStartDate: string | null
     }) => void
@@ -1677,7 +1677,7 @@ function EditUserDialog(props: {
 
     /* Which user the fields below currently hold. The form hydrates in a microtask
        rather than synchronously, so for one render `role` is still the default
-       'Employee' — long enough for the Profile section to mount for an Admin, who
+       'Employee' — long enough for the Profile section to mount for a System Administrator, who
        must not have one, and fire off a request for children that are then thrown
        away. Anything in here that does real work on mount waits for this. */
     const [hydratedFor, setHydratedFor] = useState<string | null>(null)
@@ -1710,22 +1710,22 @@ function EditUserDialog(props: {
         [departmentId, props.profiles, props.users, props.data],
     )
 
-    // Admins sit outside the department structure — same as CreateUserDialog, the
+    // System Administrators sit outside the department structure — same as CreateUserDialog, the
     // Profile section is hidden for them, and the department goes with it. Sending
     // back the stored value would strand a promoted user in the department they
     // just left, which is the whole thing being fixed: nothing may hold a
-    // department for an Admin.
-    const isAdmin = role === 'Admin'
+    // department for a System Administrator.
+    const isAdmin = role === 'System Administrator'
     const effectiveDepartmentId = isAdmin ? null : departmentId
 
-    // Derived from the live radio, not the stored role, so a demotion out of Admin
+    // Derived from the live radio, not the stored role, so a demotion out of System Administrator
     // has to pick a department before it can be saved: an admin has none to
     // inherit, and an Employee without one is invisible to every manager and has
     // no leave routing.
     const departmentMissing = !isAdmin && !departmentId
 
     /* The start date rides with the department, for the same reason: both live in
-       the Profile section, which is hidden for an Admin. So a promotion sends null
+       the Profile section, which is hidden for a System Administrator. So a promotion sends null
        rather than the date it stopped showing, and a demotion has to supply one. */
     const effectiveEmploymentStartDate = isAdmin ? null : employmentStartDate || null
     const startDateError = isAdmin
@@ -1739,9 +1739,9 @@ function EditUserDialog(props: {
     const showStartDateError = !!startDateError && (dirty || (!!user && hydratedFor === user.id))
 
     /* Gender follows the role too, though it sits in Personal details rather than
-       Profile: it is recorded to route gender-restricted leave, which an Admin is
+       Profile: it is recorded to route gender-restricted leave, which a System Administrator is
        outside of, and the API refuses one for them. So the radios hide for an
-       Admin and a promotion sends null — clearing the stored answer, this being a
+       System Administrator and a promotion sends null — clearing the stored answer, this being a
        full replace, rather than stranding one the dialog can no longer show. A
        demotion has to pick one before it can be saved. */
     const effectiveGender = isAdmin ? null : gender
@@ -1822,8 +1822,8 @@ function EditUserDialog(props: {
                             other half of the same rule: the two together decide which
                             parental leave type the employee is offered.
 
-                            It still hides for an Admin. That used to fall out of living
-                            inside the Profile section, which an Admin has none of; out
+                            It still hides for a System Administrator. That used to fall out of living
+                            inside the Profile section, which a System Administrator has none of; out
                             here it has to say so itself.
 
                             The rows commit immediately, unlike the rest of this
@@ -1963,7 +1963,7 @@ function CreateUserDialog(props: {
         jobTitle: string | null
         phoneNumber: string | null
         dateOfBirth: string | null
-        /** Null for an Admin — the API refuses one for that role. */
+        /** Null for a System Administrator — the API refuses one for that role. */
         gender: Gender | null
         employmentStartDate: string | null
         /** Written after the account exists — see the create mutation. */
@@ -2009,13 +2009,13 @@ function CreateUserDialog(props: {
         [departmentId, props.profiles, props.users],
     )
 
-    /* Admins sit outside the department structure, so the whole Profile section is
+    /* System Administrators sit outside the department structure, so the whole Profile section is
        hidden for them — and the field it never asks about now goes unanswered. It
        used to fall back to the first active department, because DepartmentId was a
        required FK; that invented assignment then showed up as a real one, putting
        the admin in that department's team strip and headcount and blocking its
        deletion. A profile row is still written server-side, with no department. */
-    const isAdmin = role === 'Admin'
+    const isAdmin = role === 'System Administrator'
     const effectiveDepartmentId = isAdmin ? null : departmentId
 
     // Only an employee reports to the department's manager — a manager *is* one, so
@@ -2032,7 +2032,7 @@ function CreateUserDialog(props: {
     const showStartDateError = dirty && !!startDateError
 
     /* And the gender, for the same reason — see EditUserDialog's copy. Anything
-       picked before the role was switched to Admin is not sent. */
+       picked before the role was switched to System Administrator is not sent. */
     const effectiveGender = isAdmin ? null : gender
     const genderMissing = !isAdmin && !!genderError(gender)
 
@@ -2080,7 +2080,7 @@ function CreateUserDialog(props: {
                         />
 
                         {/* Beside Gender rather than under Profile — see EditUserDialog
-                            for why, including why it still has to hide for an Admin now
+                            for why, including why it still has to hide for a System Administrator now
                             that it no longer sits inside a section that does.
 
                             Collected here and written straight after the account
@@ -2190,12 +2190,12 @@ function CreateUserDialog(props: {
                         jobTitle: isAdmin ? null : jobTitle.trim() || null,
                         phoneNumber: phoneNumber.trim() || null,
                         dateOfBirth: dateOfBirth || null,
-                        // Null for an Admin, same rule as the start date below: the API refuses one for that role.
+                        // Null for a System Administrator, same rule as the start date below: the API refuses one for that role.
                         gender: effectiveGender,
-                        // Null for an Admin, same rule as jobTitle and the department:
+                        // Null for a System Administrator, same rule as jobTitle and the department:
                         // the API refuses one outright for that role.
                         employmentStartDate: effectiveEmploymentStartDate,
-                        // Never for an Admin: the Profile section is hidden for them,
+                        // Never for a System Administrator: the Profile section is hidden for them,
                         // so anything collected before the role was switched must not
                         // be sent — same rule as jobTitle above.
                         children: isAdmin ? [] : pendingChildren,

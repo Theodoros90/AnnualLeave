@@ -20,7 +20,7 @@ public class EmployeeProfilesController : BaseApiController
         return await Mediator.Send(new GetEmployeeProfileList.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
             IsManager = User.IsInRole(AppRoles.Manager),
         });
     }
@@ -28,7 +28,7 @@ public class EmployeeProfilesController : BaseApiController
     /// <summary>
     /// Colleagues in the caller's own department — names and job titles only.
     /// Backs the leave-coverage delegate picker, which every employee can use.
-    /// An Admin filing leave on somebody's behalf passes that person as
+    /// A System Administrator filing leave on somebody's behalf passes that person as
     /// <paramref name="forUserId"/> to get their colleagues instead; anyone else
     /// passing it gets their own list, since a Manager or an Employee has no
     /// business filing for somebody else.
@@ -40,7 +40,7 @@ public class EmployeeProfilesController : BaseApiController
         return await Mediator.Send(new GetTeammateList.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            ForUserId = User.IsInRole(AppRoles.Admin) ? forUserId : null,
+            ForUserId = User.IsInRole(AppRoles.SystemAdministrator) ? forUserId : null,
         });
     }
 

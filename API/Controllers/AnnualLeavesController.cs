@@ -31,7 +31,7 @@ public class AnnualLeavesController : BaseApiController
     }
 
     // Audience for a leave event = the employee whose leave it is +
-    // managers of the leave's department + all admins. Admins are not
+    // managers of the leave's department + all admins. System Administrators are not
     // department-scoped in this app, so they're notified for every event;
     // managers receive only events for departments they own.
     private async Task NotifyLeaveAudienceAsync(string employeeUserId, int? departmentId, CancellationToken cancellationToken = default)
@@ -68,7 +68,7 @@ public class AnnualLeavesController : BaseApiController
         await NotifyLeaveAudienceAsync(audience.EmployeeId, audience.DepartmentId, cancellationToken);
     }
 
-    // Visibility is role-scoped: Admin all, Manager by assigned departments, Employee own requests.
+    // Visibility is role-scoped: System Administrator all, Manager by assigned departments, Employee own requests.
     [HttpGet]
     [Authorize(Policy = "AnnualLeaveRead")]
     public async Task<ActionResult<List<AnnualLeaveDto>>> GetAnnualLeaves([FromQuery] int? page = null, [FromQuery] int? pageSize = null)
@@ -76,7 +76,7 @@ public class AnnualLeavesController : BaseApiController
         var result = await Mediator.Send(new GetAnnualLeaveList.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
             IsManager = User.IsInRole(AppRoles.Manager),
             IsEmployee = User.IsInRole(AppRoles.Employee),
             Page = page,
@@ -92,13 +92,13 @@ public class AnnualLeavesController : BaseApiController
         return await Mediator.Send(new GetTeamAwayThisWeekCount.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
             IsManager = User.IsInRole(AppRoles.Manager),
             IsEmployee = User.IsInRole(AppRoles.Employee)
         });
     }
 
-    // Visibility is role-scoped: Admin all, Manager by assigned departments, Employee own requests.
+    // Visibility is role-scoped: System Administrator all, Manager by assigned departments, Employee own requests.
     [HttpGet("{id}")]
     [Authorize(Policy = "AnnualLeaveRead")]
     public async Task<ActionResult<AnnualLeaveDto>> GetAnnualLeaveDetails(string id)
@@ -107,7 +107,7 @@ public class AnnualLeavesController : BaseApiController
         {
             Id = id,
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
             IsManager = User.IsInRole(AppRoles.Manager),
             IsEmployee = User.IsInRole(AppRoles.Employee)
         });
@@ -115,12 +115,12 @@ public class AnnualLeavesController : BaseApiController
     }
 
     // All roles can create leaves; status is determined by the selected leave type's approval settings.
-    // Admin can supply a target EmployeeId to create on behalf of another user.
+    // System Administrator can supply a target EmployeeId to create on behalf of another user.
     [HttpPost]
     [Authorize(Policy = "AnnualLeaveCreate")]
     public async Task<ActionResult<string>> CreateAnnualLeave(CreateAnnualLeaveRequest request)
     {
-        var isAdmin = User.IsInRole(AppRoles.Admin);
+        var isAdmin = User.IsInRole(AppRoles.SystemAdministrator);
         // Non-admins always create for themselves; admins may supply a target user id.
         if (!isAdmin || string.IsNullOrWhiteSpace(request.EmployeeId))
             request.EmployeeId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
@@ -170,7 +170,7 @@ public class AnnualLeavesController : BaseApiController
         }
 
         // The caller attaches this path to the leave it is creating or editing.
-        // Until it does, only the uploader (and an Admin) can read the file back.
+        // Until it does, only the uploader (and a System Administrator) can read the file back.
         return Ok(new
         {
             evidenceUrl = StoredFilePath.For(stored.Value),
@@ -225,7 +225,7 @@ public class AnnualLeavesController : BaseApiController
         });
     }
 
-    // Admin can edit all leaves; Employee can edit own leaves; Manager can edit own and managed-department leaves.
+    // System Administrator can edit all leaves; Employee can edit own leaves; Manager can edit own and managed-department leaves.
     [HttpPut]
     [Authorize(Policy = "AnnualLeaveUpdate")]
     public async Task<ActionResult> EditAnnualLeave(EditAnnualLeaveRequest request)
@@ -234,7 +234,7 @@ public class AnnualLeavesController : BaseApiController
         {
             AnnualLeave = request,
             ChangedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
             IsManager = User.IsInRole(AppRoles.Manager)
         });
         if (result.IsSuccess)
@@ -244,7 +244,7 @@ public class AnnualLeavesController : BaseApiController
         return HandleResult(result);
     }
 
-    // Admin and Managers can approve/reject leaves via status-only update.
+    // System Administrator and Managers can approve/reject leaves via status-only update.
     [HttpPatch("{id}/status")]
     [Authorize(Policy = "AnnualLeaveUpdate")]
     public async Task<ActionResult> UpdateLeaveStatus(string id, UpdateLeaveStatusRequest request)
@@ -254,7 +254,7 @@ public class AnnualLeavesController : BaseApiController
             LeaveId = id,
             Request = request,
             ChangedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
             IsManager = User.IsInRole(AppRoles.Manager),
         });
         if (result.IsSuccess)
@@ -264,7 +264,7 @@ public class AnnualLeavesController : BaseApiController
         return HandleResult(result);
     }
 
-    // Admin can delete all leaves; Employee can delete own leaves; Manager can delete own and managed-department leaves.
+    // System Administrator can delete all leaves; Employee can delete own leaves; Manager can delete own and managed-department leaves.
     [HttpDelete("{id}")]
     [Authorize(Policy = "AnnualLeaveDelete")]
     public async Task<ActionResult> DeleteAnnualLeave(string id)
@@ -281,7 +281,7 @@ public class AnnualLeavesController : BaseApiController
         {
             Id = id,
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsInRole(AppRoles.Admin),
+            IsAdmin = User.IsInRole(AppRoles.SystemAdministrator),
             IsManager = User.IsInRole(AppRoles.Manager)
         });
 

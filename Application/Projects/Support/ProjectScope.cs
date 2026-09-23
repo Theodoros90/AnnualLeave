@@ -5,7 +5,7 @@ using Persistence;
 namespace Application.Projects.Support;
 
 /// <summary>
-/// Which projects a caller may see: every project for an Admin, and otherwise the
+/// Which projects a caller may see: every project for a System Administrator, and otherwise the
 /// projects sharing at least one department with them. A project belonging to no
 /// department therefore reaches nobody, which is the rule rather than a special
 /// case in it.
@@ -30,7 +30,7 @@ public static class ProjectScope
     {
         if (isAdmin)
         {
-            // Admins see all projects — including the department-less ones, which
+            // System Administrators see all projects — including the department-less ones, which
             // would otherwise be unreachable and so unrepairable.
             return query;
         }

@@ -115,7 +115,7 @@ const TD = {
 }
 
 const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo }) {
-    const isAdmin = user.roles.includes('Admin')
+    const isAdmin = user.roles.includes('System Administrator')
     const isManager = user.roles.includes('Manager')
     const queryClient = useQueryClient()
 

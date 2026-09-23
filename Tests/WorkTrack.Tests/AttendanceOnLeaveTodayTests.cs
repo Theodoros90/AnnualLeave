@@ -40,7 +40,7 @@ public class AttendanceOnLeaveTodayTests
 
         db.Departments.Add(new Department { Id = DepartmentId, Name = DepartmentName, Code = "ENG" });
 
-        db.Users.Add(new User { Id = AdminUserId, UserName = "admin", DisplayName = "Ada Admin" });
+        db.Users.Add(new User { Id = AdminUserId, UserName = "admin", DisplayName = "Ada System Administrator" });
         db.Users.Add(new User { Id = EmployeeUserId, UserName = "employee", DisplayName = "Eve Employee" });
 
         db.EmployeeProfiles.Add(new EmployeeProfile
@@ -121,11 +121,11 @@ public class AttendanceOnLeaveTodayTests
 
     private static async Task<CompanyAttendanceDto> GetCompanyAsync(IServiceProvider provider) =>
         Payload<CompanyAttendanceDto>(
-            await ControllerFor(provider, AdminUserId, AppRoles.Admin).GetCompany(CancellationToken.None));
+            await ControllerFor(provider, AdminUserId, AppRoles.SystemAdministrator).GetCompany(CancellationToken.None));
 
     private static async Task<TeamAttendanceDto> GetTeamAsync(IServiceProvider provider) =>
         Payload<TeamAttendanceDto>(
-            await ControllerFor(provider, AdminUserId, AppRoles.Admin).GetTeam(CancellationToken.None));
+            await ControllerFor(provider, AdminUserId, AppRoles.SystemAdministrator).GetTeam(CancellationToken.None));
 
     [Fact]
     public async Task Company_dashboard_counts_an_employee_on_approved_leave_today()

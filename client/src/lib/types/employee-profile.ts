@@ -3,7 +3,7 @@ export interface EmployeeProfile {
     userId: string
     displayName: string
     /**
-     * Null for an Admin, who sits outside the department structure. Anything
+     * Null for a System Administrator, who sits outside the department structure. Anything
      * grouping profiles by department has to skip these rather than treat the
      * absence as a department of its own.
      */
@@ -24,7 +24,7 @@ export interface EmployeeProfile {
     leaveBalance: number
     jobTitle: string | null
     /**
-     * The day this person started working here, `yyyy-MM-dd`. Null for an Admin,
+     * The day this person started working here, `yyyy-MM-dd`. Null for a System Administrator,
      * who is never asked, and for any profile predating the column — nothing
      * backfills it, so an older record is given one the next time it is saved.
      *
@@ -51,12 +51,12 @@ export interface Teammate {
  */
 export interface EditEmployeeProfileRequest {
     id: string
-    /** Null only for an Admin; required for every other role. */
+    /** Null only for a System Administrator; required for every other role. */
     departmentId: number | null
     managerId: string | null
     jobTitle: string | null
     /**
-     * Null only for an Admin, same as `departmentId` — and, unlike the leave
+     * Null only for a System Administrator, same as `departmentId` — and, unlike the leave
      * numbers above, this one does belong on the request: the dialog shows it, so
      * a full replace that omitted it would clear a start date already on file.
      */

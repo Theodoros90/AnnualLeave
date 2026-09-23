@@ -241,7 +241,7 @@ public static class CoverageNotification
     /// <summary>
     /// The employee's department colleagues, minus whoever has already been told.
     ///
-    /// An Admin has no department, and "the same department as nobody" is not a
+    /// A System Administrator has no department, and "the same department as nobody" is not a
     /// match — the same reasoning as in <see cref="ManagerNotificationRecipients"/>.
     /// A null department therefore announces to nobody, rather than to every other
     /// department-less profile in the company.

@@ -26,13 +26,13 @@ public class AdminUpdateUserDto
     public DateOnly? DateOfBirth { get; set; }
 
     /// <summary>
-    /// Required for an Employee or a Manager and refused for an Admin —
+    /// Required for an Employee or a Manager and refused for a System Administrator —
     /// <c>UpdateAdminUserValidator</c> reads the stored role to decide which. So
     /// an account that predates the column has to be given one the next time it
-    /// is saved, as with <see cref="DateOfBirth"/>, and a promotion to Admin sends
+    /// is saved, as with <see cref="DateOfBirth"/>, and a promotion to System Administrator sends
     /// a null that, this being a full replace, clears the stored answer. Nullable
     /// so the binder can report "missing" rather than defaulting a real person to
-    /// <c>Male</c>, and so an Admin has something to send.
+    /// <c>Male</c>, and so a System Administrator has something to send.
     /// </summary>
     public Gender? Gender { get; set; }
 }

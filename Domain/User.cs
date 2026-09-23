@@ -34,15 +34,15 @@ public class User : IdentityUser
     /// "offer everything", which made a type restricted to one gender reachable
     /// by anyone an admin left unspecified.
     ///
-    /// An <b>Admin</b> is the exception: the dialogs never ask, and both
+    /// An <b>System Administrator</b> is the exception: the dialogs never ask, and both
     /// validators refuse a value for one
-    /// (<c>PersonFieldRules.GenderNotForAdminMessage</c>), so an Admin's null is
+    /// (<c>PersonFieldRules.GenderNotForAdminMessage</c>), so a System Administrator's null is
     /// the standing answer rather than a legacy gap — the same role scoping
     /// <c>EmployeeProfile.DepartmentId</c> and <c>EmploymentStartDate</c> carry.
     /// **A stored null is still offered both parental types, not neither**:
     /// reading "nobody entered it" as a mismatch would take parental leave away
     /// from every account created before the column existed. That covers an
-    /// Admin filing their own leave too, which is accepted as the price of not
+    /// System Administrator filing their own leave too, which is accepted as the price of not
     /// asking them.
     /// </summary>
     public Gender? Gender { get; set; }

@@ -12,7 +12,7 @@ namespace WorkTrack.Tests;
 /// <summary>
 /// (5) Timesheet status transitions: Draft→Submitted, Rejected→Resubmitted
 /// (SubmitTimesheet) and Submitted/Resubmitted→Approved/Rejected
-/// (UpdateTimesheetStatus). Admin acts to keep the focus on the transition rules
+/// (UpdateTimesheetStatus). System Administrator acts to keep the focus on the transition rules
 /// rather than authorization. Employee/User rows are intentionally not seeded so
 /// the post-save notification short-circuits.
 /// </summary>

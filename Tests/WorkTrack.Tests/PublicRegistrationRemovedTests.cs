@@ -106,7 +106,7 @@ public class PublicRegistrationRemovedTests(ApiRouteTableFixture routeTable)
         Assert.Equal(expected, actual);
     }
 
-    // ── Admin-only user creation is preserved ───────────────────────────────────
+    // ── System Administrator-only user creation is preserved ───────────────────────────────────
 
     [Fact]
     public void AdminUsersController_still_exposes_a_create_user_action()
@@ -119,7 +119,7 @@ public class PublicRegistrationRemovedTests(ApiRouteTableFixture routeTable)
 
     /// <summary>
     /// Covers both "an unauthenticated request cannot create a user" and "a
-    /// non-admin user cannot create a user": [Authorize(Roles = "Admin")] on the
+    /// non-admin user cannot create a user": [Authorize(Roles = "System Administrator")] on the
     /// controller rejects anonymous callers with 401 and non-admins with 403
     /// before CreateUser is ever invoked.
     /// </summary>
@@ -129,7 +129,7 @@ public class PublicRegistrationRemovedTests(ApiRouteTableFixture routeTable)
         var authorize = typeof(AdminUsersController).GetCustomAttribute<AuthorizeAttribute>();
 
         Assert.NotNull(authorize);
-        Assert.Equal(AppRoles.Admin, authorize!.Roles);
+        Assert.Equal(AppRoles.SystemAdministrator, authorize!.Roles);
     }
 
     [Fact]

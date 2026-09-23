@@ -6,15 +6,15 @@ namespace Application.AnnualLeaves.Commands;
 
 /// <summary>
 /// Whether a leave request has to name a delegate. It does for an Employee and a
-/// Manager; an Admin's own leave is exempt.
+/// Manager; a System Administrator's own leave is exempt.
 ///
 /// The rule is about whose leave it is, not who is typing: an admin filing on an
 /// employee's behalf is held to it, matching <c>AttachmentPolicyRule</c> and the
 /// rest. It reads the employee's <em>stored</em> role because the payload carries
-/// none, and an employee id matching nobody is held to the non-Admin rule — the
+/// none, and an employee id matching nobody is held to the non-System Administrator rule — the
 /// validator reports the missing account separately.
 ///
-/// Why an Admin is exempt rather than merely tolerated: an Admin has no department
+/// Why a System Administrator is exempt rather than merely tolerated: a System Administrator has no department
 /// (<c>EmployeeProfile.DepartmentId</c> is refused for the role), so the picker,
 /// which offers department colleagues, would offer them nobody, and a required
 /// field with nothing to put in it is a form that cannot be submitted.
@@ -27,7 +27,7 @@ public static class CoverageRule
 {
     public const string RequiredMessage = "Please nominate a colleague to cover for you while you are away.";
 
-    /// <summary>True unless the employee holds the Admin role.</summary>
+    /// <summary>True unless the employee holds the System Administrator role.</summary>
     public static async Task<bool> IsRequiredForAsync(
         AppDbContext context, string? employeeId, CancellationToken cancellationToken)
     {
@@ -36,7 +36,7 @@ public static class CoverageRule
         var isAdmin = await context.Users
             .Where(u => u.Id == employeeId)
             .SelectMany(u => u.UserRoles)
-            .AnyAsync(ur => ur.Role != null && ur.Role.Name == AppRoles.Admin, cancellationToken);
+            .AnyAsync(ur => ur.Role != null && ur.Role.Name == AppRoles.SystemAdministrator, cancellationToken);
 
         return !isAdmin;
     }

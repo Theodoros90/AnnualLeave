@@ -45,7 +45,7 @@ public class CoverageRequiredTests
         var db = TestDb.Create();
         db.Departments.Add(new Department { Id = DepartmentId, Name = "Engineering", Code = "ENG" });
 
-        var adminRole = new Role { Id = "r-admin", Name = AppRoles.Admin, NormalizedName = "ADMIN" };
+        var adminRole = new Role { Id = "r-admin", Name = AppRoles.SystemAdministrator, NormalizedName = "ADMIN" };
         var managerRole = new Role { Id = "r-manager", Name = AppRoles.Manager, NormalizedName = "MANAGER" };
         var employeeRole = new Role { Id = "r-employee", Name = AppRoles.Employee, NormalizedName = "EMPLOYEE" };
         db.Roles.AddRange(adminRole, managerRole, employeeRole);
@@ -54,7 +54,7 @@ public class CoverageRequiredTests
         AddPerson(db, DelegateUserId, "p-delegate", "Andreas Georgiou", DelegateEmail, DepartmentId, employeeRole);
         AddPerson(db, ColleagueUserId, "p-colleague", "Petros Christou", ColleagueEmail, DepartmentId, employeeRole);
         AddPerson(db, ManagerUserId, "p-manager", "Nikos Manager", "nikos@test.local", DepartmentId, managerRole);
-        AddPerson(db, AdminUserId, "p-admin", "Chris Admin", "admin@test.local", null, adminRole);
+        AddPerson(db, AdminUserId, "p-admin", "Chris System Administrator", "admin@test.local", null, adminRole);
 
         db.LeaveTypes.Add(new LeaveType
         {

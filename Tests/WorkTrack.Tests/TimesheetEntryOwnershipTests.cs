@@ -13,7 +13,7 @@ namespace WorkTrack.Tests;
 /// [Authorize]: any signed-in user who knew (or guessed) a timesheet id could
 /// add, edit or delete entries on someone else's timesheet — the hours their
 /// colleague gets paid for. These pin the ownership rule per action: the owning
-/// employee may write, an unrelated employee is refused with 403, an Admin may
+/// employee may write, an unrelated employee is refused with 403, a System Administrator may
 /// write. Manager scope and the missing-timesheet case are covered at the end.
 /// </summary>
 public class TimesheetEntryOwnershipTests
@@ -151,7 +151,7 @@ public class TimesheetEntryOwnershipTests
     public async Task AddEntry_is_allowed_for_an_admin()
     {
         using var db = SeedWorld();
-        var controller = ControllerFor(db, AdminUserId, AppRoles.Admin);
+        var controller = ControllerFor(db, AdminUserId, AppRoles.SystemAdministrator);
 
         var result = await controller.AddEntry(TimesheetId, NewEntryRequest(), CancellationToken.None);
 
@@ -189,7 +189,7 @@ public class TimesheetEntryOwnershipTests
     public async Task UpdateEntry_is_allowed_for_an_admin()
     {
         using var db = SeedWorld();
-        var controller = ControllerFor(db, AdminUserId, AppRoles.Admin);
+        var controller = ControllerFor(db, AdminUserId, AppRoles.SystemAdministrator);
 
         var result = await controller.UpdateEntry(TimesheetId, EntryId, EditedEntry(), CancellationToken.None);
 
@@ -227,7 +227,7 @@ public class TimesheetEntryOwnershipTests
     public async Task DeleteEntry_is_allowed_for_an_admin()
     {
         using var db = SeedWorld();
-        var controller = ControllerFor(db, AdminUserId, AppRoles.Admin);
+        var controller = ControllerFor(db, AdminUserId, AppRoles.SystemAdministrator);
 
         var result = await controller.DeleteEntry(TimesheetId, EntryId, CancellationToken.None);
 

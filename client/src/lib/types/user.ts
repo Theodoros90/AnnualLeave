@@ -1,4 +1,4 @@
-export type UserRole = 'Admin' | 'Manager' | 'Employee'
+export type UserRole = 'System Administrator' | 'Manager' | 'Employee'
 
 /**
  * Recorded HR data an admin maintains. A string union rather than a number
@@ -34,7 +34,7 @@ export interface UserInfo {
     /**
      * When the employee started, ISO date "yyyy-MM-dd". Decides whether a leave
      * type wanting a minimum length of service is offered on the leave forms
-     * (`minServiceError` in `lib/leave-limits.ts`). Null for an Admin, who has no
+     * (`minServiceError` in `lib/leave-limits.ts`). Null for a System Administrator, who has no
      * employee profile, and for an account predating the field — either reads as
      * "not recorded" and passes, as it does on the server.
      */

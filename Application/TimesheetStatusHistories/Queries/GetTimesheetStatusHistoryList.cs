@@ -106,7 +106,7 @@ public class GetTimesheetStatusHistoryList
 
             if (request.IsAdmin)
             {
-                // Admin sees all history.
+                // System Administrator sees all history.
             }
             else if (request.IsManager)
             {

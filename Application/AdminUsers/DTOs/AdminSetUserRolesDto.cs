@@ -3,7 +3,7 @@
 namespace Application.AdminUsers.DTOs;
 
 /// <summary>
-/// A user holds exactly one role (Admin, Manager or Employee), so this is a
+/// A user holds exactly one role (System Administrator, Manager or Employee), so this is a
 /// single-element list rather than a set. It stays a list because that is the
 /// shape Identity's role APIs take, and because loosening it later is easier
 /// than tightening it.
