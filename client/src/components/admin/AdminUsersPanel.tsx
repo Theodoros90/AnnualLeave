@@ -2014,7 +2014,30 @@ function EditUserDialog(props: {
             </AppDialogTitle>
             <AppDialogContent>
                 <Stack spacing={2}>
-                    <DialogSection title="Personal details" first>
+                    <DialogSection title="Role & access" first>
+                        <Box>
+                            <RadioGroup row name="edit-user-role" value={role} onChange={(e) => { setDirty(true); setRole(e.target.value as UserRole) }}>
+                                {ALL_ROLES.map((option) => (
+                                    <FormControlLabel key={option} value={option} control={<Radio />} label={option} />
+                                ))}
+                            </RadioGroup>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                {ROLE_DESCRIPTIONS[role]}
+                            </Typography>
+                            {isHr && (
+                                <HrDepartmentsField
+                                    idPrefix="edit-user"
+                                    departments={props.departments}
+                                    value={hrDepartmentIds}
+                                    onChange={(ids) => { setDirty(true); setHrDepartmentIds(ids) }}
+                                    error={hrDepartmentsMissing}
+                                    showError={dirty || (!!user && hydratedFor === user.id)}
+                                />
+                            )}
+                        </Box>
+                    </DialogSection>
+
+                    <DialogSection title="Personal details">
                         <PersonalDetailsFields
                             idPrefix="edit-user"
                             values={{ email, displayName, phoneNumber, dateOfBirth, gender }}
@@ -2062,29 +2085,6 @@ function EditUserDialog(props: {
                                 />
                             </>
                         )}
-                    </DialogSection>
-
-                    <DialogSection title="Role & access">
-                        <Box>
-                            <RadioGroup row name="edit-user-role" value={role} onChange={(e) => { setDirty(true); setRole(e.target.value as UserRole) }}>
-                                {ALL_ROLES.map((option) => (
-                                    <FormControlLabel key={option} value={option} control={<Radio />} label={option} />
-                                ))}
-                            </RadioGroup>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                {ROLE_DESCRIPTIONS[role]}
-                            </Typography>
-                            {isHr && (
-                                <HrDepartmentsField
-                                    idPrefix="edit-user"
-                                    departments={props.departments}
-                                    value={hrDepartmentIds}
-                                    onChange={(ids) => { setDirty(true); setHrDepartmentIds(ids) }}
-                                    error={hrDepartmentsMissing}
-                                    showError={dirty || (!!user && hydratedFor === user.id)}
-                                />
-                            )}
-                        </Box>
                     </DialogSection>
 
                     {profile && !isAdmin && (
@@ -2308,7 +2308,30 @@ function CreateUserDialog(props: {
             </AppDialogTitle>
             <AppDialogContent>
                 <Stack spacing={2}>
-                    <DialogSection title="Personal details" first>
+                    <DialogSection title="Role & access" first>
+                        <Box>
+                            <RadioGroup row name="create-user-role" value={role} onChange={(e) => { setDirty(true); setRole(e.target.value as UserRole) }}>
+                                {ALL_ROLES.map((option) => (
+                                    <FormControlLabel key={option} value={option} control={<Radio />} label={option} />
+                                ))}
+                            </RadioGroup>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                {ROLE_DESCRIPTIONS[role]}
+                            </Typography>
+                            {isHr && (
+                                <HrDepartmentsField
+                                    idPrefix="create-user"
+                                    departments={props.departments}
+                                    value={hrDepartmentIds}
+                                    onChange={(ids) => { setDirty(true); setHrDepartmentIds(ids) }}
+                                    error={hrDepartmentsMissing}
+                                    showError={dirty}
+                                />
+                            )}
+                        </Box>
+                    </DialogSection>
+
+                    <DialogSection title="Personal details">
                         <PersonalDetailsFields
                             idPrefix="create-user"
                             values={{ email, displayName, phoneNumber, dateOfBirth, gender }}
@@ -2341,29 +2364,6 @@ function CreateUserDialog(props: {
                                 />
                             </>
                         )}
-                    </DialogSection>
-
-                    <DialogSection title="Role & access">
-                        <Box>
-                            <RadioGroup row name="create-user-role" value={role} onChange={(e) => { setDirty(true); setRole(e.target.value as UserRole) }}>
-                                {ALL_ROLES.map((option) => (
-                                    <FormControlLabel key={option} value={option} control={<Radio />} label={option} />
-                                ))}
-                            </RadioGroup>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                {ROLE_DESCRIPTIONS[role]}
-                            </Typography>
-                            {isHr && (
-                                <HrDepartmentsField
-                                    idPrefix="create-user"
-                                    departments={props.departments}
-                                    value={hrDepartmentIds}
-                                    onChange={(ids) => { setDirty(true); setHrDepartmentIds(ids) }}
-                                    error={hrDepartmentsMissing}
-                                    showError={dirty}
-                                />
-                            )}
-                        </Box>
                     </DialogSection>
 
                     {!isAdmin && (
