@@ -234,8 +234,15 @@ public class NonManagerUserDepartmentTests : IDisposable
         Assert.Equal(all.OrderBy(id => id), assigned.OrderBy(id => id));
     }
 
+    /// <summary>
+    /// A manager's departments are the team they run; an HR Administrator's are the
+    /// reach a System Administrator granted them. They are not the same answer, and
+    /// carrying one over as the other silently hands the new role a scope nobody
+    /// chose. Any change of role clears the set — the dialog re-supplies an HR
+    /// Administrator's in the same save, right after this call.
+    /// </summary>
     [Fact]
-    public async Task Moving_a_manager_to_HR_Administrator_keeps_their_department_assignments()
+    public async Task Moving_a_manager_to_HR_Administrator_clears_their_department_assignments()
     {
         var manager = await GivenUserAsync(ManagerEmail, AppRoles.Manager);
         Assert.True((await Roles.CreateAsync(new Role { Name = AppRoles.HrAdministrator })).Succeeded);
@@ -245,7 +252,23 @@ public class NonManagerUserDepartmentTests : IDisposable
         var result = await SetRole(manager.Id, AppRoles.HrAdministrator);
 
         Assert.True(result.IsSuccess, result.Error);
-        Assert.Single(await Db.UserDepartments.ToListAsync());
+        Assert.Empty(await Db.UserDepartments.ToListAsync());
+    }
+
+    /// <summary>The same in the other direction: an HR Administrator's whole-company
+    /// reach is not a team to manage.</summary>
+    [Fact]
+    public async Task Demoting_an_HR_Administrator_to_Manager_clears_their_department_assignments()
+    {
+        var hrAdmin = await GivenUserAsync("hr.real@worktrack.local", AppRoles.HrAdministrator);
+        Assert.True((await Roles.CreateAsync(new Role { Name = AppRoles.Manager })).Succeeded);
+        var finance = await GivenDepartmentAsync("Finance", "FIN");
+        await GivenAssignmentAsync(hrAdmin.Id, finance);
+
+        var result = await SetRole(hrAdmin.Id, AppRoles.Manager);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Empty(await Db.UserDepartments.ToListAsync());
     }
 
     [Fact]

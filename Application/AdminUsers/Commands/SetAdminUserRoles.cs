@@ -62,12 +62,18 @@ public class SetAdminUserRoles
 
             // A UserDepartment row is a department this person covers beyond their
             // own profile: an extra one for a Manager, the whole scope for an HR
-            // Administrator. Nothing reads it for anyone else, while DeleteDepartment
-            // still counts it as a blocker and no endpoint but this feature's clears
-            // it. So the rows go with the role that gave them meaning — a promotion to
-            // System Administrator clears the set, the way it clears the department,
-            // gender and start date.
-            if (!roles.Any(role => AppRoles.DepartmentScopedRoles.Contains(role, StringComparer.OrdinalIgnoreCase)))
+            // Administrator. The two are not the same answer — a team someone runs is
+            // not a reach a System Administrator granted — so the rows go with the
+            // role that gave them meaning: **any** change of role clears the set,
+            // whether or not the new role could hold one. Only a save that leaves the
+            // role as it was keeps them. The admin dialog re-supplies an HR
+            // Administrator's departments in the same save, immediately after this
+            // call, so a promotion into HR still ends up with the set that was chosen
+            // for it — rather than inheriting a manager's old team unasked.
+            var rolesChanged = !currentRoles.ToHashSet(StringComparer.OrdinalIgnoreCase)
+                .SetEquals(selectedRoles);
+
+            if (rolesChanged)
             {
                 var assignments = await context.UserDepartments
                     .Where(ud => ud.UserId == user.Id)
