@@ -57,6 +57,7 @@ public class AttachmentPolicyEnforcementTests
     private const string UserId = "employee-1";
     private const string AdminId = "admin-1";
     private const string ProfileId = "profile-1";
+    private const int DepartmentId = 1;
     private const string EvidenceUrl = "/api/files/8f2c1b6e-0000-4000-8000-000000000001";
 
     private const int RequiredTypeId = 1;
@@ -86,16 +87,25 @@ public class AttachmentPolicyEnforcementTests
             Id = AdminId,
             UserName = "admin-1@example.com",
             Email = "admin-1@example.com",
-            DisplayName = "System Administrator",
+            DisplayName = "HR Administrator",
         });
+
+        db.Departments.Add(new Department { Id = DepartmentId, Name = "Ops", Code = "OPS" });
 
         db.EmployeeProfiles.Add(new EmployeeProfile
         {
             Id = ProfileId,
             UserId = UserId,
+            DepartmentId = DepartmentId,
             AnnualLeaveEntitlement = 25,
             LeaveBalance = 25,
         });
+
+        // IsAdmin on UpdateLeaveStatus/EditAnnualLeave is now the HR Administrator
+        // acting on somebody's behalf, scoped to their assigned departments — this
+        // caller needs a UserDepartment row over the employee's department to reach
+        // the leave under test at all.
+        db.UserDepartments.Add(new UserDepartment { UserId = AdminId, DepartmentId = DepartmentId });
 
         // Named for its policy rather than "Sick Leave": the rule has to follow the
         // admin's setting, not a word in the type's name, which is what the apply
@@ -176,6 +186,7 @@ public class AttachmentPolicyEnforcementTests
             Id = "L1",
             EmployeeId = UserId,
             EmployeeProfileId = ProfileId,
+            DepartmentId = DepartmentId,
             LeaveTypeId = leaveTypeId,
             StartDate = new DateTime(2026, 6, 1),
             EndDate = new DateTime(2026, 6, 5),

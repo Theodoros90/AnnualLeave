@@ -50,9 +50,10 @@ public class TimesheetEntriesController : ControllerBase
             _context,
             timesheetId,
             ResolveUserId(),
-            User.IsAdministrator(),
-            User.IsInRole(AppRoles.Manager),
-            cancellationToken);
+            User.IsSystemAdministrator(),
+            User.IsDepartmentScoped(),
+            cancellationToken,
+            isHrAdministrator: User.IsHrAdministrator());
 
         if (access.IsSuccess) return null;
 

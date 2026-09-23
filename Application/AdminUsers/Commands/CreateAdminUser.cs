@@ -18,6 +18,13 @@ public class CreateAdminUser
     public class Command : IRequest<Result<AdminUserDto>>
     {
         public required AdminCreateUserDto User { get; set; }
+
+        /// <summary>
+        /// Who is creating the account, stamped onto the department rows written
+        /// below — the same provenance <c>SetAdminUserDepartments</c> records, so an
+        /// assignment made at hire is not left saying nobody granted it.
+        /// </summary>
+        public string RequestingUserId { get; set; } = string.Empty;
     }
 
     public class Handler(
@@ -119,6 +126,21 @@ public class CreateAdminUser
                 return IdentityFailure("Failed to assign user roles.", addRolesResult);
             }
 
+            // An HR Administrator's reach is the departments assigned here. Validated
+            // non-empty and active by CreateAdminUserValidator; stored normalised.
+            var departmentIds = HrDepartmentScopeRules.Normalize(request.User.DepartmentIds);
+            if (departmentIds.Count > 0)
+            {
+                context.UserDepartments.AddRange(departmentIds.Select(departmentId => new UserDepartment
+                {
+                    UserId = user.Id,
+                    DepartmentId = departmentId,
+                    AssignedAt = DateTime.UtcNow,
+                    AssignedByUserId = string.IsNullOrWhiteSpace(request.RequestingUserId) ? null : request.RequestingUserId,
+                }));
+                await context.SaveChangesAsync(cancellationToken);
+            }
+
             var inviteEmailSent = await accountEmailSender.SendWelcomeInviteAsync(user, cancellationToken);
             if (!inviteEmailSent)
             {
@@ -132,7 +154,7 @@ public class CreateAdminUser
                     user.Id);
             }
 
-            var created = AdminUserMapper.ToDto(user, selectedRoles);
+            var created = AdminUserMapper.ToDto(user, selectedRoles, departmentIds);
             created.InviteEmailSent = inviteEmailSent;
 
             return Result<AdminUserDto>.Success(created);

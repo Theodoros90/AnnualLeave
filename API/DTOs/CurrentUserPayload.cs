@@ -39,6 +39,15 @@ public class CurrentUserPayload
     public string? DepartmentName { get; init; }
 
     /// <summary>
+    /// Every department this person's reach covers: the one on their profile plus
+    /// those assigned through <c>UserDepartment</c> — an HR Administrator's whole
+    /// scope, a Manager's own plus extras, an Employee's one, a System
+    /// Administrator's none. Plural because <see cref="DepartmentId"/> cannot say
+    /// "these three". Ascending, distinct.
+    /// </summary>
+    public IList<int> DepartmentIds { get; init; } = [];
+
+    /// <summary>
     /// Tri-state: null "never asked", false "declared none", true "has some".
     /// Null also when there is no employee profile to ask about.
     /// </summary>
@@ -56,7 +65,8 @@ public class CurrentUserPayload
 
     public IList<string> Roles { get; init; } = [];
 
-    public static CurrentUserPayload From(User user, EmployeeProfile? employeeProfile, IList<string> roles) => new()
+    public static CurrentUserPayload From(
+        User user, EmployeeProfile? employeeProfile, IList<string> roles, IEnumerable<int>? assignedDepartmentIds = null) => new()
     {
         Id = user.Id,
         UserName = user.UserName,
@@ -68,6 +78,9 @@ public class CurrentUserPayload
         Gender = user.Gender,
         DepartmentId = employeeProfile?.DepartmentId,
         DepartmentName = employeeProfile?.Department?.Name,
+        DepartmentIds = (assignedDepartmentIds ?? [])
+            .Concat(employeeProfile?.DepartmentId is int own ? [own] : [])
+            .Distinct().OrderBy(id => id).ToList(),
         HasChildren = employeeProfile?.HasChildren,
         EmploymentStartDate = employeeProfile?.EmploymentStartDate,
         Roles = roles,

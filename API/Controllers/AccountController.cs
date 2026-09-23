@@ -198,7 +198,12 @@ public class AccountController(
             .Include(profile => profile.Department)
             .FirstOrDefaultAsync(profile => profile.UserId == user.Id);
 
-        return Ok(CurrentUserPayload.From(user, employeeProfile, roles));
+        var assignedDepartmentIds = await context.UserDepartments
+            .Where(ud => ud.UserId == user.Id)
+            .Select(ud => ud.DepartmentId)
+            .ToListAsync();
+
+        return Ok(CurrentUserPayload.From(user, employeeProfile, roles, assignedDepartmentIds));
     }
 
     [Authorize]

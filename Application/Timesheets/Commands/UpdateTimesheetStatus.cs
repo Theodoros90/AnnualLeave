@@ -17,6 +17,7 @@ public class UpdateTimesheetStatus
         public required string RequestingUserId { get; set; }
         public bool IsAdmin { get; set; }
         public bool IsManager { get; set; }
+        public bool IsHrAdministrator { get; set; }
         public string? Comment { get; set; }
     }
 
@@ -62,6 +63,13 @@ public class UpdateTimesheetStatus
                             && ep.ManagerId != null
                             && scope.ManagerProfileIds.Contains(ep.ManagerId),
                             cancellationToken);
+                }
+
+                // The HR Administrator also reaches a department-less timesheet — an
+                // administrator's own — which no department scope would otherwise include.
+                if (!inScope && timesheet.DepartmentId == null && request.IsHrAdministrator)
+                {
+                    inScope = true;
                 }
 
                 if (!inScope)

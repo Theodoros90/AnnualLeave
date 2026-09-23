@@ -31,6 +31,14 @@ public class AdminCreateUserDto
     [Range(1, int.MaxValue, ErrorMessage = "Department is required.")]
     public int? DepartmentId { get; set; }
 
+    /// <summary>
+    /// The departments an HR Administrator runs — at least one is required for that
+    /// role and any are refused for every other, the mirror image of
+    /// <see cref="DepartmentId"/>. Settled by <c>CreateAdminUserValidator</c> through
+    /// <c>HrDepartmentScopeRules</c>.
+    /// </summary>
+    public List<int>? DepartmentIds { get; set; }
+
     [Phone]
     [StringLength(30)]
     public string? PhoneNumber { get; set; }

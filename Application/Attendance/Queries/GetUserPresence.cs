@@ -1,6 +1,7 @@
 using Application.Attendance.DTOs;
 using Application.Attendance.Support;
 using Application.Core;
+using Domain;
 using Domain.Services;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,14 @@ public class GetUserPresence
 {
     public class Query : IRequest<Result<List<UserPresenceDto>>>
     {
+        public string RequestingUserId { get; init; } = string.Empty;
+
+        /// <summary>
+        /// True for an HR Administrator: only the departments assigned to them. False
+        /// — the default, the System Administrator's, and every existing test's — is
+        /// the whole company.
+        /// </summary>
+        public bool ScopeToCaller { get; init; }
     }
 
     public class Handler(AppDbContext context) : IRequestHandler<Query, Result<List<UserPresenceDto>>>
@@ -30,7 +39,15 @@ public class GetUserPresence
         {
             var now = DateTime.UtcNow;
 
-            var profiles = await context.EmployeeProfiles
+            IQueryable<EmployeeProfile> profilesQuery = context.EmployeeProfiles;
+            if (request.ScopeToCaller)
+            {
+                var scope = await ManagerAccessScopeResolver.ResolveAsync(context, request.RequestingUserId, cancellationToken);
+                profilesQuery = profilesQuery.Where(p =>
+                    p.DepartmentId != null && scope.ManagedDepartmentIds.Contains(p.DepartmentId.Value));
+            }
+
+            var profiles = await profilesQuery
                 .Select(p => new { p.Id, p.UserId })
                 .ToListAsync(cancellationToken);
 

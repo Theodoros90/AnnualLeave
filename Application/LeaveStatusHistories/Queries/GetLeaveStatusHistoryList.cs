@@ -14,6 +14,12 @@ public class GetLeaveStatusHistoryList
         public string RequestingUserId { get; set; } = string.Empty;
         public bool IsAdmin { get; set; }
         public bool IsManager { get; set; }
+
+        /// <summary>
+        /// The HR Administrator also reaches department-less leave — the
+        /// administrators' own — which no department scope would otherwise include.
+        /// </summary>
+        public bool IsHrAdministrator { get; set; }
         public int? Page { get; set; }
         public int? PageSize { get; set; }
     }
@@ -42,10 +48,13 @@ public class GetLeaveStatusHistoryList
 
                 query = query.Where(h =>
                     h.AnnualLeave != null &&
-                    ((h.AnnualLeave.DepartmentId.HasValue &&
-                      managerScope.ManagedDepartmentIds.Contains(h.AnnualLeave.DepartmentId.Value))
-                     || managerScope.DirectReportUserIds.Contains(h.AnnualLeave.EmployeeId))
-                    && (h.AnnualLeave.Employee == null || !h.AnnualLeave.Employee.UserRoles.Any(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!))));
+                    (((h.AnnualLeave.DepartmentId.HasValue &&
+                       managerScope.ManagedDepartmentIds.Contains(h.AnnualLeave.DepartmentId.Value))
+                      || managerScope.DirectReportUserIds.Contains(h.AnnualLeave.EmployeeId))
+                     && (h.AnnualLeave.Employee == null || !h.AnnualLeave.Employee.UserRoles.Any(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!)))
+                     // The HR Administrator also reaches department-less leave — the
+                     // administrators' own, which nobody's assigned departments cover.
+                     || (request.IsHrAdministrator && h.AnnualLeave.DepartmentId == null)));
             }
             else
             {

@@ -23,7 +23,14 @@ public class AdminUsersController : BaseApiController
     [ProducesResponseType(typeof(List<AdminUserDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<AdminUserDto>>> GetUsers()
     {
-        return Ok(await Mediator.Send(new GetAdminUserList.Query(), HttpContext.RequestAborted));
+        return Ok(await Mediator.Send(new GetAdminUserList.Query
+        {
+            RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            // The HR Administrator reads this list to file leave on somebody's
+            // behalf, so it is scoped to their departments; the System
+            // Administrator's Users panel is the whole company.
+            ScopeToCaller = !User.IsSystemAdministrator(),
+        }, HttpContext.RequestAborted));
     }
 
     [HttpGet("{id}")]
@@ -32,7 +39,12 @@ public class AdminUsersController : BaseApiController
     public async Task<ActionResult<AdminUserDto>> GetUser(string id)
     {
         return HandleResult(await Mediator.Send(
-            new GetAdminUserDetail.Query { Id = id },
+            new GetAdminUserDetail.Query
+            {
+                Id = id,
+                RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+                ScopeToCaller = !User.IsSystemAdministrator(),
+            },
             HttpContext.RequestAborted));
     }
 
@@ -44,7 +56,11 @@ public class AdminUsersController : BaseApiController
     public async Task<ActionResult<AdminUserDto>> CreateUser(AdminCreateUserDto request)
     {
         var result = await Mediator.Send(
-            new CreateAdminUser.Command { User = request },
+            new CreateAdminUser.Command
+            {
+                User = request,
+                RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            },
             HttpContext.RequestAborted);
 
         // Not HandleResult on the success path: that answers 200, and this action
@@ -80,6 +96,23 @@ public class AdminUsersController : BaseApiController
     {
         return HandleResult(await Mediator.Send(
             new SetAdminUserRoles.Command { Id = id, Roles = request },
+            HttpContext.RequestAborted));
+    }
+
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
+    [HttpPut("{id}/departments")]
+    [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AdminUserDto>> SetUserDepartments(string id, AdminSetUserDepartmentsDto request)
+    {
+        return HandleResult(await Mediator.Send(
+            new SetAdminUserDepartments.Command
+            {
+                Id = id,
+                Departments = request,
+                RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            },
             HttpContext.RequestAborted));
     }
 

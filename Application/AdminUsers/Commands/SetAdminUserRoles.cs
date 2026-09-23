@@ -60,13 +60,20 @@ public class SetAdminUserRoles
 
             var roles = await userManager.GetRolesAsync(user);
 
-            // A UserDepartment row is an extra department a *manager* covers, and
-            // nothing reads it for anyone else. Left behind by a demotion it is
-            // invisible everywhere except DeleteDepartment, which counts it as an
-            // "assigned manager" blocker — and there is no endpoint to clear it, so
-            // the department it names becomes undeletable. Drop the rows with the
-            // role that gave them meaning.
-            if (!roles.Contains(AppRoles.Manager, StringComparer.OrdinalIgnoreCase))
+            // A UserDepartment row is a department this person covers beyond their
+            // own profile: an extra one for a Manager, the whole scope for an HR
+            // Administrator. The two are not the same answer — a team someone runs is
+            // not a reach a System Administrator granted — so the rows go with the
+            // role that gave them meaning: **any** change of role clears the set,
+            // whether or not the new role could hold one. Only a save that leaves the
+            // role as it was keeps them. The admin dialog re-supplies an HR
+            // Administrator's departments in the same save, immediately after this
+            // call, so a promotion into HR still ends up with the set that was chosen
+            // for it — rather than inheriting a manager's old team unasked.
+            var rolesChanged = !currentRoles.ToHashSet(StringComparer.OrdinalIgnoreCase)
+                .SetEquals(selectedRoles);
+
+            if (rolesChanged)
             {
                 var assignments = await context.UserDepartments
                     .Where(ud => ud.UserId == user.Id)

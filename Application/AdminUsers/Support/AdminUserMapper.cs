@@ -13,7 +13,7 @@ namespace Application.AdminUsers.Support;
 /// </summary>
 public static class AdminUserMapper
 {
-    public static AdminUserDto ToDto(User user, IEnumerable<string> roles) => new()
+    public static AdminUserDto ToDto(User user, IEnumerable<string> roles, IEnumerable<int>? departmentIds = null) => new()
     {
         Id = user.Id,
         UserName = user.UserName ?? string.Empty,
@@ -26,5 +26,6 @@ public static class AdminUserMapper
         EmailConfirmed = user.EmailConfirmed,
         IsActive = user.IsActive,
         Roles = roles.OrderBy(r => r).ToList(),
+        DepartmentIds = (departmentIds ?? []).Distinct().OrderBy(id => id).ToList(),
     };
 }

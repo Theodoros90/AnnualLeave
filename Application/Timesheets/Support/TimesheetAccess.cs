@@ -24,13 +24,20 @@ public static class TimesheetAccess
     /// means no such timesheet, <see cref="ResultErrorKind.Forbidden"/> means it
     /// exists but is not the caller's to touch.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="isHrAdministrator"/> sits after <paramref name="cancellationToken"/>
+    /// on purpose: both are optional, and every existing positional caller supplies
+    /// exactly six arguments (ending in the cancellation token), so appending the new
+    /// parameter after it keeps those call sites compiling unchanged.
+    /// </remarks>
     public static async Task<Result<Timesheet>> AuthorizeWriteAsync(
         AppDbContext context,
         string timesheetId,
         string requestingUserId,
         bool isAdmin,
         bool isManager,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool isHrAdministrator = false)
     {
         var timesheet = await context.Timesheets
             .FirstOrDefaultAsync(t => t.Id == timesheetId, cancellationToken);
@@ -79,6 +86,13 @@ public static class TimesheetAccess
                         && ep.ManagerId != null
                         && scope.ManagerProfileIds.Contains(ep.ManagerId),
                         cancellationToken);
+            }
+
+            // The HR Administrator also reaches a department-less timesheet — an
+            // administrator's own — which no department scope would otherwise include.
+            if (!inScope && timesheet.DepartmentId == null && isHrAdministrator)
+            {
+                inScope = true;
             }
 
             if (inScope)

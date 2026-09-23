@@ -2,6 +2,7 @@ import apiClient from './client'
 import type {
     AdminCreateUserRequest,
     AdminSetUserActiveRequest,
+    AdminSetUserDepartmentsRequest,
     AdminSetUserRolesRequest,
     AdminUpdateUserRequest,
     AdminUser,
@@ -24,6 +25,11 @@ export async function updateAdminUser(id: string, request: AdminUpdateUserReques
 
 export async function setAdminUserRoles(id: string, request: AdminSetUserRolesRequest) {
     const response = await apiClient.put<AdminUser>(`/adminusers/${id}/roles`, request)
+    return response.data
+}
+
+export async function setAdminUserDepartments(id: string, request: AdminSetUserDepartmentsRequest) {
+    const response = await apiClient.put<AdminUser>(`/adminusers/${id}/departments`, request)
     return response.data
 }
 

@@ -4,11 +4,7 @@ import type { UserRole } from './types/user'
  * Two questions, mirroring `AppRoles` on the server, and they are not the same
  * question:
  *
- * - **Reach** — who sees every department: `isAdministrator`. System Administrator
- *   and HR Administrator both do. Leave Management, Attendance and Timesheets,
- *   the company-wide dashboard, filing leave on somebody's behalf, and the
- *   role-scoped rules (no department, gender or start date of their own, no
- *   coverage on their own leave) all read this one.
+ * - **Reach** — who may open the company-wide pages: `isAdministrator`. System Administrator and HR Administrator both do — but only the System Administrator sees every department; an HR Administrator sees the departments assigned to them, and the server scopes their data. The role-scoped rules (no department, gender or start date of their own, no coverage on their own leave) read this one.
  * - **System administration** — who configures the system: `isSystemAdministrator`.
  *   System Administrator alone. Users, Departments, Projects and their catalogues,
  *   Leave Types, Organization, Notification Settings and Data Maintenance read this
@@ -34,7 +30,7 @@ export function isAdministratorRole(role: string | null | undefined): role is Us
     return role != null && (ADMINISTRATOR_ROLES as readonly string[]).includes(role)
 }
 
-/** Whether any of `roles` is an administrator role (reach over every department). Unknown roles read as not. */
+/** Whether any of `roles` is an administrator role (may open the company-wide pages). Unknown roles read as not. */
 export function isAdministrator(roles: readonly string[] | null | undefined): boolean {
     return !!roles && roles.some(isAdministratorRole)
 }

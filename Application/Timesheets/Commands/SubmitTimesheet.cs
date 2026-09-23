@@ -15,6 +15,8 @@ public class SubmitTimesheet
         public required string Id { get; set; }
         public required string RequestingUserId { get; set; }
         public bool IsAdmin { get; set; }
+        public bool IsManager { get; set; }
+        public bool IsHrAdministrator { get; set; }
     }
 
     public class Handler(
@@ -40,7 +42,28 @@ public class SubmitTimesheet
                     .AsNoTracking()
                     .FirstOrDefaultAsync(ep => ep.UserId == request.RequestingUserId, cancellationToken);
 
-                if (requesterProfile is null || timesheet.EmployeeProfileId != requesterProfile.Id)
+                var isOwn = requesterProfile is not null && timesheet.EmployeeProfileId == requesterProfile.Id;
+                var inScope = false;
+                if (!isOwn && request.IsHrAdministrator)
+                {
+                    // Submitting on behalf is the HR Administrator's alone, inside their
+                    // assigned departments — the same scope every other timesheet write
+                    // uses. Deliberately not a Manager: they review what their team
+                    // submits, and putting the draft in for them would commit hours the
+                    // employee never stood behind and make the approval that follows the
+                    // same person twice. (IsManager is still carried on the command; it
+                    // simply no longer grants this.)
+                    var scope = await ManagerAccessScopeResolver.ResolveAsync(context, request.RequestingUserId, cancellationToken);
+                    inScope = (timesheet.DepartmentId != null && scope.ManagedDepartmentIds.Contains(timesheet.DepartmentId.Value))
+                        || (timesheet.Employee != null && scope.DirectReportUserIds.Contains(timesheet.Employee.UserId))
+                        // The HR Administrator also reaches a department-less timesheet — an
+                        // administrator's own — which no department scope would otherwise
+                        // include. This branch is theirs alone, so the role needs no
+                        // re-testing here.
+                        || timesheet.DepartmentId == null;
+                }
+
+                if (!isOwn && !inScope)
                 {
                     return Result<Unit>.ValidationFailure(
                         new Dictionary<string, string[]>

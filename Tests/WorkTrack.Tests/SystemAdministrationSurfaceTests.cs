@@ -35,6 +35,7 @@ public class SystemAdministrationSurfaceTests
     [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.CreateUser))]
     [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.UpdateUser))]
     [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.SetUserRoles))]
+    [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.SetUserDepartments))]
     [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.SetUserActive))]
     [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.ConfirmUserEmail))]
     [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.DeleteUser))]
@@ -52,6 +53,10 @@ public class SystemAdministrationSurfaceTests
     [InlineData(typeof(SettingsController), nameof(SettingsController.ClearApprovalHistory))]
     [InlineData(typeof(SettingsController), nameof(SettingsController.RunReminder))]
     [InlineData(typeof(HolidaysController), nameof(HolidaysController.GetCountries))]
+    // A read, despite the theory's name — the same exception HolidaysController.GetCountries
+    // above already is. The rows say which departments each HR Administrator runs, so
+    // the table is a map of who reaches whose leave and timesheets.
+    [InlineData(typeof(UserDepartmentsController), nameof(UserDepartmentsController.GetUserDepartments))]
     public void Configuration_writes_are_System_Administrator_only(Type controller, string action)
     {
         var gates = GatesOn(controller, action).ToList();

@@ -19,6 +19,12 @@ public class GetTimesheetDetail
         public string RequestingUserId { get; set; } = string.Empty;
         public bool IsAdmin { get; set; }
         public bool IsManager { get; set; }
+
+        /// <summary>
+        /// The HR Administrator also reaches a department-less timesheet — an
+        /// administrator's own — which no department scope would otherwise include.
+        /// </summary>
+        public bool IsHrAdministrator { get; set; }
     }
 
     public class Handler(AppDbContext context) : IRequestHandler<Query, Result<Domain.Timesheet>>
@@ -36,7 +42,8 @@ public class GetTimesheetDetail
                 request.RequestingUserId,
                 request.IsAdmin,
                 request.IsManager,
-                cancellationToken);
+                cancellationToken,
+                isHrAdministrator: request.IsHrAdministrator);
 
             var timesheet = await scoped.FirstOrDefaultAsync(cancellationToken);
 

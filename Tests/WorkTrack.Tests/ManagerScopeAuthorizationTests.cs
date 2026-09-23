@@ -55,6 +55,42 @@ public class ManagerScopeAuthorizationTests
         Assert.Contains(ManagerProfileId, scope.ManagerProfileIds);
     }
 
+    /// <summary>
+    /// An HR Administrator has a department-less profile and their scope lives
+    /// entirely in UserDepartment rows; a Manager may hold extra rows too. Both are
+    /// part of ManagedDepartmentIds, so every consumer of the resolver scopes them
+    /// without knowing which role it is looking at.
+    /// </summary>
+    [Fact]
+    public async Task Resolver_adds_assigned_departments_from_UserDepartment_rows()
+    {
+        using var db = TestDb.Create();
+        db.EmployeeProfiles.Add(new EmployeeProfile { Id = "hr-p", UserId = "hr", DepartmentId = null });
+        db.UserDepartments.Add(new UserDepartment { UserId = "hr", DepartmentId = 3 });
+        db.UserDepartments.Add(new UserDepartment { UserId = "hr", DepartmentId = 5 });
+        // Somebody else's row must not leak in.
+        db.UserDepartments.Add(new UserDepartment { UserId = "other", DepartmentId = 9 });
+        await db.SaveChangesAsync();
+
+        var scope = await ManagerAccessScopeResolver.ResolveAsync(db, "hr", CancellationToken.None);
+
+        Assert.Equal(new[] { 3, 5 }, scope.ManagedDepartmentIds.OrderBy(id => id));
+        Assert.Empty(scope.DirectReportUserIds);
+    }
+
+    [Fact]
+    public async Task Resolver_does_not_duplicate_a_department_held_both_ways()
+    {
+        using var db = TestDb.Create();
+        SeedManager(db);
+        db.UserDepartments.Add(new UserDepartment { UserId = ManagerUserId, DepartmentId = 1 });
+        await db.SaveChangesAsync();
+
+        var scope = await ManagerAccessScopeResolver.ResolveAsync(db, ManagerUserId, CancellationToken.None);
+
+        Assert.Equal(new[] { 1 }, scope.ManagedDepartmentIds);
+    }
+
     // ── Timesheet approval scoping ───────────────────────────────────────────────
 
     private static Timesheet SeedTimesheet(AppDbContext db, int departmentId, string employeeProfileId)

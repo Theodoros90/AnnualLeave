@@ -35,23 +35,27 @@ public class UpdateLeaveStatus
             if (string.IsNullOrWhiteSpace(request.ChangedByUserId))
                 return Result<Unit>.Failure("User context is required.");
 
-            if (!request.IsAdmin)
-            {
-                if (!request.IsManager)
-                    return Result<Unit>.Failure("Only admins or managers can change leave status.");
+            if (!request.IsAdmin && !request.IsManager)
+                return Result<Unit>.Failure("Only admins or managers can change leave status.");
 
-                var managerScope = await ManagerAccessScopeResolver.ResolveAsync(
-                    context,
-                    request.ChangedByUserId,
-                    cancellationToken);
+            // IsAdmin here is the HR Administrator acting on somebody's behalf, and
+            // their reach is their assigned departments — the same resolver, the same
+            // test, as a Manager's. Nobody decides leave unscoped.
+            var managerScope = await ManagerAccessScopeResolver.ResolveAsync(
+                context,
+                request.ChangedByUserId,
+                cancellationToken);
 
-                var isInManagedDepartment = annualLeave.DepartmentId.HasValue
-                    && managerScope.ManagedDepartmentIds.Contains(annualLeave.DepartmentId.Value);
-                var isDirectReport = managerScope.DirectReportUserIds.Contains(annualLeave.EmployeeId);
+            var isInManagedDepartment = annualLeave.DepartmentId.HasValue
+                && managerScope.ManagedDepartmentIds.Contains(annualLeave.DepartmentId.Value);
+            var isDirectReport = managerScope.DirectReportUserIds.Contains(annualLeave.EmployeeId);
+            // A department-less leave is only ever an administrator's own — nobody
+            // else has no department — and an HR Administrator is who decided it
+            // before this task. Scoping it to nobody would strand it Pending forever.
+            var isUnscopedAdminLeave = request.IsAdmin && !annualLeave.DepartmentId.HasValue;
 
-                if (!isInManagedDepartment && !isDirectReport)
-                    return Result<Unit>.Failure("You can only change status for leaves in your managed scope.");
-            }
+            if (!isInManagedDepartment && !isDirectReport && !isUnscopedAdminLeave)
+                return Result<Unit>.Failure("You can only change status for leaves in your managed scope.");
 
             var oldStatus = annualLeave.Status;
             var newStatus = request.Request.Status;

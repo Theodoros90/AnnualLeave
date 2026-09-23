@@ -45,6 +45,15 @@ public class GetCompanyAttendance
         /// feed depend on the time of day and could not be asserted on otherwise.
         /// </summary>
         public DateTime? NowUtc { get; init; }
+
+        public string RequestingUserId { get; init; } = string.Empty;
+
+        /// <summary>
+        /// True for an HR Administrator: only the departments assigned to them. False
+        /// — the default, the System Administrator's, and every existing test's — is
+        /// the whole company.
+        /// </summary>
+        public bool ScopeToCaller { get; init; }
     }
 
     public class Handler(AppDbContext context) : IRequestHandler<Query, Result<CompanyAttendanceDto>>
@@ -54,11 +63,19 @@ public class GetCompanyAttendance
             var now = request.NowUtc ?? DateTime.UtcNow;
             var schedule = await WorkingDaySchedule.LoadAsync(context, cancellationToken);
 
-            var profiles = await AttendanceDay.ExcludeAdmins(
-                    context.EmployeeProfiles
-                        .Include(p => p.User)
-                        .Include(p => p.Department))
-                .ToListAsync(cancellationToken);
+            var profilesQuery = AttendanceDay.ExcludeAdmins(
+                context.EmployeeProfiles
+                    .Include(p => p.User)
+                    .Include(p => p.Department));
+
+            if (request.ScopeToCaller)
+            {
+                var scope = await ManagerAccessScopeResolver.ResolveAsync(context, request.RequestingUserId, cancellationToken);
+                profilesQuery = profilesQuery.Where(p =>
+                    p.DepartmentId != null && scope.ManagedDepartmentIds.Contains(p.DepartmentId.Value));
+            }
+
+            var profiles = await profilesQuery.ToListAsync(cancellationToken);
 
             var profileIds = profiles.Select(p => p.Id).ToList();
 

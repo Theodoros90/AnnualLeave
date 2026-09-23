@@ -22,13 +22,20 @@ public static class TimesheetScope
     /// Narrows <paramref name="query"/> to the timesheets this caller may see.
     /// Async because resolving a manager's scope needs its own round trip.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="isHrAdministrator"/> sits after <paramref name="cancellationToken"/>
+    /// on purpose: both are optional, and every existing positional caller supplies
+    /// exactly six arguments (ending in the cancellation token), so appending the new
+    /// parameter after it keeps those call sites compiling unchanged.
+    /// </remarks>
     public static async Task<IQueryable<Timesheet>> ApplyAsync(
         AppDbContext context,
         IQueryable<Timesheet> query,
         string requestingUserId,
         bool isAdmin,
         bool isManager,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool isHrAdministrator = false)
     {
         if (isAdmin)
         {
@@ -47,7 +54,10 @@ public static class TimesheetScope
                 // Timesheets in managed departments
                 || (t.DepartmentId != null && scope.ManagedDepartmentIds.Contains(t.DepartmentId.Value))
                 // Direct reports' timesheets
-                || scope.DirectReportUserIds.Contains(t.Employee.UserId));
+                || scope.DirectReportUserIds.Contains(t.Employee.UserId)
+                // The HR Administrator also reaches a department-less timesheet — an
+                // administrator's own — which no department scope would otherwise include.
+                || (t.DepartmentId == null && isHrAdministrator));
         }
 
         // Employees see only their own timesheets. Timesheet.EmployeeProfileId is an

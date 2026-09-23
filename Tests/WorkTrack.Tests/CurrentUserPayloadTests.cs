@@ -126,4 +126,18 @@ public class CurrentUserPayloadTests(ApiRouteTableFixture fixture)
         Assert.Equal(JsonValueKind.Null, json.GetProperty("departmentName").ValueKind);
         Assert.Equal(JsonValueKind.Null, json.GetProperty("hasChildren").ValueKind);
     }
+
+    [Fact]
+    public void The_department_ids_union_the_profile_department_and_the_assigned_rows()
+    {
+        var profile = new EmployeeProfile { Id = "p", UserId = "user-1", DepartmentId = 4 };
+        var payload = CurrentUserPayload.From(AUser(Gender.Male), profile, ["Manager"], [4, 7]);
+        Assert.Equal(new[] { 4, 7 }, payload.DepartmentIds);
+
+        var hr = CurrentUserPayload.From(AUser(null), new EmployeeProfile { Id = "h", UserId = "user-1", DepartmentId = null }, ["HR Administrator"], [2, 3]);
+        Assert.Equal(new[] { 2, 3 }, hr.DepartmentIds);
+
+        var json = JsonSerializer.SerializeToElement(hr, Options);
+        Assert.Equal(2, json.GetProperty("departmentIds").GetArrayLength());
+    }
 }

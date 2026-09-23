@@ -19,6 +19,7 @@ vi.mock('../../lib/api', () => ({
     createAdminUser: vi.fn(),
     updateAdminUser: vi.fn(),
     setAdminUserRoles: vi.fn(),
+    setAdminUserDepartments: vi.fn(),
     confirmAdminUserEmail: vi.fn(),
     setAdminUserActive: vi.fn(),
     deleteAdminUser: vi.fn(),
@@ -44,6 +45,12 @@ vi.mock('../ui', async (importOriginal) => ({
 const api = vi.mocked(await import('../../lib/api'))
 
 const DEPARTMENT = { id: 7, name: 'Engineering', code: 'ENG', isActive: true }
+/* A second one, so the HR Administrator's picker has something to pick *from*:
+   a multi-select with a single option cannot show that it takes a set. */
+const FINANCE = { id: 8, name: 'Finance', code: 'FIN', isActive: true }
+/* Deactivated, and deliberately not in the default getDepartments mock: it exists
+   only for the HR Administrator who was assigned it before it was retired. */
+const RETIRED = { id: 9, name: 'Old Guard', code: 'OLD', isActive: false }
 
 /* The annual-leave allowance an employee's entitlement is measured against comes from
    Leave Types (25 days/year as seeded), not from a number hard-coded in the panel. */
@@ -57,7 +64,7 @@ beforeEach(() => {
 
     api.getAdminUsers.mockResolvedValue([])
     api.getEmployeeProfiles.mockResolvedValue([])
-    api.getDepartments.mockResolvedValue([DEPARTMENT] as never)
+    api.getDepartments.mockResolvedValue([DEPARTMENT, FINANCE] as never)
     api.getUserPresence.mockResolvedValue([])
     api.getLeaveStatusHistories.mockResolvedValue([])
     api.getTimesheetStatusHistories.mockResolvedValue([])
@@ -161,6 +168,9 @@ describe('AdminUsersPanel — Create User', () => {
             // Required — the API refuses a null, and Create is disabled until one
             // is picked (see "recording gender" below).
             gender: 'Female',
+            // Null for everyone but an HR Administrator, whose own departments the
+            // API refuses the field for here (see "HR Administrator departments").
+            departmentIds: null,
         })
     })
 
@@ -515,7 +525,9 @@ describe('AdminUsersPanel — System Administrator hides the Profile section', (
         fireEvent.click(within(dialog).getByRole('radio', { name: 'HR Administrator' }))
 
         expect(within(dialog).queryByText('Profile')).not.toBeInTheDocument()
-        expect(within(dialog).queryByLabelText(/department/i)).not.toBeInTheDocument()
+        // Anchored, and singular: the plural "Departments" picker is now expected
+        // for this role — it is the Profile section's own "Department" that goes.
+        expect(within(dialog).queryByLabelText(/^department\b/i)).not.toBeInTheDocument()
         expect(within(dialog).queryByRole('radio', { name: /^male$/i })).not.toBeInTheDocument()
 
         fireEvent.click(within(dialog).getByRole('radio', { name: 'Employee' }))
@@ -1847,6 +1859,7 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
             user('bob', 'Bob Manager', 'Manager'),
             user('carl', 'Carl Report', 'Employee'),
             user('zed', 'Zed System Administrator', 'System Administrator'),
+            user('hana', 'Hana HR', 'HR Administrator'),
         ] as never)
         api.getEmployeeProfiles.mockResolvedValue([
             profile('anna', 'p-mia'),
@@ -1855,6 +1868,7 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
             profile('bob', null),
             profile('carl', 'p-bob'),
             profile('zed', null),
+            profile('hana', null),
         ] as never)
     })
 
@@ -1862,11 +1876,11 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
         return screen.getAllByTestId('user-row').map((row) => row.getAttribute('data-user-id'))
     }
 
-    it('lists admins, then each manager followed by their reports, then anyone without a manager', async () => {
+    it('lists system administrators, then HR administrators, then each manager followed by their reports, then anyone without a manager', async () => {
         renderPanel()
         await screen.findByText('Zed System Administrator')
 
-        expect(rowOrder()).toEqual(['zed', 'bob', 'carl', 'mia', 'anna', 'dora'])
+        expect(rowOrder()).toEqual(['zed', 'hana', 'bob', 'carl', 'mia', 'anna', 'dora'])
     })
 
     it('nests a report inside a group named after their manager', async () => {
@@ -1879,23 +1893,40 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
         expect(within(team).queryByText('Mia Manager')).not.toBeInTheDocument()
     })
 
-    it('labels the three sections when more than one of them has rows', async () => {
+    /* The two administrator roles are different jobs — one configures the
+       workspace, the other runs Leave & Time for their departments — so they are
+       not one "Administrators" pile: each has its own section and its own tab. */
+    it('labels the four sections when more than one of them has rows', async () => {
         renderPanel()
         await screen.findByText('Zed System Administrator')
 
-        expect(screen.getByRole('heading', { name: 'Administrators' })).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: 'System Administrators' })).toBeInTheDocument()
+        expect(screen.getByRole('heading', { name: 'HR Administrators' })).toBeInTheDocument()
+        expect(screen.queryByRole('heading', { name: 'Administrators' })).not.toBeInTheDocument()
         expect(screen.getByRole('heading', { name: 'Managers & teams' })).toBeInTheDocument()
         expect(screen.getByRole('heading', { name: 'No manager assigned' })).toBeInTheDocument()
     })
 
     it('drops the section labels when only one section has rows', async () => {
         renderPanel()
-        fireEvent.click(await screen.findByRole('button', { name: /^Administrators/ }))
+        fireEvent.click(await screen.findByRole('button', { name: /^System Administrators/ }))
 
         expect(screen.getByText('Zed System Administrator')).toBeInTheDocument()
-        // The Administrators tab is still there; the section heading under the tabs is not.
-        expect(screen.queryByRole('heading', { name: 'Administrators' })).not.toBeInTheDocument()
+        expect(screen.queryByText('Hana HR')).not.toBeInTheDocument()
+        // The tab is still there; the section heading under the tabs is not.
+        expect(screen.queryByRole('heading', { name: 'System Administrators' })).not.toBeInTheDocument()
         expect(screen.queryByRole('heading', { name: 'Managers & teams' })).not.toBeInTheDocument()
+    })
+
+    it('has a tab for each administrator role, each counting its own', async () => {
+        renderPanel()
+        await screen.findByText('Zed System Administrator')
+
+        expect(screen.queryByRole('button', { name: /^Administrators/ })).not.toBeInTheDocument()
+        expect(screen.getByRole('button', { name: /^System Administrators\s*1$/ })).toBeInTheDocument()
+        fireEvent.click(screen.getByRole('button', { name: /^HR Administrators\s*1$/ }))
+
+        expect(rowOrder()).toEqual(['hana'])
     })
 
     // A filter that keeps the report but drops the manager must not pull the
@@ -1915,11 +1946,200 @@ describe('AdminUsersPanel — the list is grouped by who reports to whom', () =>
         api.getEmployeeProfiles.mockResolvedValue([
             profile('anna', 'p-nobody'),
             profile('mia', null), profile('dora', null), profile('bob', null), profile('carl', 'p-bob'), profile('zed', null),
+            profile('hana', null),
         ] as never)
         renderPanel()
         await screen.findByText('Anna Report')
 
-        expect(rowOrder()).toEqual(['zed', 'bob', 'carl', 'mia', 'anna', 'dora'])
+        expect(rowOrder()).toEqual(['zed', 'hana', 'bob', 'carl', 'mia', 'anna', 'dora'])
         expect(screen.queryByRole('group', { name: "Mia Manager's team" })).not.toBeInTheDocument()
+    })
+})
+
+/*
+ * An HR Administrator runs the departments assigned to them, not the company.
+ * Picking the role shows a multi-select under the radios; at least one department
+ * is required, mirroring HrDepartmentScopeRules on the server.
+ */
+describe('AdminUsersPanel — HR Administrator departments', () => {
+    async function pickDepartment(dialog: HTMLElement, name: string) {
+        /* Anchored rather than exact: MUI renders a required field's label as
+           "Departments *", and the anchor keeps it clear of the singular
+           "Department" the Profile section asks for. Awaited because Edit User
+           hydrates its fields a microtask late — until the stored role lands the
+           picker is not on the form at all. */
+        const picker = await within(dialog).findByLabelText(/^departments\b/i)
+        fireEvent.mouseDown(picker)
+        fireEvent.click(await screen.findByRole('option', { name: new RegExp(name) }))
+    }
+
+    it('shows the picker for an HR Administrator only', async () => {
+        const dialog = await openCreateDialog()
+
+        expect(within(dialog).queryByLabelText(/^departments\b/i)).not.toBeInTheDocument()
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'HR Administrator' }))
+        expect(within(dialog).getByLabelText(/^departments\b/i)).toBeInTheDocument()
+        expect(within(dialog).getByText(/for the departments assigned below/i)).toBeInTheDocument()
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'System Administrator' }))
+        expect(within(dialog).queryByLabelText(/^departments\b/i)).not.toBeInTheDocument()
+    })
+
+    it('holds Create until at least one department is picked, then sends the ids', async () => {
+        const dialog = await openCreateDialog()
+        api.createAdminUser.mockResolvedValue({
+            id: 'u1', userName: 'hr@example.test', email: 'hr@example.test', displayName: 'HR Person',
+            imageUrl: '', emailConfirmed: true, isActive: true, roles: ['HR Administrator'], departmentIds: [7, 8], inviteEmailSent: true,
+        })
+
+        fireEvent.change(within(dialog).getByLabelText(/email/i), { target: { value: 'hr@example.test' } })
+        fireEvent.change(within(dialog).getByLabelText(/display name/i), { target: { value: 'HR Person' } })
+        setDateOfBirth(dialog)
+        fireEvent.click(within(dialog).getByRole('radio', { name: 'HR Administrator' }))
+
+        expect(within(dialog).getByText('Select at least one department.')).toBeInTheDocument()
+        expect(within(dialog).getByRole('button', { name: /^create$/i })).toBeDisabled()
+
+        await pickDepartment(dialog, 'Engineering')
+        await pickDepartment(dialog, 'Finance')
+
+        expect(within(dialog).getByRole('button', { name: /^create$/i })).toBeEnabled()
+        fireEvent.click(within(dialog).getByRole('button', { name: /^create$/i }))
+
+        await waitFor(() => expect(createAdminUser).toHaveBeenCalledTimes(1))
+        const sent = api.createAdminUser.mock.calls[0][0]
+        expect(sent.roles).toEqual(['HR Administrator'])
+        expect(sent.departmentIds).toEqual([7, 8])
+        expect(sent.departmentId).toBeNull()
+    })
+
+    const HR_USER = {
+        id: 'u-hr', userName: 'hr@example.test', email: 'hr@example.test', displayName: 'Hana HR',
+        imageUrl: '', emailConfirmed: true, isActive: true, roles: ['HR Administrator'], dateOfBirth: '1990-03-04', departmentIds: [7],
+    }
+    const HR_PROFILE = {
+        id: 'p-hr', userId: 'u-hr', displayName: 'Hana HR', departmentId: null, managerId: null,
+        annualLeaveEntitlement: 20, leaveBalance: 20, jobTitle: null, employmentStartDate: null, createdAt: '2026-01-01',
+    }
+
+    async function openEditForHr(user: typeof HR_USER = HR_USER) {
+        api.getAdminUsers.mockResolvedValue([user] as never)
+        api.getEmployeeProfiles.mockResolvedValue([HR_PROFILE] as never)
+        renderPanel()
+        const nameEl = await screen.findByText('Hana HR')
+        const row = nameEl.parentElement!.parentElement!.parentElement!.parentElement!
+        fireEvent.click(within(row).getByTitle('Edit'))
+        return screen.getByRole('dialog')
+    }
+
+    it('shows the assigned departments on the row and pre-fills them in Edit User', async () => {
+        const dialog = await openEditForHr()
+
+        // The row: the department cell reads the assigned names, not a dash. An
+        // exact match, so the dialog's "Engineering (ENG)" chip cannot stand in
+        // for it. Awaited: the names need the departments query, which lands
+        // independently of the users one the row was found by.
+        expect(await screen.findAllByText('Engineering')).not.toHaveLength(0)
+        // The dialog: the chip is already there.
+        expect(await within(dialog).findByText('Engineering (ENG)')).toBeInTheDocument()
+    })
+
+    it('saves roles, then departments, then the user', async () => {
+        api.setAdminUserRoles.mockResolvedValue(HR_USER as never)
+        api.setAdminUserDepartments.mockResolvedValue(HR_USER as never)
+        api.updateAdminUser.mockResolvedValue(HR_USER as never)
+        const dialog = await openEditForHr()
+
+        await pickDepartment(dialog, 'Finance')
+        fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
+
+        await waitFor(() => expect(api.setAdminUserDepartments).toHaveBeenCalledTimes(1))
+        expect(api.setAdminUserDepartments).toHaveBeenCalledWith('u-hr', { departmentIds: [7, 8] })
+        const order = (fn: { mock: { invocationCallOrder: number[] } }) => fn.mock.invocationCallOrder[0]
+        expect(order(api.setAdminUserRoles)).toBeLessThan(order(api.setAdminUserDepartments))
+        expect(order(api.setAdminUserDepartments)).toBeLessThan(order(api.updateAdminUser))
+        /* And the profile last of all, still clearing the department: an HR
+           Administrator has none of their own, exactly as a System Administrator
+           does not, and this dialog is where a stranded one is taken away. */
+        expect(order(api.updateAdminUser)).toBeLessThan(order(api.updateEmployeeProfile))
+        expect(api.updateEmployeeProfile).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'p-hr', departmentId: null }),
+        )
+    })
+
+    /* A department deactivated after it was assigned stays on the chips and does
+       not hold the form: the dialog offers it because the person holds it, and the
+       server now accepts a set that keeps one (HrDepartmentScopeRules.AllAssignable).
+       Without both halves, editing this person's phone number is impossible. */
+    it('keeps a department deactivated after it was assigned, with Save still enabled', async () => {
+        api.getDepartments.mockResolvedValue([DEPARTMENT, FINANCE, RETIRED] as never)
+        const dialog = await openEditForHr({ ...HR_USER, departmentIds: [7, 9] })
+
+        expect(await within(dialog).findByText('Old Guard (OLD)')).toBeInTheDocument()
+        expect(within(dialog).getByRole('button', { name: /^save$/i })).toBeEnabled()
+    })
+
+    /* The expanded row's Reach block used to count every account for any
+       administrator. An HR Administrator's reach is the departments assigned to
+       them, so the block lists those departments as an org chart — the manager as
+       the parent, their employees nested underneath — and nobody from elsewhere. */
+    describe('Reach on the expanded row', () => {
+        const ENG_MANAGER = {
+            id: 'u-eng-mgr', userName: 'em@example.test', email: 'em@example.test', displayName: 'Eng Manager',
+            imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Manager'],
+        }
+        const ENG_EMPLOYEE = {
+            id: 'u-eng-emp', userName: 'ee@example.test', email: 'ee@example.test', displayName: 'Eng Employee',
+            imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'],
+        }
+        const FIN_EMPLOYEE = {
+            id: 'u-fin-emp', userName: 'fe@example.test', email: 'fe@example.test', displayName: 'Fin Employee',
+            imageUrl: '', emailConfirmed: true, isActive: true, roles: ['Employee'],
+        }
+        const profile = (id: string, userId: string, departmentId: number, managerId: string | null) => ({
+            id, userId, displayName: id, departmentId, managerId, annualLeaveEntitlement: 20, leaveBalance: 20,
+            jobTitle: null, employmentStartDate: '2024-02-01', createdAt: '2026-01-01',
+        })
+
+        async function expandHrRow() {
+            api.getAdminUsers.mockResolvedValue([HR_USER, ENG_MANAGER, ENG_EMPLOYEE, FIN_EMPLOYEE] as never)
+            api.getEmployeeProfiles.mockResolvedValue([
+                HR_PROFILE,
+                profile('p-eng-mgr', ENG_MANAGER.id, DEPARTMENT.id, null),
+                profile('p-eng-emp', ENG_EMPLOYEE.id, DEPARTMENT.id, 'p-eng-mgr'),
+                profile('p-fin-emp', FIN_EMPLOYEE.id, FINANCE.id, null),
+            ] as never)
+            renderPanel()
+            fireEvent.click(await screen.findByText('Hana HR'))
+            const row = document.querySelector(`[data-testid="user-row"][data-user-id="${HR_USER.id}"]`) as HTMLElement
+            return within(row)
+        }
+
+        it("lists the assigned department's manager with their employees nested, and nobody else", async () => {
+            const row = await expandHrRow()
+
+            const reach = await row.findByText('Reach')
+            expect(reach).toBeInTheDocument()
+            expect(row.getByText(/Engineering \(ENG\)/)).toBeInTheDocument()
+            expect(row.getByText(/2 people/)).toBeInTheDocument()
+
+            const team = row.getByRole('group', { name: "Eng Manager's team" })
+            expect(within(team).getByText('Eng Employee')).toBeInTheDocument()
+            expect(row.getByText('Eng Manager')).toBeInTheDocument()
+
+            expect(row.queryByText('Fin Employee')).not.toBeInTheDocument()
+            expect(row.queryByText(/Finance/)).not.toBeInTheDocument()
+            expect(row.queryByText(/people in scope/)).not.toBeInTheDocument()
+        })
+
+        it('says so when no department is assigned', async () => {
+            api.getAdminUsers.mockResolvedValue([{ ...HR_USER, departmentIds: [] }, ENG_MANAGER] as never)
+            api.getEmployeeProfiles.mockResolvedValue([HR_PROFILE, profile('p-eng-mgr', ENG_MANAGER.id, DEPARTMENT.id, null)] as never)
+            renderPanel()
+            fireEvent.click(await screen.findByText('Hana HR'))
+            const row = within(document.querySelector(`[data-testid="user-row"][data-user-id="${HR_USER.id}"]`) as HTMLElement)
+
+            expect(await row.findByText('No departments assigned')).toBeInTheDocument()
+            expect(row.queryByText('Eng Manager')).not.toBeInTheDocument()
+        })
     })
 })

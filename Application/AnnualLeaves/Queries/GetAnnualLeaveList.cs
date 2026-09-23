@@ -18,6 +18,12 @@ public class GetAnnualLeaveList
         public bool IsAdmin { get; set; }
         public bool IsManager { get; set; }
         public bool IsEmployee { get; set; }
+
+        /// <summary>
+        /// The HR Administrator also reaches department-less leave — the
+        /// administrators' own — which no department scope would otherwise include.
+        /// </summary>
+        public bool IsHrAdministrator { get; set; }
         public int? Page { get; set; }
         public int? PageSize { get; set; }
     }
@@ -44,12 +50,15 @@ public class GetAnnualLeaveList
                     request.RequestingUserId,
                     cancellationToken);
 
-                annualLeavesQuery = managerScope.ManagedDepartmentIds.Count == 0
+                annualLeavesQuery = managerScope.ManagedDepartmentIds.Count == 0 && !request.IsHrAdministrator
                     ? annualLeavesQuery.Where(_ => false)
                     : annualLeavesQuery.Where(al =>
-                        ((al.DepartmentId.HasValue && managerScope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
-                         || managerScope.DirectReportUserIds.Contains(al.EmployeeId))
-                        && (al.Employee == null || !al.Employee.UserRoles.Any(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!))));
+                        (((al.DepartmentId.HasValue && managerScope.ManagedDepartmentIds.Contains(al.DepartmentId.Value))
+                          || managerScope.DirectReportUserIds.Contains(al.EmployeeId))
+                         && (al.Employee == null || !al.Employee.UserRoles.Any(ur => ur.Role != null && AppRoles.Administrators.Contains(ur.Role.Name!))))
+                        // The HR Administrator also reaches department-less leave — the
+                        // administrators' own, which nobody's assigned departments cover.
+                        || (request.IsHrAdministrator && al.DepartmentId == null));
             }
             else if (request.IsEmployee)
             {

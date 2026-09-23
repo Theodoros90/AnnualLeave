@@ -21,8 +21,14 @@ public class ChildrenController : BaseApiController
 {
     private string CallerUserId => User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 
-    private bool IsAdmin => User.IsAdministrator();
-    private bool IsManager => User.IsInRole(AppRoles.Manager);
+    // An HR Administrator is department-scoped, not a System Administrator, so
+    // they land in the IsManager branch below: read-only, inside their assigned
+    // departments, exactly like a Manager. ChildAccessResolver has no
+    // scoped-write branch, so that is the full extent of their reach here — the
+    // one write surface (Users -> Edit User -> Profile) is not one an HR
+    // Administrator can open anyway.
+    private bool IsAdmin => User.IsSystemAdministrator();
+    private bool IsManager => User.IsDepartmentScoped();
 
     [HttpGet]
     public async Task<ActionResult<List<ChildDto>>> GetChildren([FromQuery] string? employeeId)

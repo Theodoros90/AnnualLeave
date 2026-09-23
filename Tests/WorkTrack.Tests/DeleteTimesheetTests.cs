@@ -68,6 +68,11 @@ public class DeleteTimesheetTests
 
         db.Users.Add(new User { Id = AdminUserId, UserName = "admin", Email = "admin@test.local" });
 
+        // The HR Administrator's reach is UserDepartment rows, not a profile — give
+        // them department 1, which is where both timesheets below live, mirroring
+        // what the controller feeds TimesheetAccess for a department-scoped caller.
+        db.UserDepartments.Add(new UserDepartment { UserId = AdminUserId, DepartmentId = 1 });
+
         AddTimesheet(db, DraftId, TimesheetStatus.Draft);
         AddTimesheet(db, ApprovedId, TimesheetStatus.Approved);
 

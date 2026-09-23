@@ -29,6 +29,12 @@ export interface UserInfo {
     gender?: Gender | null
     departmentId?: number | null
     departmentName?: string | null
+    /**
+     * Every department this person's reach covers — profile department plus
+     * assigned ones; an HR Administrator's whole scope. Optional for an API
+     * predating the field. No page reads it yet.
+     */
+    departmentIds?: number[]
     roles: UserRole[]
     hasChildren?: boolean | null
     /**

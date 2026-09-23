@@ -14,6 +14,12 @@ namespace Application.Timesheets.Queries
             public string RequestingUserId { get; set; } = string.Empty;
             public bool IsAdmin { get; set; }
             public bool IsManager { get; set; }
+
+            /// <summary>
+            /// The HR Administrator also reaches a department-less timesheet — an
+            /// administrator's own — which no department scope would otherwise include.
+            /// </summary>
+            public bool IsHrAdministrator { get; set; }
             public int? Page { get; set; }
             public int? PageSize { get; set; }
         }
@@ -38,7 +44,8 @@ namespace Application.Timesheets.Queries
                     request.RequestingUserId,
                     request.IsAdmin,
                     request.IsManager,
-                    cancellationToken);
+                    cancellationToken,
+                    isHrAdministrator: request.IsHrAdministrator);
 
                 // Filtering above runs in SQL. Count the filtered set, then order +
                 // optionally page (in SQL) before materializing the entries.
