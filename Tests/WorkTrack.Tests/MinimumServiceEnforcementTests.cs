@@ -26,6 +26,8 @@ public class MinimumServiceEnforcementTests
 {
     private const string UserId = "employee-1";
     private const string ProfileId = "profile-1";
+    private const string AdminId = "admin-1";
+    private const int DepartmentId = 1;
 
     private const int TenuredTypeId = 1;
     private const int OpenTypeId = 2;
@@ -51,14 +53,23 @@ public class MinimumServiceEnforcementTests
             DisplayName = "Andreas Georgiou",
         });
 
+        db.Departments.Add(new Department { Id = DepartmentId, Name = "Ops", Code = "OPS" });
+
         db.EmployeeProfiles.Add(new EmployeeProfile
         {
             Id = ProfileId,
             UserId = UserId,
+            DepartmentId = DepartmentId,
             AnnualLeaveEntitlement = 25,
             LeaveBalance = 25,
             EmploymentStartDate = employmentStartDate,
         });
+
+        // IsAdmin on EditAnnualLeave is now the HR Administrator acting on somebody's
+        // behalf, scoped to their assigned departments — this caller needs a
+        // UserDepartment row over the employee's department to reach the leave under
+        // test at all.
+        db.UserDepartments.Add(new UserDepartment { UserId = AdminId, DepartmentId = DepartmentId });
 
         // Named for its rule rather than "Sabbatical": the rule has to follow the
         // admin setting, not a word in the name of the type.
@@ -119,6 +130,7 @@ public class MinimumServiceEnforcementTests
             Id = "L1",
             EmployeeId = UserId,
             EmployeeProfileId = ProfileId,
+            DepartmentId = DepartmentId,
             LeaveTypeId = leaveTypeId,
             StartDate = start,
             EndDate = start.AddDays(1),
@@ -135,7 +147,7 @@ public class MinimumServiceEnforcementTests
         return new EditAnnualLeave.Handler(db, new FakeEmailService())
             .Handle(new EditAnnualLeave.Command
             {
-                ChangedByUserId = isAdmin ? "admin-1" : UserId,
+                ChangedByUserId = isAdmin ? AdminId : UserId,
                 IsAdmin = isAdmin,
                 AnnualLeave = new EditAnnualLeaveRequest
                 {

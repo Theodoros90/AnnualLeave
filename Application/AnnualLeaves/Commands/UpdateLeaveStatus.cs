@@ -35,23 +35,23 @@ public class UpdateLeaveStatus
             if (string.IsNullOrWhiteSpace(request.ChangedByUserId))
                 return Result<Unit>.Failure("User context is required.");
 
-            if (!request.IsAdmin)
-            {
-                if (!request.IsManager)
-                    return Result<Unit>.Failure("Only admins or managers can change leave status.");
+            if (!request.IsAdmin && !request.IsManager)
+                return Result<Unit>.Failure("Only admins or managers can change leave status.");
 
-                var managerScope = await ManagerAccessScopeResolver.ResolveAsync(
-                    context,
-                    request.ChangedByUserId,
-                    cancellationToken);
+            // IsAdmin here is the HR Administrator acting on somebody's behalf, and
+            // their reach is their assigned departments — the same resolver, the same
+            // test, as a Manager's. Nobody decides leave unscoped.
+            var managerScope = await ManagerAccessScopeResolver.ResolveAsync(
+                context,
+                request.ChangedByUserId,
+                cancellationToken);
 
-                var isInManagedDepartment = annualLeave.DepartmentId.HasValue
-                    && managerScope.ManagedDepartmentIds.Contains(annualLeave.DepartmentId.Value);
-                var isDirectReport = managerScope.DirectReportUserIds.Contains(annualLeave.EmployeeId);
+            var isInManagedDepartment = annualLeave.DepartmentId.HasValue
+                && managerScope.ManagedDepartmentIds.Contains(annualLeave.DepartmentId.Value);
+            var isDirectReport = managerScope.DirectReportUserIds.Contains(annualLeave.EmployeeId);
 
-                if (!isInManagedDepartment && !isDirectReport)
-                    return Result<Unit>.Failure("You can only change status for leaves in your managed scope.");
-            }
+            if (!isInManagedDepartment && !isDirectReport)
+                return Result<Unit>.Failure("You can only change status for leaves in your managed scope.");
 
             var oldStatus = annualLeave.Status;
             var newStatus = request.Request.Status;

@@ -28,6 +28,8 @@ public class HalfDayLeaveTests
 {
     private const string UserId = "employee-1";
     private const string ProfileId = "profile-1";
+    private const string AdminId = "admin-1";
+    private const int DepartmentId = 1;
 
     private const int HalfDayTypeId = 1;
     private const int FullDayOnlyTypeId = 2;
@@ -279,13 +281,30 @@ public class HalfDayLeaveTests
             DisplayName = "Andreas Georgiou",
         });
 
+        db.Users.Add(new User
+        {
+            Id = AdminId,
+            UserName = "admin-1@example.com",
+            Email = "admin-1@example.com",
+            DisplayName = "HR Administrator",
+        });
+
+        db.Departments.Add(new Department { Id = DepartmentId, Name = "Ops", Code = "OPS" });
+
         db.EmployeeProfiles.Add(new EmployeeProfile
         {
             Id = ProfileId,
             UserId = UserId,
+            DepartmentId = DepartmentId,
             AnnualLeaveEntitlement = 23,
             LeaveBalance = 23,
         });
+
+        // IsAdmin on EditAnnualLeave is now the HR Administrator acting on somebody's
+        // behalf, scoped to their assigned departments — this caller needs a
+        // UserDepartment row over the employee's department to reach the leave under
+        // test at all.
+        db.UserDepartments.Add(new UserDepartment { UserId = AdminId, DepartmentId = DepartmentId });
 
         // Auto-approving, so creating a request settles the balance in one step.
         db.LeaveTypes.Add(new LeaveType
@@ -341,6 +360,7 @@ public class HalfDayLeaveTests
             Id = "L1",
             EmployeeId = UserId,
             EmployeeProfileId = ProfileId,
+            DepartmentId = DepartmentId,
             LeaveTypeId = leaveTypeId,
             StartDate = Midweek,
             EndDate = Midweek,
@@ -356,7 +376,7 @@ public class HalfDayLeaveTests
         new EditAnnualLeave.Handler(db, new FakeEmailService())
             .Handle(new EditAnnualLeave.Command
             {
-                ChangedByUserId = isAdmin ? "admin-1" : UserId,
+                ChangedByUserId = isAdmin ? AdminId : UserId,
                 IsAdmin = isAdmin,
                 AnnualLeave = new EditAnnualLeaveRequest
                 {

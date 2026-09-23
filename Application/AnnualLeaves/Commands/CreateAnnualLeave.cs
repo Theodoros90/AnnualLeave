@@ -14,6 +14,9 @@ public class CreateAnnualLeave
     public class Command : IRequest<Result<string>>
     {
         public required CreateAnnualLeaveRequest AnnualLeave { get; set; }
+
+        /// <summary>Who is filing. When it differs from the request's EmployeeId, the filer is acting on somebody's behalf and that person has to be inside the filer's assigned departments. Empty skips the check; only the controller sets it.</summary>
+        public string RequestingUserId { get; set; } = string.Empty;
     }
 
     public class Handler(AppDbContext context, IMapper mapper, IEmailService emailService) : IRequestHandler<Command, Result<string>>
@@ -27,6 +30,16 @@ public class CreateAnnualLeave
 
             if (employeeProfile is null)
                 return Result<string>.Failure("Employee profile not found for the selected user.");
+
+            if (!string.IsNullOrWhiteSpace(request.RequestingUserId)
+                && request.RequestingUserId != request.AnnualLeave.EmployeeId)
+            {
+                var scope = await ManagerAccessScopeResolver.ResolveAsync(context, request.RequestingUserId, cancellationToken);
+                var inScope = (employeeProfile.DepartmentId.HasValue && scope.ManagedDepartmentIds.Contains(employeeProfile.DepartmentId.Value))
+                    || scope.DirectReportUserIds.Contains(employeeProfile.UserId);
+                if (!inScope)
+                    return Result<string>.Failure("You can only file leave for people in your assigned departments.");
+            }
 
             annualLeave.EmployeeProfileId = employeeProfile.Id;
             annualLeave.DepartmentId = employeeProfile.DepartmentId;

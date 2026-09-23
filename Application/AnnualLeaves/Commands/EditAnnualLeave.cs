@@ -35,7 +35,7 @@ public class EditAnnualLeave
 
             var isInManagedDepartment = false;
             var isDirectReport = false;
-            if (request.IsManager)
+            if (request.IsManager || request.IsAdmin)
             {
                 var managerScope = await ManagerAccessScopeResolver.ResolveAsync(
                     context,
@@ -47,19 +47,21 @@ public class EditAnnualLeave
                 isDirectReport = managerScope.DirectReportUserIds.Contains(annualLeave.EmployeeId);
             }
 
-            var canEdit = request.IsAdmin || annualLeave.EmployeeId == request.ChangedByUserId;
+            var inScope = isInManagedDepartment || isDirectReport;
 
-            if (!canEdit && (isInManagedDepartment || isDirectReport))
-            {
-                canEdit = true;
-            }
+            // An HR Administrator's privileges from the edit dialog — reopening an
+            // approved or rejected request, changing its status — apply only inside
+            // their assigned departments. Outside them they are nobody.
+            var actsAsAdmin = request.IsAdmin && inScope;
+
+            var canEdit = actsAsAdmin || annualLeave.EmployeeId == request.ChangedByUserId || inScope;
 
             if (!canEdit)
             {
                 return Result<Unit>.Failure("You can only update your own leave requests or requests in your managed departments.");
             }
 
-            if ((annualLeave.Status == AnnualLeaveStatus.Rejected || annualLeave.Status == AnnualLeaveStatus.Approved) && !request.IsAdmin)
+            if ((annualLeave.Status == AnnualLeaveStatus.Rejected || annualLeave.Status == AnnualLeaveStatus.Approved) && !actsAsAdmin)
             {
                 return Result<Unit>.Conflict("Approved and rejected leave requests cannot be edited.");
             }
@@ -174,7 +176,7 @@ public class EditAnnualLeave
                     return Result<Unit>.Failure(perChildError);
             }
 
-            var canChangeStatus = request.IsAdmin || isInManagedDepartment || isDirectReport;
+            var canChangeStatus = actsAsAdmin || inScope;
             if (request.AnnualLeave.Status.HasValue && !canChangeStatus)
             {
                 return Result<Unit>.Failure("Only admins or managers of the request's department can change leave status.");

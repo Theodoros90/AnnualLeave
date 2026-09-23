@@ -76,8 +76,8 @@ public class AnnualLeavesController : BaseApiController
         var result = await Mediator.Send(new GetAnnualLeaveList.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsAdministrator(),
-            IsManager = User.IsInRole(AppRoles.Manager),
+            IsAdmin = User.IsSystemAdministrator(),
+            IsManager = User.IsDepartmentScoped(),
             IsEmployee = User.IsInRole(AppRoles.Employee),
             Page = page,
             PageSize = pageSize,
@@ -92,8 +92,8 @@ public class AnnualLeavesController : BaseApiController
         return await Mediator.Send(new GetTeamAwayThisWeekCount.Query
         {
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsAdministrator(),
-            IsManager = User.IsInRole(AppRoles.Manager),
+            IsAdmin = User.IsSystemAdministrator(),
+            IsManager = User.IsDepartmentScoped(),
             IsEmployee = User.IsInRole(AppRoles.Employee)
         });
     }
@@ -107,15 +107,15 @@ public class AnnualLeavesController : BaseApiController
         {
             Id = id,
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
-            IsAdmin = User.IsAdministrator(),
-            IsManager = User.IsInRole(AppRoles.Manager),
+            IsAdmin = User.IsSystemAdministrator(),
+            IsManager = User.IsDepartmentScoped(),
             IsEmployee = User.IsInRole(AppRoles.Employee)
         });
         return HandleResult(result);
     }
 
     // All roles can create leaves; status is determined by the selected leave type's approval settings.
-    // System Administrator can supply a target EmployeeId to create on behalf of another user.
+    // An HR Administrator can supply a target EmployeeId to create on behalf of another user, inside their assigned departments.
     [HttpPost]
     [Authorize(Policy = "AnnualLeaveCreate")]
     public async Task<ActionResult<string>> CreateAnnualLeave(CreateAnnualLeaveRequest request)
@@ -128,7 +128,11 @@ public class AnnualLeavesController : BaseApiController
         if (!isAdmin || string.IsNullOrWhiteSpace(request.EmployeeId))
             request.EmployeeId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
 
-        var result = await Mediator.Send(new CreateAnnualLeave.Command { AnnualLeave = request });
+        var result = await Mediator.Send(new CreateAnnualLeave.Command
+        {
+            AnnualLeave = request,
+            RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+        });
         if (result.IsSuccess && result.Value is not null)
         {
             await NotifyForLeaveAsync(result.Value);
@@ -237,6 +241,7 @@ public class AnnualLeavesController : BaseApiController
         {
             AnnualLeave = request,
             ChangedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            // IsAdmin: the HR Administrator acting on behalf, checked against their assigned departments in the handler.
             IsAdmin = User.IsHrAdministrator(),
             IsManager = User.IsInRole(AppRoles.Manager)
         });
@@ -257,6 +262,7 @@ public class AnnualLeavesController : BaseApiController
             LeaveId = id,
             Request = request,
             ChangedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            // IsAdmin: the HR Administrator acting on behalf, checked against their assigned departments in the handler.
             IsAdmin = User.IsHrAdministrator(),
             IsManager = User.IsInRole(AppRoles.Manager),
         });
@@ -284,6 +290,7 @@ public class AnnualLeavesController : BaseApiController
         {
             Id = id,
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            // IsAdmin: the HR Administrator acting on behalf, checked against their assigned departments in the handler.
             IsAdmin = User.IsHrAdministrator(),
             IsManager = User.IsInRole(AppRoles.Manager)
         });

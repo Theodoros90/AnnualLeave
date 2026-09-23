@@ -60,7 +60,7 @@ public class LeaveBalanceAtomicityTests
             Id = AdminUserId,
             UserName = "admin@test.local",
             Email = "admin@test.local",
-            DisplayName = "System Administrator",
+            DisplayName = "HR Administrator",
         });
         db.EmployeeProfiles.Add(new EmployeeProfile
         {
@@ -70,6 +70,9 @@ public class LeaveBalanceAtomicityTests
             AnnualLeaveEntitlement = 25,
             LeaveBalance = 25,
         });
+        // IsAdmin on UpdateLeaveStatus is now the HR Administrator acting on
+        // somebody's behalf, scoped to their assigned departments.
+        db.UserDepartments.Add(new UserDepartment { UserId = AdminUserId, DepartmentId = 1 });
         db.LeaveTypes.Add(new LeaveType
         {
             Id = LeaveTypeId,

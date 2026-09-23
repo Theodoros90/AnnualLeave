@@ -82,6 +82,14 @@ public class CoverageNotificationTests
             LeaveBalance = 25,
         });
 
+        // These tests also use this user as the caller behind IsAdmin = true on
+        // UpdateLeaveStatus/EditAnnualLeave — that flag is now the HR Administrator
+        // acting on somebody's behalf, scoped to their assigned departments, so the
+        // caller needs a UserDepartment row over the leave's department to still be
+        // let through. The profile itself stays department-less, which is what the
+        // "same department as nobody" test right below relies on.
+        db.UserDepartments.Add(new UserDepartment { UserId = AdminUserId, DepartmentId = DepartmentId });
+
         db.LeaveTypes.Add(new LeaveType
         {
             Id = LeaveTypeId,

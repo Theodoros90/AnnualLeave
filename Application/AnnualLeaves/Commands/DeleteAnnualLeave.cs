@@ -34,7 +34,12 @@ public class DeleteAnnualLeave
             bool canDelete;
             if (request.IsAdmin)
             {
-                canDelete = true;
+                // The HR Administrator, cancelling on somebody's behalf — inside their
+                // assigned departments, or their own request.
+                var scope = await ManagerAccessScopeResolver.ResolveAsync(context, request.RequestingUserId, cancellationToken);
+                canDelete = annualLeave.EmployeeId == request.RequestingUserId
+                    || (annualLeave.DepartmentId.HasValue && scope.ManagedDepartmentIds.Contains(annualLeave.DepartmentId.Value))
+                    || scope.DirectReportUserIds.Contains(annualLeave.EmployeeId);
             }
             else if (request.IsManager)
             {

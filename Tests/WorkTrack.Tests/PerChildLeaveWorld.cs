@@ -19,6 +19,7 @@ internal static class PerChildLeaveWorld
     public const string ProfileId = "profile-1";
     public const int PaternityTypeId = 1;
     public const int AnnualLeaveTypeId = 2;
+    public const int DepartmentId = 1;
 
     /// <param name="configurePerChildType">
     /// Adjusts the per-child type after its 18/5/15 defaults are set — a test of
@@ -40,10 +41,13 @@ internal static class PerChildLeaveWorld
             DisplayName = "Andreas Georgiou",
         });
 
+        db.Departments.Add(new Department { Id = DepartmentId, Name = "Ops", Code = "OPS" });
+
         db.EmployeeProfiles.Add(new EmployeeProfile
         {
             Id = ProfileId,
             UserId = UserId,
+            DepartmentId = DepartmentId,
             HasChildren = true,
             // Set so the pooled annual-leave check is live too: a per-child type
             // must not be charged against it, and a 0 here would hide that by
@@ -98,6 +102,7 @@ internal static class PerChildLeaveWorld
         {
             EmployeeId = UserId,
             EmployeeProfileId = ProfileId,
+            DepartmentId = DepartmentId,
             ChildId = childId,
             LeaveTypeId = PaternityTypeId,
             StartDate = start,
@@ -113,6 +118,7 @@ internal static class PerChildLeaveWorld
     {
         EmployeeId = UserId,
         EmployeeProfileId = ProfileId,
+        DepartmentId = DepartmentId,
         ChildId = childId,
         LeaveTypeId = leaveTypeId ?? PaternityTypeId,
         StartDate = start,
