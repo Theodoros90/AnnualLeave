@@ -84,6 +84,23 @@ public class AdminUsersController : BaseApiController
     }
 
     [Authorize(Roles = AppRoles.SystemAdministrator)]
+    [HttpPut("{id}/departments")]
+    [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AdminUserDto>> SetUserDepartments(string id, AdminSetUserDepartmentsDto request)
+    {
+        return HandleResult(await Mediator.Send(
+            new SetAdminUserDepartments.Command
+            {
+                Id = id,
+                Departments = request,
+                RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
+            },
+            HttpContext.RequestAborted));
+    }
+
+    [Authorize(Roles = AppRoles.SystemAdministrator)]
     [HttpPut("{id}/active")]
     [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]

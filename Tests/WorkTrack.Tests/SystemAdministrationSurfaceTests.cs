@@ -35,6 +35,7 @@ public class SystemAdministrationSurfaceTests
     [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.CreateUser))]
     [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.UpdateUser))]
     [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.SetUserRoles))]
+    [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.SetUserDepartments))]
     [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.SetUserActive))]
     [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.ConfirmUserEmail))]
     [InlineData(typeof(AdminUsersController), nameof(AdminUsersController.DeleteUser))]

@@ -18,6 +18,13 @@ public class AdminUserDto
     public List<string> Roles { get; set; } = new();
 
     /// <summary>
+    /// The departments assigned to this person through <c>UserDepartment</c>: an HR
+    /// Administrator's whole scope, a Manager's extra departments, empty for everyone
+    /// else. Ids only — the Users panel already holds the department list.
+    /// </summary>
+    public List<int> DepartmentIds { get; set; } = new();
+
+    /// <summary>
     /// Set only on the create response: whether the welcome email carrying the
     /// set-your-password link actually left the building. Null elsewhere, since
     /// there is nothing to report when simply reading a user.
