@@ -229,8 +229,15 @@ public class HrAdministratorScopeTests
         Assert.False(outside.IsSuccess);
     }
 
+    /// <summary>
+    /// Submitting somebody else's timesheet is the HR Administrator's, inside their
+    /// assigned departments — and nobody else's. A Manager reviews what their team
+    /// submits; putting a draft in on their behalf would let them commit hours the
+    /// employee never stood behind, and the approval that follows would be the same
+    /// person twice.
+    /// </summary>
     [Fact]
-    public async Task A_scoped_caller_may_submit_a_timesheet_inside_their_scope()
+    public async Task An_hr_administrator_may_submit_a_timesheet_inside_their_scope_and_a_manager_may_not()
     {
         using var db = SeedWorld();
         var ta = Timesheet("ta", A, "pa"); ta.Status = TimesheetStatus.Draft;
@@ -240,8 +247,12 @@ public class HrAdministratorScopeTests
         var handler = new Application.Timesheets.Commands.SubmitTimesheet.Handler(
             db, new FakeEmailService(), Microsoft.Extensions.Logging.Abstractions.NullLogger<Application.Timesheets.Commands.SubmitTimesheet.Handler>.Instance);
 
-        var inside = await handler.Handle(new Application.Timesheets.Commands.SubmitTimesheet.Command { Id = "ta", RequestingUserId = Hr, IsAdmin = false, IsManager = true }, CancellationToken.None);
-        var outside = await handler.Handle(new Application.Timesheets.Commands.SubmitTimesheet.Command { Id = "tb", RequestingUserId = Hr, IsAdmin = false, IsManager = true }, CancellationToken.None);
+        var asPlainManager = await handler.Handle(new Application.Timesheets.Commands.SubmitTimesheet.Command { Id = "ta", RequestingUserId = Hr, IsAdmin = false, IsManager = true, IsHrAdministrator = false }, CancellationToken.None);
+        Assert.False(asPlainManager.IsSuccess);
+        Assert.Equal(TimesheetStatus.Draft, (await db.Timesheets.FindAsync("ta"))!.Status);
+
+        var inside = await handler.Handle(new Application.Timesheets.Commands.SubmitTimesheet.Command { Id = "ta", RequestingUserId = Hr, IsAdmin = false, IsManager = true, IsHrAdministrator = true }, CancellationToken.None);
+        var outside = await handler.Handle(new Application.Timesheets.Commands.SubmitTimesheet.Command { Id = "tb", RequestingUserId = Hr, IsAdmin = false, IsManager = true, IsHrAdministrator = true }, CancellationToken.None);
 
         Assert.True(inside.IsSuccess, inside.Error);
         Assert.False(outside.IsSuccess);
