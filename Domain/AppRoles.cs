@@ -10,18 +10,24 @@ public static class AppRoles
 
     /// <summary>
     /// The administrator's <b>reach</b> without the administrator's <b>hand on the
-    /// configuration</b>. An HR Administrator sees every department — Leave
-    /// Management, Attendance and Timesheets company-wide, filing leave on somebody's
-    /// behalf — and carries the same role-scoped rules as a System Administrator (no
-    /// department, gender or employment start date, no coverage on their own leave,
-    /// excluded from attendance, mailed the admin reports). What they cannot touch is
-    /// system administration: Users, Departments, Projects and their catalogues,
-    /// Leave Types, Organization, Notification Settings and Data Maintenance.
+    /// configuration</b> — and, since department scope arrived, a reach bounded by the
+    /// departments a System Administrator assigns them (<c>UserDepartment</c> rows).
+    /// Within those departments an HR Administrator runs Leave Management, Attendance
+    /// and Timesheets and files leave on somebody's behalf; they carry the same
+    /// role-scoped rules as a System Administrator (no department, gender or employment
+    /// start date of their own, no coverage on their own leave, excluded from
+    /// attendance). What they cannot touch is system administration: Users, Departments,
+    /// Projects and their catalogues, Leave Types, Organization, Notification Settings
+    /// and Data Maintenance.
     ///
-    /// So there are two questions, and a gate has to ask the right one:
+    /// So there are three questions, and a gate has to ask the right one:
     /// <list type="bullet">
-    ///   <item><b>Reach</b> — <see cref="Administrators"/> / <see cref="AdministratorRoles"/> /
-    ///   <see cref="IsAdministrator(string?)"/>. Both roles.</item>
+    ///   <item><b>May open the company-wide pages</b> — <see cref="Administrators"/> /
+    ///   <see cref="AdministratorRoles"/> / <see cref="IsAdministrator(string?)"/>. Both roles.
+    ///   Authorization only; never a data filter.</item>
+    ///   <item><b>Unscoped data</b> — <see cref="IsSystemAdministrator"/>. That role alone.
+    ///   <b>Scoped data</b> — <see cref="IsDepartmentScoped"/>, a Manager or an HR
+    ///   Administrator, resolved through <c>ManagerAccessScopeResolver</c>.</item>
     ///   <item><b>System administration</b> — <see cref="SystemAdministrator"/> by name,
     ///   on the configuration controllers' write actions and the <c>EmployeeProfileUpdate</c>
     ///   policy. That role alone.</item>
@@ -32,7 +38,7 @@ public static class AppRoles
     public static readonly string[] All = { SystemAdministrator, HrAdministrator, Manager, Employee };
 
     /// <summary>
-    /// The roles with an administrator's reach over every department. Query with
+    /// The two administrator roles — who may open the company-wide pages and who carries the administrator rules. Not a data-scope: an HR Administrator's data is bounded by their assigned departments. Query with
     /// <c>Contains</c> — and keep it typed as a list, not an array: on C# 14 an array's
     /// <c>Contains</c> inside an EF expression binds to the <c>ReadOnlySpan</c> overload,
     /// which the query evaluator cannot interpret, and every query that reads it throws
@@ -69,4 +75,24 @@ public static class AppRoles
     /// <summary>Whether the signed-in principal holds any administrator role.</summary>
     public static bool IsAdministrator(this ClaimsPrincipal user) =>
         Administrators.Any(user.IsInRole);
+
+    /// <summary>
+    /// The roles whose reach is a set of departments rather than the whole company:
+    /// a Manager (their own department) and an HR Administrator (the departments
+    /// assigned to them). Both resolve through <c>ManagerAccessScopeResolver</c>.
+    /// Typed as a list for the same EF reason as <see cref="Administrators"/>.
+    /// </summary>
+    public static readonly IReadOnlyList<string> DepartmentScopedRoles = new[] { Manager, HrAdministrator };
+
+    /// <summary>
+    /// Whether the signed-in principal sees every department unfiltered. System
+    /// Administrator alone — this is what a query's <c>IsAdmin</c> flag now means.
+    /// </summary>
+    public static bool IsSystemAdministrator(this ClaimsPrincipal user) => user.IsInRole(SystemAdministrator);
+
+    /// <summary>
+    /// Whether the signed-in principal's reach is a department set — a Manager or an
+    /// HR Administrator. This is what a query's <c>IsManager</c> flag now means.
+    /// </summary>
+    public static bool IsDepartmentScoped(this ClaimsPrincipal user) => DepartmentScopedRoles.Any(user.IsInRole);
 }
