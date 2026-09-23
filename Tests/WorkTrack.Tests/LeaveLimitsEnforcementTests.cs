@@ -60,6 +60,17 @@ public class LeaveLimitsEnforcementTests
             DisplayName = "Andreas Georgiou",
         });
 
+        // This test's own EF in-memory provider doesn't enforce the FK, but a User
+        // row belongs here regardless — TestDb ignores constraints; it should not
+        // need a fixture that only works because of that.
+        db.Users.Add(new User
+        {
+            Id = AdminId,
+            UserName = "admin-1@example.com",
+            Email = "admin-1@example.com",
+            DisplayName = "HR Administrator",
+        });
+
         db.Departments.Add(new Department { Id = DepartmentId, Name = "Ops", Code = "OPS" });
 
         db.EmployeeProfiles.Add(new EmployeeProfile

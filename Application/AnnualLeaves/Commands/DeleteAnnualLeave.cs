@@ -39,7 +39,12 @@ public class DeleteAnnualLeave
                 var scope = await ManagerAccessScopeResolver.ResolveAsync(context, request.RequestingUserId, cancellationToken);
                 canDelete = annualLeave.EmployeeId == request.RequestingUserId
                     || (annualLeave.DepartmentId.HasValue && scope.ManagedDepartmentIds.Contains(annualLeave.DepartmentId.Value))
-                    || scope.DirectReportUserIds.Contains(annualLeave.EmployeeId);
+                    || scope.DirectReportUserIds.Contains(annualLeave.EmployeeId)
+                    // A department-less leave is only ever an administrator's own —
+                    // nobody else has no department — and an HR Administrator is who
+                    // decided it before this task. Scoping it to nobody would strand
+                    // it Pending forever.
+                    || (request.IsAdmin && !annualLeave.DepartmentId.HasValue);
             }
             else if (request.IsManager)
             {

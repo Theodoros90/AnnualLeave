@@ -79,6 +79,7 @@ public class AnnualLeavesController : BaseApiController
             IsAdmin = User.IsSystemAdministrator(),
             IsManager = User.IsDepartmentScoped(),
             IsEmployee = User.IsInRole(AppRoles.Employee),
+            IsHrAdministrator = User.IsHrAdministrator(),
             Page = page,
             PageSize = pageSize,
         });
@@ -94,7 +95,8 @@ public class AnnualLeavesController : BaseApiController
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
             IsAdmin = User.IsSystemAdministrator(),
             IsManager = User.IsDepartmentScoped(),
-            IsEmployee = User.IsInRole(AppRoles.Employee)
+            IsEmployee = User.IsInRole(AppRoles.Employee),
+            IsHrAdministrator = User.IsHrAdministrator(),
         });
     }
 
@@ -109,7 +111,8 @@ public class AnnualLeavesController : BaseApiController
             RequestingUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty,
             IsAdmin = User.IsSystemAdministrator(),
             IsManager = User.IsDepartmentScoped(),
-            IsEmployee = User.IsInRole(AppRoles.Employee)
+            IsEmployee = User.IsInRole(AppRoles.Employee),
+            IsHrAdministrator = User.IsHrAdministrator(),
         });
         return HandleResult(result);
     }

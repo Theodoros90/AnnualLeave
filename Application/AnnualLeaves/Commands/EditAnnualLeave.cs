@@ -47,7 +47,12 @@ public class EditAnnualLeave
                 isDirectReport = managerScope.DirectReportUserIds.Contains(annualLeave.EmployeeId);
             }
 
-            var inScope = isInManagedDepartment || isDirectReport;
+            // A department-less leave is only ever an administrator's own — nobody
+            // else has no department — and an HR Administrator is who decided it
+            // before this task. Scoping it to nobody would strand it Pending forever.
+            var isUnscopedAdminLeave = request.IsAdmin && !annualLeave.DepartmentId.HasValue;
+
+            var inScope = isInManagedDepartment || isDirectReport || isUnscopedAdminLeave;
 
             // An HR Administrator's privileges from the edit dialog — reopening an
             // approved or rejected request, changing its status — apply only inside

@@ -27,12 +27,13 @@ public class PerChildLeaveHandlerTests
         new CreateAnnualLeave.Handler(db, BuildMapper(), new FakeEmailService())
             .Handle(new CreateAnnualLeave.Command { AnnualLeave = request }, CancellationToken.None);
 
-    private static Task<Result<Unit>> Edit(AppDbContext db, EditAnnualLeaveRequest request, bool isAdmin = false) =>
+    private static Task<Result<Unit>> Edit(
+        AppDbContext db, EditAnnualLeaveRequest request, bool isAdmin = false, string? changedByUserId = null) =>
         new EditAnnualLeave.Handler(db, new FakeEmailService())
             .Handle(new EditAnnualLeave.Command
             {
                 AnnualLeave = request,
-                ChangedByUserId = PerChildLeaveWorld.UserId,
+                ChangedByUserId = changedByUserId ?? PerChildLeaveWorld.UserId,
                 IsAdmin = isAdmin,
             }, CancellationToken.None);
 
@@ -201,6 +202,15 @@ public class PerChildLeaveHandlerTests
         await PerChildLeaveWorld.ApproveLeaveAsync(db, child.Id, new DateTime(2026, 1, 5), new DateTime(2026, 2, 6));
         var leave = await db.AnnualLeaves.SingleAsync();
 
+        // A real HR Administrator caller, not the employee's own id: IsAdmin now
+        // means the HR Administrator acting on somebody's behalf, scoped to their
+        // assigned departments, and the employee's own id could only ever pass this
+        // check by coincidence (their own profile department happening to match).
+        const string adminId = "admin-1";
+        db.Users.Add(new User { Id = adminId, UserName = "admin@example.com", Email = "admin@example.com", DisplayName = "HR Administrator" });
+        db.UserDepartments.Add(new UserDepartment { UserId = adminId, DepartmentId = PerChildLeaveWorld.DepartmentId });
+        await db.SaveChangesAsync();
+
         var result = await Edit(db, new EditAnnualLeaveRequest
         {
             Id = leave.Id,
@@ -209,7 +219,7 @@ public class PerChildLeaveHandlerTests
             StartDate = leave.StartDate,
             EndDate = leave.EndDate.AddDays(-1), // shrink it by one business day
             Reason = "Paternity",
-        }, isAdmin: true); // editing an Approved request requires admin
+        }, isAdmin: true, changedByUserId: adminId); // editing an Approved request requires admin
 
         Assert.True(result.IsSuccess);
     }
