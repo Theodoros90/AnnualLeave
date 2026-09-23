@@ -21,7 +21,7 @@ namespace WorkTrack.Tests;
 /// everything" before departments are resolved at all.
 ///
 /// One place did read it for everyone: <c>DeleteDepartment</c>, which counts every
-/// row as an "assigned manager" blocker. So a row that granted nothing still made
+/// row as an "assignment" blocker. So a row that granted nothing still made
 /// its department undeletable — and unblockable, because the only
 /// <c>UserDepartments</c> route is a GET, no client code calls even that, and the
 /// sole delete path is a side effect of deleting the user outright.
@@ -134,10 +134,10 @@ public class NonManagerUserDepartmentTests : IDisposable
 
     /// <summary>
     /// A demo host still gets one, so the seeder has not simply been switched off —
-    /// and every row it writes belongs to someone in the Manager role.
+    /// and every row it writes belongs to someone in a department-scoped role.
     /// </summary>
     [Fact]
-    public async Task A_demo_seed_writes_assignments_only_for_managers()
+    public async Task A_demo_seed_writes_assignments_only_for_department_scoped_roles()
     {
         await SeedAsync(SeedPolicy.Unrestricted(demoData: true));
 
@@ -149,8 +149,8 @@ public class NonManagerUserDepartmentTests : IDisposable
             var user = await Users.FindByIdAsync(assignment.UserId);
             Assert.NotNull(user);
             Assert.True(
-                await Users.IsInRoleAsync(user!, AppRoles.Manager),
-                $"{user!.Email} holds a department assignment without the Manager role.");
+                await Users.IsInRoleAsync(user!, AppRoles.Manager) || await Users.IsInRoleAsync(user!, AppRoles.HrAdministrator),
+                $"{user!.Email} holds a department assignment without a department-scoped role.");
         }
     }
 
@@ -203,6 +203,64 @@ public class NonManagerUserDepartmentTests : IDisposable
         var assignment = Assert.Single(await Db.UserDepartments.ToListAsync());
         Assert.Equal(manager.Id, assignment.UserId);
         Assert.Equal(hr, assignment.DepartmentId);
+    }
+
+    /// <summary>
+    /// An HR Administrator's rows are their entire scope, so the startup cleanup has
+    /// to keep them exactly as it keeps a manager's.
+    /// </summary>
+    [Fact]
+    public async Task Seeding_keeps_an_HR_Administrators_department_assignment()
+    {
+        var hr = await GivenUserAsync("hr.real@worktrack.local", AppRoles.HrAdministrator);
+        var finance = await GivenDepartmentAsync("Finance", "FIN");
+        await GivenAssignmentAsync(hr.Id, finance);
+
+        await SeedAsync(SeedPolicy.For("Production", demoData: false, allowInProduction: false));
+
+        var assignment = Assert.Single(await Db.UserDepartments.ToListAsync());
+        Assert.Equal(hr.Id, assignment.UserId);
+    }
+
+    /// <summary>The demo HR account is scoped to every seeded department, so the seeded database saves and sees everything the old one did.</summary>
+    [Fact]
+    public async Task A_demo_seed_assigns_the_HR_Administrator_every_department()
+    {
+        await SeedAsync(SeedPolicy.Unrestricted(demoData: true));
+
+        var hr = await Users.FindByEmailAsync(DbInitializer.HrAdministratorDemoEmail);
+        Assert.NotNull(hr);
+        var assigned = await Db.UserDepartments.Where(ud => ud.UserId == hr!.Id).Select(ud => ud.DepartmentId).ToListAsync();
+        var all = await Db.Departments.Select(d => d.Id).ToListAsync();
+        Assert.Equal(all.OrderBy(id => id), assigned.OrderBy(id => id));
+    }
+
+    [Fact]
+    public async Task Moving_a_manager_to_HR_Administrator_keeps_their_department_assignments()
+    {
+        var manager = await GivenUserAsync(ManagerEmail, AppRoles.Manager);
+        Assert.True((await Roles.CreateAsync(new Role { Name = AppRoles.HrAdministrator })).Succeeded);
+        var hr = await GivenDepartmentAsync("Human Resources", "HR");
+        await GivenAssignmentAsync(manager.Id, hr);
+
+        var result = await SetRole(manager.Id, AppRoles.HrAdministrator);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Single(await Db.UserDepartments.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Promoting_an_HR_Administrator_to_System_Administrator_clears_their_department_assignments()
+    {
+        var hr = await GivenUserAsync("hr.real@worktrack.local", AppRoles.HrAdministrator);
+        Assert.True((await Roles.CreateAsync(new Role { Name = AppRoles.SystemAdministrator })).Succeeded);
+        var finance = await GivenDepartmentAsync("Finance", "FIN");
+        await GivenAssignmentAsync(hr.Id, finance);
+
+        var result = await SetRole(hr.Id, AppRoles.SystemAdministrator);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Empty(await Db.UserDepartments.ToListAsync());
     }
 
     // ── Demotion does not put them back ─────────────────────────────────────────

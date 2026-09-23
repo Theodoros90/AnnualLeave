@@ -85,7 +85,7 @@ public class DbInitializer
         await SeedProjectTypes(context);
         await SeedDepartments(context);
         await SeedUserDepartments(context);
-        await RemoveNonManagerUserDepartments(context);
+        await RemoveUnscopedUserDepartments(context);
         await SeedEmployeeProfiles(context);
         // After SeedEmployeeProfiles, which bails out the moment any profile exists
         // — so on the databases that need this repair it is the only thing that runs.
@@ -103,7 +103,8 @@ public class DbInitializer
         // point when the policy withholds them. So they self-limit without needing
         // the policy passed in: SeedEmployeeProfiles down to the admin's own
         // profile, and SeedUserDepartments down to nothing at all, since a
-        // department assignment is meaningful only for a manager.
+        // department assignment is meaningful only for a Manager or an HR
+        // Administrator.
 
         if (!policy.SeedDemoData)
         {
@@ -980,11 +981,10 @@ public class DbInitializer
     }
 
     /// <summary>
-    /// A <see cref="UserDepartment"/> row only ever means one thing: an extra
-    /// department this <b>manager</b> covers, on top of the one on their own
-    /// profile. Nothing else reads it — <c>ProjectScope.DepartmentIdsForAsync</c>
-    /// consults it only when the caller is a manager, and a System Administrator short-circuits
-    /// to "sees everything" before departments are resolved at all.
+    /// A <see cref="UserDepartment"/> row means one thing: a department this person
+    /// covers beyond their own profile — an extra one for a <b>Manager</b>, the whole
+    /// scope for an <b>HR Administrator</b> (whose profile has none). <c>ManagerAccessScopeResolver</c>
+    /// reads it for both; nothing reads it for a System Administrator or an Employee.
     ///
     /// So a row for a System Administrator or an Employee changes nothing about what they can
     /// see, while <c>DeleteDepartment</c> still counts it as an "assigned manager"
@@ -992,8 +992,8 @@ public class DbInitializer
     /// inconsistency: this seeder used to give the admin account ENG
     /// unconditionally — in every environment, not just demo ones — which left
     /// Engineering permanently undeletable on the deployed site.
-    /// Only managers get rows now, and
-    /// <see cref="RemoveNonManagerUserDepartments"/> clears the ones already
+    /// Only department-scoped roles get rows now, and
+    /// <see cref="RemoveUnscopedUserDepartments"/> clears the ones already
     /// written. See Tests/WorkTrack.Tests/NonManagerUserDepartmentTests.cs.
     /// </summary>
     private static async Task SeedUserDepartments(AppDbContext context)
@@ -1026,6 +1026,18 @@ public class DbInitializer
 
         Assign("manager1@annualleave.com", engineering.Id);
 
+        // The demo HR Administrator is scoped to every seeded department: at least
+        // one is required to save the account, and "all of them" is what the demo
+        // showed before scope existed.
+        var hrAdmin = context.Users.FirstOrDefault(u => u.Email == HrAdministratorDemoEmail);
+        if (hrAdmin is not null)
+        {
+            foreach (var department in context.Departments.ToList())
+            {
+                Assign(HrAdministratorDemoEmail, department.Id);
+            }
+        }
+
         if (userDepartments.Count == 0) return;
 
         await context.UserDepartments.AddRangeAsync(userDepartments);
@@ -1033,16 +1045,17 @@ public class DbInitializer
     }
 
     /// <summary>
-    /// Deletes <see cref="UserDepartment"/> rows whose user is not in the Manager
-    /// role. Runs on every seed run, in every environment, because the rows are
-    /// unreachable otherwise: the only <c>UserDepartments</c> route is a GET, no
-    /// client code calls even that, and the sole delete path is a side effect of
-    /// deleting the user outright. A department blocked by one of these could not
-    /// be unblocked by any action an admin was able to take.
+    /// Deletes <see cref="UserDepartment"/> rows whose user holds neither the
+    /// Manager nor the HR Administrator role. Runs on every seed run, in every
+    /// environment, because the rows are unreachable otherwise: the only
+    /// <c>UserDepartments</c> route is a GET, no client code calls even that, and the
+    /// sole delete path is a side effect of deleting the user outright. A department
+    /// blocked by one of these could not be unblocked by any action an admin was
+    /// able to take.
     ///
     /// This is the development half only. <c>Seed:Enabled</c> is false in
     /// <c>appsettings.Production.json</c>, so nothing here runs on the IIS host —
-    /// the <c>RemoveNonManagerUserDepartments</c> migration is what repairs a
+    /// the <c>RemoveUnscopedUserDepartments</c> migration is what repairs a
     /// deployed database, since <c>MigrateAsync</c> runs unconditionally.
     ///
     /// Deleting rather than merely ignoring them is the point. Leaving the row and
@@ -1054,20 +1067,20 @@ public class DbInitializer
     /// that command learned to clear their rows, and any row that survives a future
     /// path which forgets to.
     /// </summary>
-    private static async Task RemoveNonManagerUserDepartments(AppDbContext context)
+    private static async Task RemoveUnscopedUserDepartments(AppDbContext context)
     {
-        // SeedRoles has already run, so this is only null on a database whose roles
-        // failed to seed — in which case nobody is a manager and every row is stale.
-        var managerRoleId = await context.Roles
-            .Where(r => r.Name == AppRoles.Manager)
+        // SeedRoles has already run, so this is only empty on a database whose roles
+        // failed to seed — in which case nobody is scoped and every row is stale.
+        var scopedRoleIds = await context.Roles
+            .Where(r => AppRoles.DepartmentScopedRoles.Contains(r.Name!))
             .Select(r => r.Id)
-            .FirstOrDefaultAsync();
+            .ToListAsync();
 
-        var stale = managerRoleId is null
+        var stale = scopedRoleIds.Count == 0
             ? await context.UserDepartments.ToListAsync()
             : await context.UserDepartments
                 .Where(ud => !context.UserRoles
-                    .Any(ur => ur.UserId == ud.UserId && ur.RoleId == managerRoleId))
+                    .Any(ur => ur.UserId == ud.UserId && scopedRoleIds.Contains(ur.RoleId)))
                 .ToListAsync();
 
         if (stale.Count == 0) return;

@@ -342,7 +342,7 @@ public class SeedPolicyTests : IDisposable
     /// used to assert the opposite. The seeder gave the admin ENG on every host,
     /// which bought nothing — a System Administrator sees every department regardless — and made
     /// Engineering undeletable on the deployed site, because DeleteDepartment counts
-    /// the row as an assigned manager and nothing can remove it. See
+    /// the row as an assignment blocker and nothing can remove it. See
     /// <see cref="NonManagerUserDepartmentTests"/>.
     /// </summary>
     [Fact]

@@ -42,7 +42,7 @@ public class DeleteDepartment
                 .CountAsync(ep => ep.DepartmentId == request.Id, cancellationToken);
             var archivedProfileCount = allProfileCount - liveProfileCount;
 
-            var managerCount = await context.UserDepartments
+            var assignedCount = await context.UserDepartments
                 .CountAsync(ud => ud.DepartmentId == request.Id, cancellationToken);
 
             // Cascading here would strip the department from its projects and could
@@ -66,7 +66,7 @@ public class DeleteDepartment
             var blockers = new List<string>();
             if (liveProfileCount > 0) blockers.Add(Count(liveProfileCount, "employee"));
             if (archivedProfileCount > 0) blockers.Add(Count(archivedProfileCount, "archived employee record"));
-            if (managerCount > 0) blockers.Add(Count(managerCount, "assigned manager"));
+            if (assignedCount > 0) blockers.Add(Count(assignedCount, "assignment"));
             if (liveProjectCount > 0) blockers.Add(Count(liveProjectCount, "project"));
             if (archivedProjectCount > 0) blockers.Add(Count(archivedProjectCount, "archived project"));
             if (timesheetCount > 0) blockers.Add(Count(timesheetCount, "timesheet"));

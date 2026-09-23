@@ -60,13 +60,14 @@ public class SetAdminUserRoles
 
             var roles = await userManager.GetRolesAsync(user);
 
-            // A UserDepartment row is an extra department a *manager* covers, and
-            // nothing reads it for anyone else. Left behind by a demotion it is
-            // invisible everywhere except DeleteDepartment, which counts it as an
-            // "assigned manager" blocker — and there is no endpoint to clear it, so
-            // the department it names becomes undeletable. Drop the rows with the
-            // role that gave them meaning.
-            if (!roles.Contains(AppRoles.Manager, StringComparer.OrdinalIgnoreCase))
+            // A UserDepartment row is a department this person covers beyond their
+            // own profile: an extra one for a Manager, the whole scope for an HR
+            // Administrator. Nothing reads it for anyone else, while DeleteDepartment
+            // still counts it as a blocker and no endpoint but this feature's clears
+            // it. So the rows go with the role that gave them meaning — a promotion to
+            // System Administrator clears the set, the way it clears the department,
+            // gender and start date.
+            if (!roles.Any(role => AppRoles.DepartmentScopedRoles.Contains(role, StringComparer.OrdinalIgnoreCase)))
             {
                 var assignments = await context.UserDepartments
                     .Where(ud => ud.UserId == user.Id)
