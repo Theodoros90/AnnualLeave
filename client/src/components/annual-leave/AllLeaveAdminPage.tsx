@@ -23,7 +23,7 @@ import { softBg, type SxColor } from '../../lib/theme-tokens'
 import type {
     AnnualLeave, EmployeeProfile, LeaveStatusHistory, LeaveType, UserInfo,
 } from '../../lib/types'
-import { RejectReasonDialog } from '../ui'
+import { ActionBtn, RejectReasonDialog } from '../ui'
 import Heatmap from './Heatmap'
 import DeptBreakdown from './DeptBreakdown'
 import { fmtShort, isoDate } from './leave-format'
@@ -1310,35 +1310,6 @@ function TimelineEntry({ when, what }: { when: string; what: string }) {
         <Box sx={{ display: 'flex', gap: '10px', fontSize: 11, mb: '6px', '&:last-child': { mb: 0 } }}>
             <Box sx={{ color: 'text.secondary', minWidth: 110, flexShrink: 0 }}>{when}</Box>
             <Box sx={{ color: 'text.primary' }}>{what}</Box>
-        </Box>
-    )
-}
-
-function ActionBtn({ variant, onClick, disabled, children }: {
-    variant: 'success' | 'danger' | 'ghost'
-    onClick: (e: React.MouseEvent) => void
-    disabled?: boolean
-    children: React.ReactNode
-}) {
-    const styles =
-        variant === 'success' ? { bg: 'success.main', color: '#fff', hover: 'success.dark', border: 'none' } :
-        variant === 'danger'  ? { bg: 'error.main', color: '#fff', hover: 'error.dark', border: 'none' } :
-                                 { bg: 'transparent', color: 'text.secondary', hover: 'action.hover', border: '1px solid', borderColor: 'divider' }
-    return (
-        <Box
-            component="button"
-            onClick={onClick}
-            disabled={disabled}
-            sx={{
-                bgcolor: styles.bg, color: styles.color, border: styles.border,
-                borderRadius: '6px', px: '12px', py: '5px',
-                fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-                '&:hover:not(:disabled)': { bgcolor: styles.hover },
-                '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
-            }}
-        >
-            {children}
         </Box>
     )
 }

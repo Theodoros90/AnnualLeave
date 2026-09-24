@@ -29,7 +29,7 @@ import { useAppSettings } from '../../lib/hooks/useAppSettings'
 import { useStore } from '../../lib/mobx'
 import { isHrAdministrator } from '../../lib/roles'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
-import { RejectReasonDialog } from '../ui'
+import { ActionBtn, RejectReasonDialog } from '../ui'
 import { buildTimesheetsCsv } from './timesheet-csv'
 
 const BLUE = 'primary.main'
@@ -435,56 +435,16 @@ function ReviewRow({
                 </Box>
 
                 <Stack direction="row" spacing={0.5} onClick={(e) => e.stopPropagation()}>
+                    {/* The same buttons, in the same shape, as Leave Management's rows (ActionBtn). */}
                     {pending ? (
                         <>
-                            <Button
-                                size="small"
-                                variant="contained"
-                                onClick={onApprove}
-                                disabled={actionPending}
-                                sx={{
-                                    fontSize: 12, textTransform: 'none',
-                                    bgcolor: GREEN, color: '#fff',
-                                    px: 1.5, py: '5px', minWidth: 'unset',
-                                    boxShadow: 'none',
-                                    '&:hover': { bgcolor: 'success.dark', boxShadow: 'none' },
-                                }}
-                            >
-                                ✓ Approve
-                            </Button>
-                            <Button
-                                size="small"
-                                variant="contained"
-                                onClick={onReject}
-                                disabled={actionPending}
-                                sx={{
-                                    fontSize: 12, textTransform: 'none',
-                                    bgcolor: RED, color: '#fff',
-                                    px: 1.5, py: '5px', minWidth: 'unset',
-                                    boxShadow: 'none',
-                                    '&:hover': { bgcolor: 'error.dark', boxShadow: 'none' },
-                                }}
-                            >
-                                ✕ Reject
-                            </Button>
+                            <ActionBtn variant="success" onClick={onApprove} disabled={actionPending}>Approve</ActionBtn>
+                            <ActionBtn variant="danger" onClick={onReject} disabled={actionPending}>Reject</ActionBtn>
                         </>
                     ) : (
                         <>
                             {canReopen && onReopen && ts.status === 'Approved' && (
-                                <Button
-                                    size="small"
-                                    variant="outlined"
-                                    onClick={onReopen}
-                                    disabled={actionPending}
-                                    sx={{
-                                        fontSize: 12, textTransform: 'none',
-                                        color: RED, borderColor: RED,
-                                        px: 1.5, py: '4px', minWidth: 'unset',
-                                        '&:hover': { borderColor: 'error.dark', bgcolor: softBg('error') },
-                                    }}
-                                >
-                                    Cancel approval
-                                </Button>
+                                <ActionBtn variant="danger" onClick={onReopen} disabled={actionPending}>Cancel</ActionBtn>
                             )}
                             <Box sx={{
                                 display: 'inline-flex', alignItems: 'center',
@@ -1238,7 +1198,7 @@ export default function AllTimesheetsPage() {
             {/* Cancel approval — the sheet goes back to the manager for review */}
             <RejectReasonDialog
                 open={reopenDialog !== null}
-                title="Cancel approval"
+                title="Cancel approved timesheet"
                 label={reopenDialog?.label ?? ''}
                 reason={reopenReason}
                 error={reopenError}
@@ -1249,9 +1209,9 @@ export default function AllTimesheetsPage() {
                 }}
                 onClose={closeReopenDialog}
                 onConfirm={() => void confirmReopen()}
-                confirmLabel="Send back for review"
-                busyLabel="Sending back…"
-                placeholder="Reason for cancelling the approval (required)"
+                confirmLabel="Confirm Cancel"
+                busyLabel="Cancelling…"
+                placeholder="Reason for cancelling (required)"
             />
 
             {/* Reject reason dialog */}
