@@ -100,4 +100,17 @@ public class ApprovalStageRuleTests
 
         Assert.Equal(AnnualLeaveStatus.Approved, outcome.Status);
     }
+
+    [Theory]
+    [InlineData(AnnualLeaveStatus.Approved, false)]
+    [InlineData(AnnualLeaveStatus.Approved, true)]
+    [InlineData(AnnualLeaveStatus.Rejected, false)]
+    [InlineData(AnnualLeaveStatus.Pending, false)]
+    public void Asking_for_the_status_a_request_already_has_changes_nothing(AnnualLeaveStatus current, bool isHr)
+    {
+        var outcome = ApprovalStageRule.Resolve(Type(true, true), current, current, isHr);
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(current, outcome.Status);
+    }
 }

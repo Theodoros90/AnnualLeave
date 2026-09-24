@@ -51,6 +51,11 @@ public static class ApprovalStageRule
         AnnualLeaveStatus requested,
         bool isHrAdministrator)
     {
+        // Asking for the status a request already has changes nothing — a retried
+        // Approve on an approved row must not send it back to HR.
+        if (requested == current)
+            return new Outcome(current, null);
+
         if (requested == AnnualLeaveStatus.AwaitingHrApproval)
             return new Outcome(null, StageIsDerivedMessage);
 

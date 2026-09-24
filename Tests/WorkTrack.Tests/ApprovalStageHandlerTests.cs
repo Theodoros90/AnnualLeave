@@ -271,4 +271,32 @@ public class ApprovalStageHandlerTests
         Assert.Equal(AnnualLeaveStatus.Approved, (await StoredAsync(db)).Status);
         Assert.Equal(15m, await BalanceAsync(db));
     }
+
+    /// <summary>
+    /// A retried Approve on a row that is already approved — a slow first response,
+    /// a double click — must change nothing: not the status, not the approval
+    /// metadata, and it must tell nobody anything.
+    /// </summary>
+    [Fact]
+    public async Task Re_approving_an_approved_request_changes_nothing_and_tells_nobody()
+    {
+        using var db = await WorldAsync();
+        var leave = await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.Approved);
+        var tracked = await db.AnnualLeaves.FirstAsync(l => l.Id == "L1");
+        tracked.ApprovedAt = new DateTime(2026, 5, 1);
+        tracked.ApprovedById = Hr;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var email = new FakeEmailService();
+
+        var result = await DecideAsync(db, email, "L1", AnnualLeaveStatus.Approved, asHr: false);
+
+        Assert.True(result.IsSuccess, result.Error);
+        var stored = await StoredAsync(db);
+        Assert.Equal(AnnualLeaveStatus.Approved, stored.Status);
+        Assert.Equal(Hr, stored.ApprovedById);
+        Assert.Equal(new DateTime(2026, 5, 1), stored.ApprovedAt);
+        Assert.Empty(email.Sent);
+        Assert.Empty(db.LeaveStatusHistories);
+    }
 }
