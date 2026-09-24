@@ -1093,7 +1093,7 @@ function FeedbackBox({ status, feedback }: { status: AnnualLeaveStatus; feedback
         return (
             <Box sx={feedbackSx(softBg('info'), 'info.dark', 'info.main')}>
                 <Box component="span">✓</Box>
-                <Box>Approved by your manager — waiting for HR to review</Box>
+                <Box>Awaiting HR approval — waiting for HR to review</Box>
             </Box>
         )
     }

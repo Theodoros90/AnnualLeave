@@ -88,7 +88,7 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
         : leave.status === 'Approved'
             ? 'This request has been approved and is now read-only.'
             : leave.status === 'AwaitingHrApproval'
-                ? 'This request has been approved by your manager and is awaiting HR. Cancel it and file again to change it.'
+                ? 'This request is awaiting HR approval and is read-only. Cancel it and file again to change it.'
                 : 'This request can no longer be edited.'
 
     // Cancel: System Administrator any, Manager own, Employee own-pending-or-awaiting-HR

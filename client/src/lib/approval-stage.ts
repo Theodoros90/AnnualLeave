@@ -82,6 +82,11 @@ export function approvalRule(type: ApprovalFlags): ApprovalRule {
     return 'auto'
 }
 
-export function statusChipLabel(status: AnnualLeaveStatus): string {
+export function statusChipLabel(status: string): string {
     return status === 'AwaitingHrApproval' ? 'Awaiting HR approval' : status
+}
+
+/** How a status reads in a sentence ("Leave approved", "Leave awaiting HR approval"). Falls back to the lower-cased enum name for the four original statuses, as the notification text always did. */
+export function statusPhrase(status: string): string {
+    return status === 'AwaitingHrApproval' ? 'awaiting HR approval' : status.toLowerCase()
 }

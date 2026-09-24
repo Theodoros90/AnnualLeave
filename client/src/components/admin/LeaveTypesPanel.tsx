@@ -33,7 +33,7 @@ import {
     type UpsertLeaveTypeRequest,
 } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
-import { approvalRule } from '../../lib/approval-stage'
+import { approvalRule, isOpenStatus } from '../../lib/approval-stage'
 import { describeAllowance, resolvePerChildTotals } from '../../lib/leave-allowance'
 import { fixedAvailability, resolveAvailability } from '../../lib/parental-leave'
 import { softBg } from '../../lib/theme-tokens'
@@ -142,7 +142,7 @@ function LeaveTypesPanel() {
         const aggBy = new Map<number, { requests: number; days: number }>()
         for (const leave of annualLeaves) {
             if (leave.leaveTypeId == null) continue
-            if (leave.status !== 'Approved' && leave.status !== 'Pending') continue
+            if (leave.status !== 'Approved' && !isOpenStatus(leave.status)) continue
             if (new Date(leave.startDate).getFullYear() !== currentYear) continue
             const agg = aggBy.get(leave.leaveTypeId) ?? { requests: 0, days: 0 }
             agg.requests += 1

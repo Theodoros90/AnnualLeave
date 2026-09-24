@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { SweetAlert, AppDialog, AppDialogTitle, AppDialogContent, AppDialogActions, cancelBtnSx, saveBtnSx } from '../ui'
+import { isOpenStatus } from '../../lib/approval-stage'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -170,7 +171,7 @@ function DepartmentsPanel() {
                 : { in: 0, break: 0, leave: 0, out: 0, total: headcount }
 
             const deptUserIds = new Set(deptProfiles.map((p) => p.userId))
-            const pendingLeave = leaves.filter((l) => l.status === 'Pending' && deptUserIds.has(l.employeeId)).length
+            const pendingLeave = leaves.filter((l) => isOpenStatus(l.status) && deptUserIds.has(l.employeeId)).length
             const pendingTs = timesheets.filter(
                 (t) => (t.status === 'Submitted' || t.status === 'Resubmitted') && t.departmentId === dept.id
             ).length

@@ -193,6 +193,24 @@ describe('ApplyLeavePage — supporting documents follow the attachment policy',
         expect(submit).toBeDisabled()
     })
 
+    /**
+     * `requiresManagerApproval === false` alone used to read as "this type
+     * approves itself" — true for a manager-only-off type only when HR is also
+     * off. An HR-only type (`requiresManagerApproval: false, requiresHrApproval:
+     * true`) is filed as `AwaitingHrApproval`, not `Approved` — filing is not
+     * approval there — so a Required policy must not block submit or claim
+     * "(required)" the way it rightly does for a fully auto-approving type.
+     */
+    it('does not block submit for a Required policy on an HR-only type', async () => {
+        await renderWithType({ attachmentPolicy: 'Required', requiresManagerApproval: false, requiresHrApproval: true })
+        pickDates()
+
+        expect(within(documentsSection()).getByText('(required before approval)')).toBeInTheDocument()
+
+        const submit = await screen.findByRole('button', { name: /submit for approval/i })
+        expect(submit).toBeEnabled()
+    })
+
     it('uploads the staged document and submits once one is attached', async () => {
         const { container } = await renderWithType({ attachmentPolicy: 'Required' })
         pickDates()

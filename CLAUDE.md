@@ -444,7 +444,8 @@ offers an Approve the API refuses. Keep the two in step, the same way
 Six things about it that are deliberate:
 
 - **The client always asks for `Approved`; the server decides the stage.** A
-  client-supplied `AwaitingHrApproval` is refused (`StageIsDerivedMessage`).
+  client-supplied `AwaitingHrApproval` is refused (`StageIsDerivedMessage`) —
+  on a row already in that status it is a no-op, like any same-status request.
   `ApprovalStageRule.Resolve` opens with an idempotence guard — asking for the
   status a request already has is a no-op (`Outcome(current, null)`), so a
   retried Approve on an already-approved row never sends it back to HR. So
@@ -459,21 +460,28 @@ Six things about it that are deliberate:
 - **An HR Administrator stands in for the manager.** Their Approve from `Pending`
   finishes a request in one step even when the type asks for HR: they are the HR
   sign-off. A Manager cannot approve, reject or cancel a request that is with HR
-  (`AwaitingHrMessage`); they had their say at stage one. `IsAdmin` on the two
-  status commands already means "the caller is an HR Administrator", scoped by
-  the same `ManagerAccessScopeResolver` test as a Manager, and that flag is what
-  the rule reads.
+  (`AwaitingHrMessage`); they had their say at stage one. "The caller is an HR
+  Administrator" is `IsAdmin` on `UpdateLeaveStatus`, and `actsAsAdmin` (HR
+  Administrator in scope) on `EditAnnualLeave` — both scoped by the same
+  `ManagerAccessScopeResolver` test as a Manager, and that flag is what the rule
+  reads.
 - **Balance, per-child ledger, coverage announcement, `ApprovedAt`/`ApprovedById`
   move only into `Approved`.** `AwaitingHrApproval` charges nothing and tells the
   delegate nothing. The attachment policy runs on *both* steps out of `Pending`,
   so a manager cannot pass an undocumented request along.
 - **`AwaitingHrApproval` is open like `Pending`** — for the overlap checks in both
   leave validators, the employee's Cancel (`DeleteAnnualLeave`), the
-  pending-approvals reminder, the Topbar badge, the queues and the Pending tabs
-  (`isOpenStatus`) — **but locked for editing like `Approved`.** A manager
-  approved specific dates; an edit that kept the stage would put different dates
-  in front of HR under the manager's name. Only an HR Administrator in scope
-  (`actsAsAdmin`) may edit it; everyone else is told to cancel and file again.
+  pending-approvals reminder, the queues and the Pending tabs (`isOpenStatus`) —
+  **but locked for editing like `Approved`.** The manager's bell in the Topbar and
+  the pending-approvals digest count only what a manager can decide (`Pending`);
+  an HR Administrator gets their own digest of the rows with HR in their
+  departments. A manager who *did* approve specific dates at stage one would have
+  an edit that kept the stage put different dates in front of HR under their
+  name — but an HR-only type reaches this status straight from filing, with no
+  manager stage to have approved anything, so the message told to whoever cannot
+  edit it is neutral ("This request is awaiting HR approval…"), not manager-
+  specific. Only an HR Administrator in scope (`actsAsAdmin`) may edit it;
+  everyone else is told to cancel and file again.
 - **Who is told.** `HrApprovalRecipients` (beside `ManagerNotificationRecipients`)
   is the HR Administrators whose `UserDepartment` rows cover the leave's
   department, or every active one for a department-less leave, and

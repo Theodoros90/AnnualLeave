@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { SweetAlert, AppDialog, AppDialogTitle, AppDialogContent, AppDialogActions, cancelBtnSx, saveBtnSx } from '../ui'
+import { statusPhrase } from '../../lib/approval-stage'
 import Alert from '@mui/material/Alert'
 import Autocomplete from '@mui/material/Autocomplete'
 import Box from '@mui/material/Box'
@@ -1178,7 +1179,7 @@ function UserRow({
             const isOwn = h.employeeId === u.id
             const ts = new Date(h.changedAt).getTime()
             const action = isOwn
-                ? `${h.newStatus === 'Pending' ? 'Submitted leave request' : `Leave ${h.newStatus.toLowerCase()}`}`
+                ? `${h.newStatus === 'Pending' ? 'Submitted leave request' : `Leave ${statusPhrase(h.newStatus)}`}`
                 : `${h.newStatus === 'Approved' ? 'Approved' : h.newStatus === 'Rejected' ? 'Rejected' : 'Changed'} ${h.employeeName}'s leave`
             const color = h.newStatus === 'Approved' ? 'green'
                 : h.newStatus === 'Rejected' ? 'red'

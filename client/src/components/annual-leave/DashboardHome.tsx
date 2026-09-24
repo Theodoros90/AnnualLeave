@@ -503,7 +503,8 @@ function ManagerDashboard({ user }: { user: UserInfo }) {
 
     if (lLoading || tLoading) return <CenterSpinner />
 
-    const summary = buildManagerSummary({ pendingLeaves: pendingLeaves.length, pendingTs: pendingTs.length, urgent: queue.filter((q) => q.urgent).length, conflicts: conflictMap.size })
+    const decidableLeaves = queue.filter((q) => q.kind === 'leave' && q.decidable).length
+    const summary = buildManagerSummary({ pendingLeaves: decidableLeaves, pendingTs: pendingTs.length, urgent: queue.filter((q) => q.urgent).length, conflicts: conflictMap.size })
 
     return (
         <Box>

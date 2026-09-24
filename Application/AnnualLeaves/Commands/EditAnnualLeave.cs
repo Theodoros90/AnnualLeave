@@ -73,7 +73,7 @@ public class EditAnnualLeave
                 // manager's name, so the row is locked like an approved one. Cancel
                 // and file again is the way to change it.
                 if (annualLeave.Status == AnnualLeaveStatus.AwaitingHrApproval)
-                    return Result<Unit>.Conflict("This request has been approved by your manager and is awaiting HR; cancel it and file again to change it.");
+                    return Result<Unit>.Conflict("This request is awaiting HR approval; cancel it and file again to change it.");
 
                 if (annualLeave.Status == AnnualLeaveStatus.Rejected || annualLeave.Status == AnnualLeaveStatus.Approved)
                     return Result<Unit>.Conflict("Approved and rejected leave requests cannot be edited.");

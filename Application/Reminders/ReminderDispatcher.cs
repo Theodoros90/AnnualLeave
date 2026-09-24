@@ -90,8 +90,15 @@ public class ReminderDispatcher(
     // ── pending-approvals ────────────────────────────────────────────────────
     private async Task PendingApprovalsAsync(AppSettings settings, CancellationToken ct)
     {
+        // Managers only ever decide the manager stage, so their digest counts
+        // Pending alone — a row sitting with HR is no longer theirs to action.
         var pendingLeave = await context.AnnualLeaves
-            .Where(l => l.Status == AnnualLeaveStatus.Pending || l.Status == AnnualLeaveStatus.AwaitingHrApproval)
+            .Where(l => l.Status == AnnualLeaveStatus.Pending)
+            .Select(l => l.DepartmentId)
+            .ToListAsync(ct);
+
+        var awaitingHrLeave = await context.AnnualLeaves
+            .Where(l => l.Status == AnnualLeaveStatus.AwaitingHrApproval)
             .Select(l => l.DepartmentId)
             .ToListAsync(ct);
 
@@ -103,7 +110,7 @@ public class ReminderDispatcher(
         var totalLeave = pendingLeave.Count;
         var totalTimesheets = pendingTimesheets.Count;
 
-        if (totalLeave == 0 && totalTimesheets == 0)
+        if (totalLeave == 0 && totalTimesheets == 0 && awaitingHrLeave.Count == 0)
         {
             logger.LogInformation("pending-approvals: nothing awaiting review; no notifications sent.");
             return;
@@ -128,6 +135,21 @@ public class ReminderDispatcher(
                 if (await SendPendingSummaryAsync(mgr.Email, mgr.DisplayName, deptLeave, deptTimesheets, "your department", ct))
                     sent++;
             }
+
+            // HR Administrators get their own digest of what is awaiting HR in
+            // their assigned departments, plus every department-less row (an
+            // administrator's own, or a legacy row nobody else can reach).
+            if (awaitingHrLeave.Count > 0)
+            {
+                var hrAdmins = await GetActiveHrAdministratorsAsync(ct);
+                foreach (var hr in hrAdmins)
+                {
+                    var hrLeave = awaitingHrLeave.Count(d => d is null || hr.DepartmentIds.Contains(d.Value));
+                    if (hrLeave == 0) continue;
+                    if (await SendPendingSummaryAsync(hr.Email, hr.DisplayName, hrLeave, 0, "your departments", ct))
+                        sent++;
+                }
+            }
         }
         else
         {
@@ -136,6 +158,38 @@ public class ReminderDispatcher(
 
 
         logger.LogInformation("pending-approvals: dispatched. Emails sent: {Sent}.", sent);
+    }
+
+    /// <summary>
+    /// Every active HR Administrator with an email, and the departments assigned
+    /// to them — unlike <see cref="GetHrAdministratorsAsync"/>, one with no rows is
+    /// still included, since a department-less leave reaches every HR
+    /// Administrator regardless of their assigned departments.
+    /// </summary>
+    private async Task<List<ScopedContact>> GetActiveHrAdministratorsAsync(CancellationToken ct)
+    {
+        var hrRoleId = await context.Roles.Where(r => r.Name == AppRoles.HrAdministrator).Select(r => r.Id).FirstOrDefaultAsync(ct);
+        if (hrRoleId is null) return [];
+
+        var hr = await (
+            from ur in context.UserRoles
+            where ur.RoleId == hrRoleId
+            join u in context.Users on ur.UserId equals u.Id
+            where u.IsActive && u.Email != null && u.Email != ""
+            select new { u.Id, u.Email, u.DisplayName }
+        ).Distinct().ToListAsync(ct);
+        if (hr.Count == 0) return [];
+
+        var ids = hr.Select(h => h.Id).ToList();
+        var rows = await context.UserDepartments
+            .Where(ud => ids.Contains(ud.UserId))
+            .Select(ud => new { ud.UserId, ud.DepartmentId })
+            .ToListAsync(ct);
+
+        return hr
+            .Select(h => new ScopedContact(h.Id, h.Email!, h.DisplayName,
+                rows.Where(r => r.UserId == h.Id).Select(r => r.DepartmentId).Distinct().ToList()))
+            .ToList();
     }
 
     private Task<bool> SendPendingSummaryAsync(string email, string? name, int leaveCount, int timesheetCount, string scope, CancellationToken ct)

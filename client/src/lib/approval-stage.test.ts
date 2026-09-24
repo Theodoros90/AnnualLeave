@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
     approvalRule, approveButtonLabel, approveOutcome, autoApproves, canApproveInDialog, canDecide, canRejectInDialog,
-    isOpenStatus, statusChipLabel,
+    isOpenStatus, statusChipLabel, statusPhrase,
 } from './approval-stage'
 
 /**
@@ -123,5 +123,17 @@ describe('statusChipLabel', () => {
     it('spells the HR stage out', () => {
         expect(statusChipLabel('AwaitingHrApproval')).toBe('Awaiting HR approval')
         expect(statusChipLabel('Pending')).toBe('Pending')
+    })
+})
+
+describe('statusPhrase', () => {
+    it('reads the HR stage as a sentence fragment', () => {
+        expect(statusPhrase('AwaitingHrApproval')).toBe('awaiting HR approval')
+    })
+    it('falls back to the lower-cased status for everything else', () => {
+        expect(statusPhrase('Approved')).toBe('approved')
+        expect(statusPhrase('Pending')).toBe('pending')
+        expect(statusPhrase('Rejected')).toBe('rejected')
+        expect(statusPhrase('Cancelled')).toBe('cancelled')
     })
 })

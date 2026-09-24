@@ -20,7 +20,7 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import { getAnnualLeaves, getLeaveStatusHistories, getTimesheets, getTimesheetStatusHistories } from '../../lib/api'
-import { isOpenStatus } from '../../lib/approval-stage'
+import { canDecide, statusPhrase } from '../../lib/approval-stage'
 import { useStore } from '../../lib/mobx'
 import { isAdministrator } from '../../lib/roles'
 import type { ThemePreference } from '../../lib/mobx/uiStore'
@@ -137,7 +137,7 @@ const Topbar = observer(function Topbar() {
     const employeeTsNotifications = employeeTsItems.map(e => e.item)
 
     const managerPendingRequests = (annualLeaves ?? [])
-        .filter((l) => isOpenStatus(l.status) && l.employeeId !== authStore.user?.id)
+        .filter((l) => canDecide(l, { isHrAdministrator: false }) && l.employeeId !== authStore.user?.id)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
     const managerPendingTimesheets = (timesheets ?? [])
@@ -401,7 +401,7 @@ const Topbar = observer(function Topbar() {
                                     <CircleRoundedIcon sx={{ fontSize: 10, color: isUnread && isRecent ? 'error.main' : 'divider' }} />
                                 </ListItemIcon>
                                 <ListItemText
-                                    primary={`Leave ${item.newStatus.toLowerCase()}`}
+                                    primary={`Leave ${statusPhrase(item.newStatus)}`}
                                     secondary={`Updated ${formatChangedAt(item.changedAt)}`}
                                 />
                             </MenuItem>

@@ -10,6 +10,7 @@ import { currentYearEntitlement } from '../../lib/leave-allowance'
 import { buildLeaveBalanceRows, type LeaveBalanceRow } from '../../lib/leave-balance-rows'
 import { createAnnualLeave, getAnnualLeaves, getAppSettings, getChildLeaveEntitlements, getEmployeeProfiles, getHolidays, getLeaveTypes, getTeammates, uploadCoverageHandover, uploadLeaveEvidence } from '../../lib/api'
 import { COVERAGE_NOTE_MAX_LENGTH, COVERAGE_REQUIRED_MESSAGE, isCoverageRequired } from '../../lib/coverage'
+import { autoApproves, isOpenStatus } from '../../lib/approval-stage'
 import { isLeaveTypeOffered, isParentalLeaveType } from '../../lib/parental-leave'
 import { attachmentRequirement, isAttachmentBlockingSubmit, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
 import { earliestStartDate, maxConsecutiveError, noticeError } from '../../lib/leave-limits'
@@ -502,7 +503,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         const overlapping = allLeaves.filter(
             (l) =>
                 teammateIds.has(l.employeeId) &&
-                (l.status === 'Approved' || l.status === 'Pending') &&
+                (l.status === 'Approved' || isOpenStatus(l.status)) &&
                 l.startDate <= endDate &&
                 l.endDate >= startDate
         )
@@ -520,7 +521,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
         )
         const teammateIds = new Set(teammates.map((p) => p.userId))
         allLeaves
-            .filter((l) => teammateIds.has(l.employeeId) && (l.status === 'Approved' || l.status === 'Pending'))
+            .filter((l) => teammateIds.has(l.employeeId) && (l.status === 'Approved' || isOpenStatus(l.status)))
             .forEach((l) => {
                 const s = new Date(l.startDate)
                 const e = new Date(l.endDate)
@@ -548,7 +549,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
             allLeaves
                 .filter(
                     (l) =>
-                        (l.status === 'Approved' || l.status === 'Pending') &&
+                        (l.status === 'Approved' || isOpenStatus(l.status)) &&
                         l.startDate <= endDate &&
                         l.endDate >= startDate
                 )
@@ -608,7 +609,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     // call-up papers are dated the day of service. Submit is disabled only where
     // submitting would approve, i.e. a type that approves itself.
     const attachmentMissing = isAttachmentMissing(selectedType, !!attachment)
-    const attachmentBlocking = isAttachmentBlockingSubmit(selectedType, !!attachment, selectedType?.requiresManagerApproval === false)
+    const attachmentBlocking = isAttachmentBlockingSubmit(selectedType, !!attachment, autoApproves(selectedType))
     // A required document the employee is allowed to bring later.
     const attachmentDeferrable = attachmentRule === 'required' && !attachmentBlocking && attachmentMissing
 
@@ -1255,7 +1256,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                 }}
                             >
                                 {attachmentRule === 'required'
-                                    ? (selectedType?.requiresManagerApproval === false ? '(required)' : '(required before approval)')
+                                    ? (autoApproves(selectedType) ? '(required)' : '(required before approval)')
                                     : attachmentRule === 'encouraged' ? '(recommended)' : '(optional)'}
                             </Box>
                         </Box>

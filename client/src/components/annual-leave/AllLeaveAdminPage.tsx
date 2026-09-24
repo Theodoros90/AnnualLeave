@@ -8,7 +8,7 @@ import {
     getAnnualLeaves, getAppSettings, getDepartments, getEmployeeProfiles, getHolidays,
     getLeaveStatusHistories, getLeaveTypes, updateLeaveStatus,
 } from '../../lib/api'
-import { approveButtonLabel, approveOutcome, canDecide, isOpenStatus, type ApprovalViewer } from '../../lib/approval-stage'
+import { approveButtonLabel, approveOutcome, canDecide, isOpenStatus, statusChipLabel, type ApprovalViewer } from '../../lib/approval-stage'
 import { isAwaitingDocument } from '../../lib/attachment-policy'
 import { isHrAdministrator } from '../../lib/roles'
 import { resolveFileUrl } from '../../lib/api/file-url'
@@ -1171,7 +1171,7 @@ function LeaveRow({
                             <TimelineEntry
                                 key={h.id}
                                 when={fmtDateTime(h.changedAt)}
-                                what={`${h.newStatus} by ${h.changedByUserName}${h.comment ? ` — "${h.comment}"` : ''}`}
+                                what={`${statusChipLabel(h.newStatus)} by ${h.changedByUserName}${h.comment ? ` — "${h.comment}"` : ''}`}
                             />
                         ))}
                     </ExpandBlock>

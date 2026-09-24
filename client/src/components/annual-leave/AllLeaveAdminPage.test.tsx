@@ -146,6 +146,11 @@ const ADMIN: UserInfo = {
     displayName: 'Admin User', imageUrl: '', roles: ['System Administrator'],
 }
 
+const MANAGER: UserInfo = {
+    id: 'manager-1', userName: 'manager1@annualleave.com', email: 'manager1@annualleave.com',
+    displayName: 'Manager One', imageUrl: '', roles: ['Manager'], departmentId: FINANCE.id,
+}
+
 beforeEach(() => {
     vi.clearAllMocks()
     api.getAnnualLeaves.mockResolvedValue([...PENDING, ...DECIDED])
@@ -157,11 +162,11 @@ beforeEach(() => {
     api.getHolidays.mockResolvedValue([])
 })
 
-async function renderPage() {
+async function renderPage(user: UserInfo = ADMIN) {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const view = render(
         <QueryClientProvider client={queryClient}>
-            <AllLeaveAdminPage user={ADMIN} />
+            <AllLeaveAdminPage user={user} />
         </QueryClientProvider>,
     )
     await screen.findByText('Leave by Department')
@@ -502,6 +507,31 @@ describe('AllLeaveAdminPage — a required document holds approval', () => {
         const approvedIds = api.updateLeaveStatus.mock.calls.map(([id]) => id)
         expect(approvedIds).not.toContain(UNDOCUMENTED.id)
         expect(approvedIds).toEqual(expect.arrayContaining(PENDING.map((l) => l.id)))
+    })
+})
+
+/**
+ * A Manager cannot decide a request that is with HR — they already had their say
+ * at stage one (`ApprovalStageRule`) — so a row `AwaitingHrApproval` must not join
+ * a bulk approve from a Manager's own checkbox.
+ */
+describe('AllLeaveAdminPage — a Manager cannot bulk-approve a row that is with HR', () => {
+    const WITH_HR = leave({
+        id: 'p6', employeeId: 'emp-2a', employeeName: 'Employee 2A',
+        startDate: monthOffset(1, 20), endDate: monthOffset(1, 22),
+        status: 'AwaitingHrApproval',
+    })
+
+    beforeEach(() => {
+        api.getAnnualLeaves.mockResolvedValue([PENDING[0], WITH_HR])
+    })
+
+    it('disables the checkbox on the Awaiting-HR row', async () => {
+        await renderPage(MANAGER)
+
+        const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
+        expect(checkboxes).toHaveLength(2)
+        expect(checkboxes.filter((box) => box.disabled)).toHaveLength(1)
     })
 })
 

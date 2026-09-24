@@ -100,4 +100,72 @@ public class PendingApprovalsDigestExcludesAdminsTests
         Assert.Contains("<strong>1</strong> leave request(s)", toManager.HtmlBody);
         Assert.Contains("<strong>1</strong> timesheet(s)", toManager.HtmlBody);
     }
+
+    private const string HrAdminEmail = "hazel@example.com";
+
+    /// <summary>
+    /// One Manager of Engineering with a Pending leave in their department, and one
+    /// HR Administrator assigned to Engineering with a separate row already
+    /// AwaitingHrApproval in the same department. Each stage's digest counts only
+    /// its own row.
+    /// </summary>
+    private static AppDbContext SeedWorldWithHrStage()
+    {
+        var db = TestDb.Create();
+
+        db.Departments.Add(new Department { Id = DepartmentId, Name = "Engineering", Code = "ENG" });
+
+        var managerRole = new Role { Id = "r-manager", Name = AppRoles.Manager, NormalizedName = AppRoles.Manager.ToUpperInvariant() };
+        var hrRole = new Role { Id = "r-hr", Name = AppRoles.HrAdministrator, NormalizedName = AppRoles.HrAdministrator.ToUpperInvariant() };
+        db.Roles.AddRange(managerRole, hrRole);
+
+        SeedProfile(db, "manager-u", "manager-p", "Mia Manager", ManagerEmail, DepartmentId);
+        db.UserRoles.Add(new UserRole { UserId = "manager-u", RoleId = managerRole.Id });
+
+        db.Users.Add(new User { Id = "hr-u", UserName = "hr-u", DisplayName = "Hazel HR", Email = HrAdminEmail });
+        db.UserRoles.Add(new UserRole { UserId = "hr-u", RoleId = hrRole.Id });
+        db.UserDepartments.Add(new UserDepartment { UserId = "hr-u", DepartmentId = DepartmentId });
+
+        SeedProfile(db, "employee-u", "employee-p", "Eve Employee", "eve@example.com", DepartmentId);
+
+        db.AnnualLeaves.Add(new AnnualLeave
+        {
+            EmployeeId = "employee-u",
+            EmployeeProfileId = "employee-p",
+            DepartmentId = DepartmentId,
+            StartDate = DateTime.UtcNow.AddDays(7),
+            EndDate = DateTime.UtcNow.AddDays(8),
+            Status = AnnualLeaveStatus.Pending,
+            CreatedAt = DateTime.UtcNow,
+        });
+        db.AnnualLeaves.Add(new AnnualLeave
+        {
+            EmployeeId = "employee-u",
+            EmployeeProfileId = "employee-p",
+            DepartmentId = DepartmentId,
+            StartDate = DateTime.UtcNow.AddDays(14),
+            EndDate = DateTime.UtcNow.AddDays(15),
+            Status = AnnualLeaveStatus.AwaitingHrApproval,
+            CreatedAt = DateTime.UtcNow,
+        });
+
+        db.SaveChanges();
+        return db;
+    }
+
+    [Fact]
+    public async Task Manager_and_hr_digests_each_count_only_their_own_stage()
+    {
+        using var db = SeedWorldWithHrStage();
+        var email = new FakeEmailService();
+
+        await DispatcherFor(db, email).DispatchAsync(ReminderDispatcher.PendingApprovals, Enabled, CancellationToken.None);
+
+        var toManager = Assert.Single(email.Sent, m => m.Recipient == ManagerEmail);
+        Assert.Contains("<strong>1</strong> leave request(s)", toManager.HtmlBody);
+
+        var toHr = Assert.Single(email.Sent, m => m.Recipient == HrAdminEmail);
+        Assert.Contains("your departments", toHr.HtmlBody);
+        Assert.Contains("<strong>1</strong> leave request(s)", toHr.HtmlBody);
+    }
 }

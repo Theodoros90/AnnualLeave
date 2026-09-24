@@ -53,7 +53,7 @@ public class DeleteAnnualLeave
             }
             else
             {
-                // Employees can only cancel their own pending leaves
+                // Employees can only cancel their own open leaves (Pending or awaiting HR)
                 canDelete = annualLeave.EmployeeId == request.RequestingUserId
                     && ApprovalStageRule.IsOpen(annualLeave.Status);
             }

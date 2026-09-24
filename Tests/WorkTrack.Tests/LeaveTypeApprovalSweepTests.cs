@@ -25,14 +25,16 @@ public class LeaveTypeApprovalSweepTests
     private static IMapper Mapper() =>
         new MapperConfiguration(cfg => cfg.AddProfile<MappingProfiles>(), NullLoggerFactory.Instance).CreateMapper();
 
-    private static async Task<AppDbContext> WorldAsync(bool manager, bool hr)
+    private static async Task<AppDbContext> WorldAsync(
+        bool manager, bool hr, bool affectsBalance = false, int defaultAllowance = 10,
+        int p2Entitlement = 20, decimal p2Balance = 20)
     {
         var db = TestDb.Create();
         db.AppSettings.Add(new AppSettings { Id = 1, LeaveYearStartMonth = 1 });
-        db.LeaveTypes.Add(new LeaveType { Id = TypeId, Name = "Unpaid Leave", IsActive = true, AffectsBalance = false, DefaultAllowance = 10, RequiresManagerApproval = manager, RequiresHrApproval = hr });
+        db.LeaveTypes.Add(new LeaveType { Id = TypeId, Name = "Unpaid Leave", IsActive = true, AffectsBalance = affectsBalance, DefaultAllowance = defaultAllowance, RequiresManagerApproval = manager, RequiresHrApproval = hr });
         db.EmployeeProfiles.AddRange(
             new EmployeeProfile { Id = "p1", UserId = "u1", AnnualLeaveEntitlement = 20, LeaveBalance = 20 },
-            new EmployeeProfile { Id = "p2", UserId = "u2", AnnualLeaveEntitlement = 20, LeaveBalance = 20 });
+            new EmployeeProfile { Id = "p2", UserId = "u2", AnnualLeaveEntitlement = p2Entitlement, LeaveBalance = p2Balance });
         db.AnnualLeaves.AddRange(
             new AnnualLeave { Id = "pending", EmployeeId = "u1", EmployeeProfileId = "p1", LeaveTypeId = TypeId, Status = AnnualLeaveStatus.Pending, StartDate = new DateTime(2026, 6, 1), EndDate = new DateTime(2026, 6, 5), Reason = "a" },
             new AnnualLeave { Id = "with-hr", EmployeeId = "u2", EmployeeProfileId = "p2", LeaveTypeId = TypeId, Status = AnnualLeaveStatus.AwaitingHrApproval, StartDate = new DateTime(2026, 7, 6), EndDate = new DateTime(2026, 7, 10), Reason = "b" });
@@ -40,13 +42,13 @@ public class LeaveTypeApprovalSweepTests
         return db;
     }
 
-    private static Task<Result<LeaveTypeDto>> SaveAsync(AppDbContext db, bool manager, bool hr) =>
+    private static Task<Result<LeaveTypeDto>> SaveAsync(AppDbContext db, bool manager, bool hr, bool affectsBalance = false, int defaultAllowance = 10) =>
         new UpdateLeaveType.Handler(db, Mapper()).Handle(new UpdateLeaveType.Command
         {
             Id = TypeId,
             LeaveType = new UpsertLeaveTypeRequest
             {
-                Name = "Unpaid Leave", IsActive = true, AffectsBalance = false, DefaultAllowance = 10,
+                Name = "Unpaid Leave", IsActive = true, AffectsBalance = affectsBalance, DefaultAllowance = defaultAllowance,
                 RequiresManagerApproval = manager, RequiresHrApproval = hr,
             },
         }, CancellationToken.None);
@@ -77,6 +79,21 @@ public class LeaveTypeApprovalSweepTests
         Assert.True(result.IsSuccess, result.Error);
         Assert.Equal(AnnualLeaveStatus.Pending, await StatusAsync(db, "pending"));
         Assert.Equal(AnnualLeaveStatus.Approved, await StatusAsync(db, "with-hr"));
+    }
+
+    [Fact]
+    public async Task Turning_hr_off_refuses_the_sweep_when_the_with_hr_row_would_overdraw_the_balance()
+    {
+        // 3 days allowed, 3 days left, but the with-hr row spans 5 business days —
+        // the balance-checked sweep must refuse the save rather than silently
+        // approving a request the employee cannot cover, and the row already with
+        // HR must be left exactly where it was.
+        using var db = await WorldAsync(manager: true, hr: true, affectsBalance: true, defaultAllowance: 3, p2Entitlement: 3, p2Balance: 3);
+
+        var result = await SaveAsync(db, manager: true, hr: false, affectsBalance: true, defaultAllowance: 3);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, await StatusAsync(db, "with-hr"));
     }
 
     [Fact]
