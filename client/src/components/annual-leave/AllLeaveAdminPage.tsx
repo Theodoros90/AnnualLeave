@@ -9,8 +9,8 @@ import {
     getLeaveStatusHistories, getLeaveTypes, updateLeaveStatus,
 } from '../../lib/api'
 import {
-    approveButtonLabel, approveOutcome, canCancelApproved, canDecide, isOpenStatus, isWithManager, statusChipLabel,
-    type ApprovalViewer,
+    approveButtonLabel, approveOutcome, canCancelApproved, canDecide, isManagersRejection, isOpenStatus, isWithManager,
+    statusChipLabel, type ApprovalViewer,
 } from '../../lib/approval-stage'
 import { isAwaitingDocument } from '../../lib/attachment-policy'
 import { isHrAdministrator } from '../../lib/roles'
@@ -141,19 +141,30 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
     const leaveTypeById = useMemo(() => new Map(leaveTypes.map((lt) => [lt.id, lt])), [leaveTypes])
     const typeOf = (l: AnnualLeave) => (l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined)
 
-    /* An HR Administrator's page leaves out what is the manager's to decide: a Pending
-       row on a type that asks for the manager (isWithManager, mirroring
-       ApprovalStageRule). They see such a request once the manager has decided it —
-       approved, to cancel before it starts, or rejected. The conflict map, the
-       calendar and the stat cards still read every row: an absence being decided
-       elsewhere still overlaps, and still falls in the month. */
+    /* An HR Administrator's page leaves out what is the manager's: a Pending row on a
+       type that asks for the manager (isWithManager, mirroring ApprovalStageRule) and
+       a rejection the manager made (isManagersRejection — told apart from HR's own
+       rejection by the status the history says it came out of). They see such a
+       request once the manager has approved it, to cancel it before it starts. The
+       conflict map, the calendar and the stat cards still read every row: an absence
+       being decided elsewhere still overlaps, and still falls in the month. */
     const isHr = viewer.isHrAdministrator
-    const visibleLeaves = useMemo(
-        () => (isHr
-            ? leaves.filter((l) => !isWithManager(l, l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined, { isHrAdministrator: true }))
-            : leaves),
-        [leaves, leaveTypeById, isHr]
-    )
+    const visibleLeaves = useMemo(() => {
+        if (!isHr) return leaves
+        const hrViewer = { isHrAdministrator: true }
+        // The most recent rejection per leave, for the status it came out of.
+        const latestRejection = new Map<string, LeaveStatusHistory>()
+        for (const h of histories) {
+            if (h.newStatus !== 'Rejected') continue
+            const prev = latestRejection.get(h.annualLeaveId)
+            if (!prev || new Date(h.changedAt) > new Date(prev.changedAt)) latestRejection.set(h.annualLeaveId, h)
+        }
+        return leaves.filter((l) => {
+            const type = l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined
+            return !isWithManager(l, type, hrViewer)
+                && !isManagersRejection(l, type, hrViewer, latestRejection.get(l.id)?.oldStatus)
+        })
+    }, [leaves, leaveTypeById, histories, isHr])
     /* An allowance belongs to a leave type, and Leave Types is where it is set. A
        type that sets none reads as 0, which renders "—". See lib/leave-allowance.ts. */
     const annualAllowance = useMemo(() => annualLeaveAllowance(leaveTypes), [leaveTypes])

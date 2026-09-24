@@ -465,7 +465,14 @@ Eight things about it that are deliberate:
   or not HR comes after — and their pages leave such rows out altogether: the
   HR dashboard's queue and Leave Management (`isWithManager` in
   `approval-stage.ts`, applied to the list, the tabs and the stat card) show a
-  manager-stage request once the manager has decided it, approved or rejected.
+  manager-stage request once the manager has **approved** it. A manager's
+  rejection stays off HR's page too (`isManagersRejection`): a Rejected row is
+  HR's to see only when the status history says the rejection came out of
+  `AwaitingHrApproval`, i.e. HR made it; with no history the type decides, as
+  for a Pending row. The HR Administrator's bell in the Topbar takes the
+  manager's shape and lists the requests awaiting HR approval (plus submitted
+  timesheets in their reach), where it used to hand them the employee's status
+  feed.
   `canDecide`, `canApproveInDialog` and `canRejectInDialog` therefore take the
   leave type; a type not yet loaded reads as manager-only, matching the server's
   reading of a deleted one. The one Pending row HR may still decide is on a type
@@ -506,8 +513,8 @@ Eight things about it that are deliberate:
   pending-approvals reminder, the queues and the Pending tabs (`isOpenStatus`) —
   **but locked for editing like `Approved`.** The manager's bell in the Topbar and
   the pending-approvals digest count only what a manager can decide (`Pending`);
-  an HR Administrator gets their own digest of the rows with HR in their
-  departments. A manager who *did* approve specific dates at stage one would have
+  an HR Administrator's bell counts the rows with HR, and they get their own
+  digest of those in their departments. A manager who *did* approve specific dates at stage one would have
   an edit that kept the stage put different dates in front of HR under their
   name — but an HR-only type reaches this status straight from filing, with no
   manager stage to have approved anything, so the message told to whoever cannot

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
     approvalRule, approveButtonLabel, approveOutcome, autoApproves, canApproveInDialog, canCancelApproved, canDecide,
-    canRejectInDialog, isOpenStatus, isWithManager, statusChipLabel, statusPhrase,
+    canRejectInDialog, isManagersRejection, isOpenStatus, isWithManager, statusChipLabel, statusPhrase,
 } from './approval-stage'
 
 /**
@@ -40,6 +40,29 @@ describe('isWithManager', () => {
         expect(isWithManager({ status: 'Pending' }, hrOnly, HR)).toBe(false)
         expect(isWithManager({ status: 'AwaitingHrApproval' }, both, HR)).toBe(false)
         expect(isWithManager({ status: 'Approved' }, managerOnly, HR)).toBe(false)
+    })
+})
+
+describe('isManagersRejection', () => {
+    it("is a rejection the manager made, seen by HR", () => {
+        expect(isManagersRejection({ status: 'Rejected' }, managerOnly, HR, 'Pending')).toBe(true)
+        expect(isManagersRejection({ status: 'Rejected' }, both, HR, 'Pending')).toBe(true)
+        // An approval the manager took back is the manager's too.
+        expect(isManagersRejection({ status: 'Rejected' }, managerOnly, HR, 'Approved')).toBe(true)
+    })
+    it("is not HR's own rejection from the HR stage", () => {
+        expect(isManagersRejection({ status: 'Rejected' }, both, HR, 'AwaitingHrApproval')).toBe(false)
+        expect(isManagersRejection({ status: 'Rejected' }, hrOnly, HR, 'AwaitingHrApproval')).toBe(false)
+    })
+    it('falls back to the type when no history says where the rejection came from', () => {
+        expect(isManagersRejection({ status: 'Rejected' }, managerOnly, HR, null)).toBe(true)
+        expect(isManagersRejection({ status: 'Rejected' }, undefined, HR, undefined)).toBe(true)
+        expect(isManagersRejection({ status: 'Rejected' }, hrOnly, HR, null)).toBe(false)
+    })
+    it('is never the case for a manager or for a row that is not rejected', () => {
+        expect(isManagersRejection({ status: 'Rejected' }, managerOnly, MANAGER, 'Pending')).toBe(false)
+        expect(isManagersRejection({ status: 'Approved' }, managerOnly, HR, 'Pending')).toBe(false)
+        expect(isManagersRejection({ status: 'Cancelled' }, managerOnly, HR, 'Approved')).toBe(false)
     })
 })
 

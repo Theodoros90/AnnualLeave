@@ -22,7 +22,7 @@ import Typography from '@mui/material/Typography'
 import { getAnnualLeaves, getLeaveStatusHistories, getSystemErrors, getTimesheets, getTimesheetStatusHistories } from '../../lib/api'
 import { canDecide, statusPhrase } from '../../lib/approval-stage'
 import { useStore } from '../../lib/mobx'
-import { isAdministrator, isSystemAdministrator } from '../../lib/roles'
+import { isAdministrator, isHrAdministrator, isSystemAdministrator } from '../../lib/roles'
 import { formatServerDateTime as formatChangedAt, parseServerDate } from '../../lib/server-date'
 import { shortExceptionType, systemErrorRowId } from '../../lib/system-errors'
 import type { ThemePreference } from '../../lib/mobx/uiStore'
@@ -59,13 +59,16 @@ const Topbar = observer(function Topbar() {
     const location = useLocation()
     const isAdminUser = isAdministrator(authStore.user?.roles)
     const isManagerUser = authStore.user?.roles?.includes('Manager') ?? false
-    // Three bells. A Manager's lists what they can decide; an Employee's (and an HR
-    // Administrator's) lists what happened to their own leave and timesheets; a System
+    // Three bells. A Manager's and an HR Administrator's list what they can decide —
+    // for HR that is the requests awaiting HR approval (canDecide with no type reads
+    // a Pending row as the manager's), not the employee's status feed it used to get;
+    // an Employee's lists what happened to their own leave and timesheets; a System
     // Administrator's lists the errors the system hit — the role neither files nor
     // decides leave, so the status feed was everyone else's news, and the one thing
     // the role is emailed about (SystemErrorNotifier) never reached it.
     const isSystemAdminUser = isSystemAdministrator(authStore.user?.roles)
-    const shouldUseManagerNotifications = isManagerUser && !isAdminUser
+    const isHrAdminUser = isHrAdministrator(authStore.user?.roles)
+    const shouldUseManagerNotifications = (isManagerUser && !isAdminUser) || isHrAdminUser
     const shouldUseSystemNotifications = isSystemAdminUser
     const shouldUseEmployeeNotifications = !shouldUseManagerNotifications && !shouldUseSystemNotifications
 
@@ -140,7 +143,7 @@ const Topbar = observer(function Topbar() {
     const employeeTsNotifications = employeeTsItems.map(e => e.item)
 
     const managerPendingRequests = (annualLeaves ?? [])
-        .filter((l) => canDecide(l, { isHrAdministrator: false }, undefined) && l.employeeId !== authStore.user?.id)
+        .filter((l) => canDecide(l, { isHrAdministrator: isHrAdminUser }, undefined) && l.employeeId !== authStore.user?.id)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
     const managerPendingTimesheets = (timesheets ?? [])
@@ -429,7 +432,9 @@ const Topbar = observer(function Topbar() {
                             <CircleRoundedIcon sx={{ fontSize: 10, color: 'error.main' }} />
                         </ListItemIcon>
                         <ListItemText
-                            primary={`New leave request from ${item.employeeName}`}
+                            primary={isHrAdminUser
+                                ? `Leave request from ${item.employeeName} awaiting HR approval`
+                                : `New leave request from ${item.employeeName}`}
                             secondary={`Submitted ${formatChangedAt(item.createdAt)}`}
                         />
                     </MenuItem>

@@ -589,8 +589,27 @@ describe('AllLeaveAdminPage — an HR Administrator sees the manager\'s requests
         expect(renderedPendingRows()).toBe(0)
         expect(statCardValue('⏳ Awaiting Review')).toBe('0')
         expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
-        // The decided rows are still there as history.
-        expect(screen.getByText('Employee 1A')).toBeInTheDocument()
+        // The approved row is still there; the manager's rejection is not.
+        expect(screen.getByText('Employee 2A')).toBeInTheDocument()
+        expect(screen.queryByText('Employee 1A')).not.toBeInTheDocument()
+    })
+
+    it("leaves a manager's rejection out, and keeps HR's own", async () => {
+        api.getAnnualLeaves.mockResolvedValue([
+            leave({ id: 'r-mgr', employeeId: 'emp-2a', employeeName: 'Employee 2A', status: 'Rejected', startDate: monthOffset(1, 2), endDate: monthOffset(1, 3) }),
+            leave({ id: 'r-hr', employeeId: 'emp-2b', employeeName: 'Employee 2B', status: 'Rejected', startDate: monthOffset(1, 9), endDate: monthOffset(1, 10) }),
+        ])
+        api.getLeaveStatusHistories.mockResolvedValue([
+            { id: 'h1', annualLeaveId: 'r-mgr', employeeId: 'emp-2a', employeeName: 'Employee 2A', changedByUserId: 'manager-1', changedByUserName: 'Manager One', leaveTypeName: 'Annual Leave', oldStatus: 'Pending', newStatus: 'Rejected', comment: 'Too many away', changedAt: monthOffset(0, 1) },
+            { id: 'h2', annualLeaveId: 'r-hr', employeeId: 'emp-2b', employeeName: 'Employee 2B', changedByUserId: 'hr-1', changedByUserName: 'Helen HR', leaveTypeName: 'Annual Leave', oldStatus: 'AwaitingHrApproval', newStatus: 'Rejected', comment: 'Policy', changedAt: monthOffset(0, 1) },
+        ])
+        await renderPage(HR)
+
+        expect(screen.queryByText('Employee 2A')).not.toBeInTheDocument()
+        expect(screen.getByText('Employee 2B')).toBeInTheDocument()
+        expect(screen.getByText('"Policy"')).toBeInTheDocument()
+        // The Rejected tab counts only what is on the page.
+        expect(screen.getByText('Rejected').parentElement!.textContent).toContain('1')
     })
 
     it('queues a request that is with HR, with Approve to hand', async () => {

@@ -120,6 +120,33 @@ describe("The System Administrator's bell", () => {
     })
 })
 
+describe("An HR Administrator's bell", () => {
+    const HR: UserInfo = { ...SYSTEM_ADMIN, id: 'u-hr', userName: 'hr@worktrack.com', email: 'hr@worktrack.com', displayName: 'Helen HR', roles: ['HR Administrator'] }
+    const base = {
+        employeeId: 'u-emp', leaveTypeId: 1, reason: '', evidenceUrl: null, delegateId: null, delegateName: '',
+        createdAt: recent, approvedAt: null, totalDays: 1, duration: 'Full', departmentName: 'Finance', childId: null, childName: '',
+        startDate: '2026-10-05T00:00:00', endDate: '2026-10-05T00:00:00',
+    }
+
+    it('lists the requests awaiting HR approval, not the ones with the manager or the status feed', async () => {
+        api.getAnnualLeaves.mockResolvedValue([
+            { ...base, id: 'l-hr', employeeName: 'Maria Georgiou', status: 'AwaitingHrApproval' },
+            { ...base, id: 'l-mgr', employeeName: 'Andreas Georgiou', status: 'Pending' },
+        ] as never)
+        renderTopbarAs(HR)
+
+        await waitFor(() => expect(api.getAnnualLeaves).toHaveBeenCalled())
+        await waitFor(() => expect(screen.getByText('1')).toBeInTheDocument())
+
+        fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+        expect(await screen.findByText('Leave request from Maria Georgiou awaiting HR approval')).toBeInTheDocument()
+        expect(screen.queryByText(/Andreas Georgiou/)).not.toBeInTheDocument()
+        expect(screen.queryByText(/Leave approved/)).not.toBeInTheDocument()
+        expect(api.getLeaveStatusHistories).not.toHaveBeenCalled()
+        expect(api.getSystemErrors).not.toHaveBeenCalled()
+    })
+})
+
 describe("An employee's bell", () => {
     it('still lists their own status changes and never fetches system errors', async () => {
         renderTopbarAs(EMPLOYEE)

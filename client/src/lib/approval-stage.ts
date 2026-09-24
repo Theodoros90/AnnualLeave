@@ -46,6 +46,25 @@ export function isWithManager(
     return leave.status === 'Pending' && viewer.isHrAdministrator && (type === undefined || type.requiresManagerApproval)
 }
 
+/**
+ * A Rejected request the manager turned down, seen by an HR Administrator: the
+ * manager's decision, not HR's, so HR's pages leave it out the way they leave out
+ * a Pending row that is with the manager. `rejectedFrom` is the status the
+ * rejection came out of, read from the status history — `'AwaitingHrApproval'`
+ * means HR themselves rejected it, which they do see. With no history to say
+ * (a legacy row) the type decides, as it does for a Pending row.
+ */
+export function isManagersRejection(
+    leave: Pick<AnnualLeave, 'status'>,
+    type: ApprovalFlags | undefined,
+    viewer: ApprovalViewer,
+    rejectedFrom: string | null | undefined,
+): boolean {
+    if (leave.status !== 'Rejected' || !viewer.isHrAdministrator) return false
+    if (rejectedFrom === 'AwaitingHrApproval') return false
+    return type === undefined || type.requiresManagerApproval
+}
+
 /** Whether this viewer may approve or reject the request at its current stage. */
 export function canDecide(leave: Pick<AnnualLeave, 'status'>, viewer: ApprovalViewer, type: ApprovalFlags | undefined): boolean {
     if (leave.status === 'Pending') return !isWithManager(leave, type, viewer)
