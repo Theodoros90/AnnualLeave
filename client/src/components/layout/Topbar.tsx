@@ -19,10 +19,12 @@ import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
-import { getAnnualLeaves, getLeaveStatusHistories, getTimesheets, getTimesheetStatusHistories } from '../../lib/api'
+import { getAnnualLeaves, getLeaveStatusHistories, getSystemErrors, getTimesheets, getTimesheetStatusHistories } from '../../lib/api'
 import { canDecide, statusPhrase } from '../../lib/approval-stage'
 import { useStore } from '../../lib/mobx'
-import { isAdministrator } from '../../lib/roles'
+import { isAdministrator, isSystemAdministrator } from '../../lib/roles'
+import { formatServerDateTime as formatChangedAt, parseServerDate } from '../../lib/server-date'
+import { shortExceptionType, systemErrorRowId } from '../../lib/system-errors'
 import type { ThemePreference } from '../../lib/mobx/uiStore'
 import AttendanceWidget from './AttendanceWidget'
 
@@ -31,6 +33,10 @@ const managerReadPrefix = 'manager-read-leave-notifications:'
 const managerTsReadPrefix = 'manager-read-timesheet-notifications:'
 const employeeReadPrefix = 'employee-read-status-notifications:'
 const employeeTsReadPrefix = 'employee-read-timesheet-status-notifications:'
+// A System Administrator's bell lists system errors, not leave. Keyed by row id plus
+// last occurrence, so a fault that comes back after being read is unread again.
+const systemReadPrefix = 'system-read-error-notifications:'
+const systemErrorReadKey = (id: number, lastOccurredAtUtc: string) => `${id}@${lastOccurredAtUtc}`
 const notificationRefreshMs = 15000
 
 function getStoredIds(key: string): string[] {
@@ -44,27 +50,6 @@ function getStoredIds(key: string): string[] {
     }
 }
 
-function parseServerDate(value: string | null | undefined): Date | null {
-    if (!value) return null
-    // Backend stores DateTime.UtcNow but ASP.NET drops the offset on the wire
-    // when EF reads the value back with Kind=Unspecified. Append 'Z' so the
-    // browser interprets the timestamp as UTC instead of local time.
-    const hasTz = /(Z|[+-]\d{2}:\d{2})$/.test(value)
-    const date = new Date(hasTz ? value : `${value}Z`)
-    return Number.isNaN(date.getTime()) ? null : date
-}
-
-function formatChangedAt(changedAt: string) {
-    const date = parseServerDate(changedAt)
-    if (!date) return 'Recently'
-    return new Intl.DateTimeFormat(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-    }).format(date)
-}
-
 function scrollToId(id: string) {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
@@ -74,32 +59,42 @@ const Topbar = observer(function Topbar() {
     const location = useLocation()
     const isAdminUser = isAdministrator(authStore.user?.roles)
     const isManagerUser = authStore.user?.roles?.includes('Manager') ?? false
+    // Three bells. A Manager's lists what they can decide; an Employee's (and an HR
+    // Administrator's) lists what happened to their own leave and timesheets; a System
+    // Administrator's lists the errors the system hit — the role neither files nor
+    // decides leave, so the status feed was everyone else's news, and the one thing
+    // the role is emailed about (SystemErrorNotifier) never reached it.
+    const isSystemAdminUser = isSystemAdministrator(authStore.user?.roles)
     const shouldUseManagerNotifications = isManagerUser && !isAdminUser
+    const shouldUseSystemNotifications = isSystemAdminUser
+    const shouldUseEmployeeNotifications = !shouldUseManagerNotifications && !shouldUseSystemNotifications
 
     const managerKey = `${managerReadPrefix}${authStore.user?.id ?? ''}`
     const managerTsKey = `${managerTsReadPrefix}${authStore.user?.id ?? ''}`
     const employeeKey = `${employeeReadPrefix}${authStore.user?.id ?? ''}`
     const employeeTsKey = `${employeeTsReadPrefix}${authStore.user?.id ?? ''}`
+    const systemKey = `${systemReadPrefix}${authStore.user?.id ?? ''}`
 
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
     const [readManagerIds, setReadManagerIds] = useState<string[]>(() => getStoredIds(managerKey))
     const [readManagerTsIds, setReadManagerTsIds] = useState<string[]>(() => getStoredIds(managerTsKey))
     const [readEmployeeIds, setReadEmployeeIds] = useState<string[]>(() => getStoredIds(employeeKey))
     const [readEmployeeTsIds, setReadEmployeeTsIds] = useState<string[]>(() => getStoredIds(employeeTsKey))
+    const [readSystemKeys, setReadSystemKeys] = useState<string[]>(() => getStoredIds(systemKey))
 
     const { data: statusHistories, isLoading: isLoadingStatus } = useQuery({
         queryKey: ['leaveStatusHistories'],
         queryFn: getLeaveStatusHistories,
-        enabled: authStore.isAuthenticated,
-        refetchInterval: authStore.isAuthenticated ? notificationRefreshMs : false,
+        enabled: authStore.isAuthenticated && shouldUseEmployeeNotifications,
+        refetchInterval: authStore.isAuthenticated && shouldUseEmployeeNotifications ? notificationRefreshMs : false,
         refetchIntervalInBackground: true,
     })
 
     const { data: tsStatusHistories, isLoading: isLoadingTsStatus } = useQuery({
         queryKey: ['timesheetStatusHistories'],
         queryFn: getTimesheetStatusHistories,
-        enabled: authStore.isAuthenticated,
-        refetchInterval: authStore.isAuthenticated ? notificationRefreshMs : false,
+        enabled: authStore.isAuthenticated && shouldUseEmployeeNotifications,
+        refetchInterval: authStore.isAuthenticated && shouldUseEmployeeNotifications ? notificationRefreshMs : false,
         refetchIntervalInBackground: true,
     })
 
@@ -116,6 +111,14 @@ const Topbar = observer(function Topbar() {
         queryFn: getTimesheets,
         enabled: authStore.isAuthenticated && shouldUseManagerNotifications,
         refetchInterval: authStore.isAuthenticated && shouldUseManagerNotifications ? notificationRefreshMs : false,
+        refetchIntervalInBackground: true,
+    })
+
+    const { data: systemErrors, isLoading: isLoadingSystemErrors } = useQuery({
+        queryKey: ['systemErrors'],
+        queryFn: getSystemErrors,
+        enabled: authStore.isAuthenticated && shouldUseSystemNotifications,
+        refetchInterval: authStore.isAuthenticated && shouldUseSystemNotifications ? notificationRefreshMs : false,
         refetchIntervalInBackground: true,
     })
 
@@ -152,25 +155,36 @@ const Topbar = observer(function Topbar() {
     const readManagerTsSet = useMemo(() => new Set(readManagerTsIds), [readManagerTsIds])
     const readEmployeeSet = useMemo(() => new Set(readEmployeeIds), [readEmployeeIds])
     const readEmployeeTsSet = useMemo(() => new Set(readEmployeeTsIds), [readEmployeeTsIds])
+    const readSystemSet = useMemo(() => new Set(readSystemKeys), [readSystemKeys])
 
     const unreadManagerRequests = managerPendingRequests.filter((item) => !readManagerSet.has(item.id))
     const unreadManagerTimesheets = managerPendingTimesheets.filter((item) => !readManagerTsSet.has(item.id))
     const unreadEmployeeNotifs = employeeNotifications.filter((item) => !readEmployeeSet.has(item.id))
     const unreadEmployeeTsNotifs = employeeTsNotifications.filter((item) => !readEmployeeTsSet.has(item.id))
     const recentThreshold = Date.now() - recentWindowDays * 24 * 60 * 60 * 1000
+    const systemNotifications = (systemErrors ?? []).slice(0, 8)
+    const isSystemErrorUnread = (id: number, lastOccurredAtUtc: string) => !readSystemSet.has(systemErrorReadKey(id, lastOccurredAtUtc))
+    const unreadSystemErrors = systemNotifications.filter((e) => isSystemErrorUnread(e.id, e.lastOccurredAtUtc))
     const unreadCount = shouldUseManagerNotifications
         ? unreadManagerRequests.length + unreadManagerTimesheets.length
-        : unreadEmployeeNotifs.filter((item) => new Date(item.changedAt).getTime() >= recentThreshold).length
-          + unreadEmployeeTsNotifs.filter((item) => new Date(item.changedAt).getTime() >= recentThreshold).length
+        : shouldUseSystemNotifications
+            ? unreadSystemErrors.filter((e) => tsTime(e.lastOccurredAtUtc) >= recentThreshold).length
+            : unreadEmployeeNotifs.filter((item) => new Date(item.changedAt).getTime() >= recentThreshold).length
+              + unreadEmployeeTsNotifs.filter((item) => new Date(item.changedAt).getTime() >= recentThreshold).length
 
     const managerNotifications = unreadManagerRequests.slice(0, 6)
     const managerTsNotifications = unreadManagerTimesheets.slice(0, 6)
-    const isLoading = shouldUseManagerNotifications ? (isLoadingLeaves || isLoadingTimesheets) : (isLoadingStatus || isLoadingTsStatus)
+    const isLoading = shouldUseManagerNotifications
+        ? (isLoadingLeaves || isLoadingTimesheets)
+        : shouldUseSystemNotifications
+            ? isLoadingSystemErrors
+            : (isLoadingStatus || isLoadingTsStatus)
 
     useEffect(() => { setReadManagerIds(getStoredIds(managerKey)) }, [managerKey])
     useEffect(() => { setReadManagerTsIds(getStoredIds(managerTsKey)) }, [managerTsKey])
     useEffect(() => { setReadEmployeeIds(getStoredIds(employeeKey)) }, [employeeKey])
     useEffect(() => { setReadEmployeeTsIds(getStoredIds(employeeTsKey)) }, [employeeTsKey])
+    useEffect(() => { setReadSystemKeys(getStoredIds(systemKey)) }, [systemKey])
 
     useEffect(() => {
         if (!shouldUseManagerNotifications || isLoadingLeaves || !annualLeaves) return
@@ -212,6 +226,16 @@ const Topbar = observer(function Topbar() {
         }
     }, [tsStatusHistories, employeeTsKey, readEmployeeTsIds])
 
+    useEffect(() => {
+        if (!systemErrors) return
+        const liveKeys = new Set(systemErrors.map((e) => systemErrorReadKey(e.id, e.lastOccurredAtUtc)))
+        const pruned = readSystemKeys.filter((key) => liveKeys.has(key))
+        if (pruned.length !== readSystemKeys.length) {
+            setReadSystemKeys(pruned)
+            window.localStorage.setItem(systemKey, JSON.stringify(pruned))
+        }
+    }, [systemErrors, systemKey, readSystemKeys])
+
     const handleManagerClick = (leaveId: string) => {
         const updated = Array.from(new Set([...readManagerIds, leaveId]))
         setReadManagerIds(updated)
@@ -249,6 +273,17 @@ const Topbar = observer(function Topbar() {
         uiStore.navigateToTimesheets()
     }
 
+    const handleSystemErrorClick = (id: number, lastOccurredAtUtc: string) => {
+        const updated = Array.from(new Set([...readSystemKeys, systemErrorReadKey(id, lastOccurredAtUtc)]))
+        setReadSystemKeys(updated)
+        window.localStorage.setItem(systemKey, JSON.stringify(updated))
+        setAnchorEl(null)
+        uiStore.navigateToAdminSection('system-log')
+        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${systemErrorRowId(id)}`)
+        window.dispatchEvent(new HashChangeEvent('hashchange'))
+        window.setTimeout(() => scrollToId(systemErrorRowId(id)), 100)
+    }
+
     let pageTitle = 'Dashboard'
     const path = location.pathname
     if (path.startsWith('/my-leave')) pageTitle = 'My Leave'
@@ -272,6 +307,7 @@ const Topbar = observer(function Topbar() {
         else if (s === 'organization') pageTitle = 'Organization'
         else if (s === 'reminders-notifications') pageTitle = 'Notification Settings'
         else if (s === 'maintenance') pageTitle = 'Data Maintenance'
+        else if (s === 'system-log') pageTitle = 'System Log'
         else pageTitle = 'Administration'
     }
 
@@ -365,9 +401,28 @@ const Topbar = observer(function Topbar() {
                 {!isLoading && shouldUseManagerNotifications && managerNotifications.length === 0 && managerTsNotifications.length === 0 && (
                     <MenuItem disabled><ListItemText primary="No notifications yet" /></MenuItem>
                 )}
-                {!isLoading && !shouldUseManagerNotifications && employeeMerged.length === 0 && (
+                {!isLoading && shouldUseEmployeeNotifications && employeeMerged.length === 0 && (
                     <MenuItem disabled><ListItemText primary="No notifications yet" /></MenuItem>
                 )}
+                {!isLoading && shouldUseSystemNotifications && systemNotifications.length === 0 && (
+                    <MenuItem disabled><ListItemText primary="No system errors" secondary="Errors the system hits are listed here and emailed to you" /></MenuItem>
+                )}
+                {!isLoading && shouldUseSystemNotifications && systemNotifications.map((error) => {
+                    const isUnread = isSystemErrorUnread(error.id, error.lastOccurredAtUtc)
+                    const isRecent = tsTime(error.lastOccurredAtUtc) >= recentThreshold
+                    return (
+                        <MenuItem key={`err-${error.id}`} onClick={() => handleSystemErrorClick(error.id, error.lastOccurredAtUtc)}>
+                            <ListItemIcon>
+                                <CircleRoundedIcon sx={{ fontSize: 10, color: isUnread && isRecent ? 'error.main' : 'divider' }} />
+                            </ListItemIcon>
+                            <ListItemText
+                                primary={`System error in ${error.source}${error.occurrences > 1 ? ` (×${error.occurrences})` : ''}`}
+                                secondary={`${shortExceptionType(error.exceptionType)} · ${formatChangedAt(error.lastOccurredAtUtc)}`}
+                                slotProps={{ primary: { sx: { whiteSpace: 'normal', wordBreak: 'break-word' } } }}
+                            />
+                        </MenuItem>
+                    )
+                })}
                 {!isLoading && shouldUseManagerNotifications && managerNotifications.map((item) => (
                     <MenuItem key={item.id} onClick={() => handleManagerClick(item.id)}>
                         <ListItemIcon>
@@ -390,7 +445,7 @@ const Topbar = observer(function Topbar() {
                         />
                     </MenuItem>
                 ))}
-                {!isLoading && !shouldUseManagerNotifications && employeeMerged.map((entry) => {
+                {!isLoading && shouldUseEmployeeNotifications && employeeMerged.map((entry) => {
                     const isRecent = entry.ts >= recentThreshold
                     if (entry.kind === 'leave') {
                         const item = entry.item

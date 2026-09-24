@@ -57,6 +57,9 @@ public class SystemAdministrationSurfaceTests
     // above already is. The rows say which departments each HR Administrator runs, so
     // the table is a map of who reaches whose leave and timesheets.
     [InlineData(typeof(UserDepartmentsController), nameof(UserDepartmentsController.GetUserDepartments))]
+    // Also a read: the faults the system hit, which the System Administrator's bell
+    // lists. Keeping the system running is theirs alone.
+    [InlineData(typeof(SystemErrorsController), nameof(SystemErrorsController.GetSystemErrors))]
     public void Configuration_writes_are_System_Administrator_only(Type controller, string action)
     {
         var gates = GatesOn(controller, action).ToList();

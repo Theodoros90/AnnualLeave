@@ -74,7 +74,13 @@ public sealed class SystemErrorThrottle
 /// still going to run — and it never throws back into them: a broken mail
 /// provider must not turn one error into two.
 ///
-/// Three things about it that are deliberate:
+/// It also <b>records</b> the fault as a <see cref="SystemError"/> row, which is what
+/// the System Administrator's notification bell lists (<c>GET /api/systemerrors</c>).
+/// The row is written before the email is attempted and regardless of whether email
+/// is switched on, so the bell agrees with the log even when the inbox is silent; a
+/// repeat inside the hour bumps the existing row's count rather than adding one.
+///
+/// Four things about it that are deliberate:
 /// <list type="bullet">
 /// <item>The fingerprint is the source plus the exception type, not the message.
 /// A message often carries the row id or the input that broke, and a fault
@@ -84,6 +90,9 @@ public sealed class SystemErrorThrottle
 /// not ask for this one either; the log still has everything.</item>
 /// <item>A deactivated System Administrator is not mailed. A leaver's inbox is
 /// nobody's, and the security stamp rotation already ended their sessions.</item>
+/// <item>Recording and emailing fail independently. A database that is itself the
+/// fault must not stop the email, and a broken mail provider must not lose the
+/// row; each is caught and logged on its own.</item>
 /// </list>
 /// </summary>
 public class SystemErrorNotifier(
@@ -113,8 +122,13 @@ public class SystemErrorNotifier(
     private async Task<int> NotifyCoreAsync(SystemErrorReport report, CancellationToken ct)
     {
         var occurredAt = report.OccurredAtUtc ?? DateTime.UtcNow;
-        var fingerprint = $"{report.Source}|{report.Exception.GetType().FullName}";
-        if (!throttle.TryAcquire(fingerprint, occurredAt))
+        var exceptionType = report.Exception.GetType().FullName ?? report.Exception.GetType().Name;
+        var fingerprint = $"{report.Source}|{exceptionType}";
+        var firstInWindow = throttle.TryAcquire(fingerprint, occurredAt);
+
+        await RecordAsync(report, exceptionType, occurredAt, firstInWindow, ct);
+
+        if (!firstInWindow)
         {
             logger.LogInformation("System error in {Source} ({Type}) already reported within the last hour; not emailing again.",
                 report.Source, report.Exception.GetType().Name);
@@ -148,6 +162,59 @@ public class SystemErrorNotifier(
         logger.LogInformation("System error in {Source} reported to {Count} System Administrator(s).", report.Source, sent);
         return sent;
     }
+
+    /// <summary>
+    /// Writes the fault down for the bell. The first report in the throttle window
+    /// is a new row; a repeat bumps the most recent row of the same fault, keeping
+    /// the first message (a repeat's usually differs only by the row id that broke).
+    /// A repeat with no row to bump — the earlier write failed — gets a row of its own.
+    /// </summary>
+    private async Task RecordAsync(SystemErrorReport report, string exceptionType, DateTime occurredAt, bool firstInWindow, CancellationToken ct)
+    {
+        try
+        {
+            var source = Cut(report.Source, SystemError.SourceMaxLength);
+            var type = Cut(exceptionType, SystemError.ExceptionTypeMaxLength);
+
+            SystemError? existing = null;
+            if (!firstInWindow)
+            {
+                existing = await context.SystemErrors
+                    .Where(e => e.Source == source && e.ExceptionType == type)
+                    .OrderByDescending(e => e.LastOccurredAtUtc)
+                    .ThenByDescending(e => e.Id)
+                    .FirstOrDefaultAsync(ct);
+            }
+
+            if (existing is not null)
+            {
+                existing.Occurrences++;
+                if (occurredAt > existing.LastOccurredAtUtc) existing.LastOccurredAtUtc = occurredAt;
+            }
+            else
+            {
+                context.SystemErrors.Add(new SystemError
+                {
+                    Source = source,
+                    ExceptionType = type,
+                    Message = Cut(report.Exception.Message, SystemError.MessageMaxLength),
+                    CorrelationId = report.CorrelationId is null ? null : Cut(report.CorrelationId, SystemError.CorrelationIdMaxLength),
+                    OccurredAtUtc = occurredAt,
+                    LastOccurredAtUtc = occurredAt,
+                    Occurrences = 1,
+                });
+            }
+
+            await context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            // The database may be the very thing that failed; the email still goes.
+            logger.LogError(ex, "Could not record the system error in {Source} for the System Administrators' notifications.", report.Source);
+        }
+    }
+
+    private static string Cut(string value, int max) => value.Length <= max ? value : value[..max];
 
     private sealed record Recipient(string Email, string? DisplayName);
 

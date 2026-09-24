@@ -43,6 +43,7 @@ public class AppDbContext : IdentityDbContext<
     public DbSet<ProjectTypeAssignment> ProjectTypeAssignments { get; set; }
     public DbSet<StoredFile> StoredFiles { get; set; }
     public DbSet<Child> Children { get; set; }
+    public DbSet<SystemError> SystemErrors { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -529,6 +530,18 @@ public class AppDbContext : IdentityDbContext<
                 .WithMany(ep => ep.Children)
                 .HasForeignKey(c => c.EmployeeProfileId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<SystemError>(entity =>
+        {
+            entity.Property(e => e.Source).IsRequired().HasMaxLength(SystemError.SourceMaxLength);
+            entity.Property(e => e.ExceptionType).IsRequired().HasMaxLength(SystemError.ExceptionTypeMaxLength);
+            entity.Property(e => e.Message).IsRequired().HasMaxLength(SystemError.MessageMaxLength);
+            entity.Property(e => e.CorrelationId).HasMaxLength(SystemError.CorrelationIdMaxLength);
+            // The bell reads newest-first by last occurrence; the notifier finds the
+            // row to bump by source + type.
+            entity.HasIndex(e => e.LastOccurredAtUtc);
+            entity.HasIndex(e => new { e.Source, e.ExceptionType });
         });
 
         builder.Entity<AuditLog>(entity =>

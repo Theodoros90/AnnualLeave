@@ -1,5 +1,6 @@
 using API.Middleware;
 using Application.SystemErrors;
+using Application.SystemErrors.Queries;
 using Domain;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -143,6 +144,103 @@ public class SystemErrorNotifierTests
         var sent = await NotifierFor(db, email).NotifyAsync(Report(new InvalidCastException("boom")), CancellationToken.None);
 
         Assert.Equal(0, sent);
+    }
+
+    // ── The fault is recorded, so the System Administrator's bell can list it ──
+
+    [Fact]
+    public async Task The_fault_is_recorded_for_the_bell_as_well_as_emailed()
+    {
+        using var db = SeedWorld();
+        var email = new FakeEmailService();
+
+        await NotifierFor(db, email).NotifyAsync(Report(new InvalidCastException("boom")), CancellationToken.None);
+
+        var row = Assert.Single(db.SystemErrors);
+        Assert.Equal("GET /api/timesheets", row.Source);
+        Assert.Equal(typeof(InvalidCastException).FullName, row.ExceptionType);
+        Assert.Equal("boom", row.Message);
+        Assert.Equal("abc123", row.CorrelationId);
+        Assert.Equal(Now, row.OccurredAtUtc);
+        Assert.Equal(Now, row.LastOccurredAtUtc);
+        Assert.Equal(1, row.Occurrences);
+    }
+
+    [Fact]
+    public async Task A_repeat_inside_the_hour_bumps_the_count_instead_of_adding_a_row()
+    {
+        using var db = SeedWorld();
+        var email = new FakeEmailService();
+        var throttle = new SystemErrorThrottle();
+
+        await NotifierFor(db, email, throttle).NotifyAsync(Report(new InvalidCastException("a")), CancellationToken.None);
+        await NotifierFor(db, email, throttle).NotifyAsync(Report(new InvalidCastException("b"), at: Now.AddMinutes(30)), CancellationToken.None);
+        await NotifierFor(db, email, throttle).NotifyAsync(Report(new NullReferenceException("c"), at: Now.AddMinutes(31)), CancellationToken.None);
+        await NotifierFor(db, email, throttle).NotifyAsync(Report(new InvalidCastException("d"), at: Now.AddMinutes(61)), CancellationToken.None);
+
+        var rows = db.SystemErrors.OrderBy(e => e.OccurredAtUtc).ToList();
+        Assert.Equal(3, rows.Count);
+        var first = rows[0];
+        Assert.Equal(typeof(InvalidCastException).FullName, first.ExceptionType);
+        Assert.Equal(2, first.Occurrences);
+        Assert.Equal(Now, first.OccurredAtUtc);
+        Assert.Equal(Now.AddMinutes(30), first.LastOccurredAtUtc);
+        // The first message is kept: a repeat's message is usually the same bug with a different row id.
+        Assert.Equal("a", first.Message);
+        Assert.Equal(typeof(NullReferenceException).FullName, rows[1].ExceptionType);
+        Assert.Equal(1, rows[2].Occurrences);
+        Assert.Equal("d", rows[2].Message);
+    }
+
+    [Fact]
+    public async Task The_fault_is_recorded_even_while_email_notifications_are_switched_off()
+    {
+        using var db = SeedWorld(emailEnabled: false);
+        var email = new FakeEmailService();
+
+        await NotifierFor(db, email).NotifyAsync(Report(new InvalidCastException("boom")), CancellationToken.None);
+
+        Assert.Empty(email.Sent);
+        Assert.Single(db.SystemErrors);
+    }
+
+    [Fact]
+    public async Task The_fault_is_recorded_even_when_the_provider_throws()
+    {
+        using var db = SeedWorld();
+
+        await NotifierFor(db, new ThrowingEmailService()).NotifyAsync(Report(new InvalidCastException("boom")), CancellationToken.None);
+
+        Assert.Single(db.SystemErrors);
+    }
+
+    [Fact]
+    public async Task A_long_message_is_cut_to_fit_the_column()
+    {
+        using var db = SeedWorld();
+
+        await NotifierFor(db, new FakeEmailService()).NotifyAsync(Report(new InvalidCastException(new string('x', 5000))), CancellationToken.None);
+
+        Assert.Equal(SystemError.MessageMaxLength, Assert.Single(db.SystemErrors).Message.Length);
+    }
+
+    [Fact]
+    public async Task The_list_is_newest_first_by_last_occurrence_and_bounded()
+    {
+        using var db = SeedWorld();
+        db.SystemErrors.AddRange(
+            new SystemError { Source = "a", ExceptionType = "T", Message = "m", OccurredAtUtc = Now.AddHours(-5), LastOccurredAtUtc = Now.AddHours(-5) },
+            // Old, but still happening: it sorts by when it was last seen.
+            new SystemError { Source = "b", ExceptionType = "T", Message = "m", OccurredAtUtc = Now.AddDays(-3), LastOccurredAtUtc = Now.AddHours(-1), Occurrences = 40 },
+            new SystemError { Source = "c", ExceptionType = "T", Message = "m", OccurredAtUtc = Now.AddHours(-2), LastOccurredAtUtc = Now.AddHours(-2) });
+        db.SaveChanges();
+
+        var all = await new GetSystemErrorList.Handler(db).Handle(new GetSystemErrorList.Query(), CancellationToken.None);
+        Assert.Equal(new[] { "b", "c", "a" }, all.Select(e => e.Source).ToArray());
+        Assert.Equal(40, all[0].Occurrences);
+
+        var two = await new GetSystemErrorList.Handler(db).Handle(new GetSystemErrorList.Query { Take = 2 }, CancellationToken.None);
+        Assert.Equal(new[] { "b", "c" }, two.Select(e => e.Source).ToArray());
     }
 
     private sealed class ThrowingEmailService : Domain.Interfaces.IEmailService

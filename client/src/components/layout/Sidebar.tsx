@@ -21,6 +21,7 @@ import ExtensionRoundedIcon from '@mui/icons-material/ExtensionRounded'
 import CategoryRoundedIcon from '@mui/icons-material/CategoryRounded'
 import StyleRoundedIcon from '@mui/icons-material/StyleRounded'
 import StorageRoundedIcon from '@mui/icons-material/StorageRounded'
+import BugReportRoundedIcon from '@mui/icons-material/BugReportRounded'
 import EventRoundedIcon from '@mui/icons-material/EventRounded'
 import FactCheckRoundedIcon from '@mui/icons-material/FactCheckRounded'
 import NotificationsActiveRoundedIcon from '@mui/icons-material/NotificationsActiveRounded'
@@ -228,9 +229,9 @@ const Sidebar = observer(function Sidebar() {
             // hides nothing that would open anyway.
             ...(isSystemAdminUser ? [
                 { kind: 'section', label: 'People' } as NavEntry,
-                { kind: 'item', label: 'Users', icon: <PeopleRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('users'), active: onAdminSection('users') } as NavEntry,
                 // Not the Apartment icon: "Attendance" below already reads as that.
                 { kind: 'item', label: 'Departments', icon: <AccountTreeRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('departments'), active: onAdminSection('departments') } as NavEntry,
+                { kind: 'item', label: 'Users', icon: <PeopleRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('users'), active: onAdminSection('users') } as NavEntry,
             ] : []),
             // Leave & Time is the HR Administrator's. The System Administrator configures the
             // workspace and neither files nor decides leave, so the section is not theirs —
@@ -244,10 +245,10 @@ const Sidebar = observer(function Sidebar() {
             ...(isSystemAdminUser ? [
                 { kind: 'section', label: 'Configuration' } as NavEntry,
                 { kind: 'section', label: 'Project Setting', sub: true } as NavEntry,
-                { kind: 'item', label: 'Projects', icon: <FolderRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('projects'), active: onAdminSection('projects'), indent: true } as NavEntry,
                 { kind: 'item', label: 'Activities', icon: <CategoryRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('project-activities'), active: onAdminSection('project-activities'), indent: true } as NavEntry,
                 { kind: 'item', label: 'Components', icon: <ExtensionRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('components'), active: onAdminSection('components'), indent: true } as NavEntry,
                 { kind: 'item', label: 'Project Types', icon: <StyleRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('project-types'), active: onAdminSection('project-types'), indent: true } as NavEntry,
+                { kind: 'item', label: 'Projects', icon: <FolderRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('projects'), active: onAdminSection('projects'), indent: true } as NavEntry,
                 { kind: 'section', label: 'Leave Setting', sub: true } as NavEntry,
                 { kind: 'item', label: 'Leave Types', icon: <LabelRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('leave-types'), active: onAdminSection('leave-types', 'leave'), indent: true } as NavEntry,
                 { kind: 'section', label: 'System' } as NavEntry,
@@ -256,6 +257,8 @@ const Sidebar = observer(function Sidebar() {
                 { kind: 'item', label: 'Organization', icon: <EventRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('organization'), active: onAdminSection('organization') } as NavEntry,
                 { kind: 'item', label: 'Notification Settings', icon: <NotificationsActiveRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('reminders-notifications'), active: onAdminSection('reminders-notifications') } as NavEntry,
                 { kind: 'item', label: 'Data Maintenance', icon: <StorageRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('maintenance'), active: onAdminSection('maintenance') } as NavEntry,
+                // The faults the system hit — what the System Administrator's bell points at.
+                { kind: 'item', label: 'System Log', icon: <BugReportRoundedIcon sx={{ fontSize: 18 }} />, onClick: () => uiStore.navigateToAdminSection('system-log'), active: onAdminSection('system-log') } as NavEntry,
             ] : []),
         ]
     } else if (isManagerUser) {

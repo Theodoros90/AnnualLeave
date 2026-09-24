@@ -30,7 +30,7 @@ import { useOfferedLeaveTypes } from '../../lib/hooks'
 import { buildLeaveBalanceRows, type LeaveBalanceRow } from '../../lib/leave-balance-rows'
 import { useStore } from '../../lib/mobx'
 import { iconForLeaveType } from './leave-icons'
-import { ActivityTypesPanel, AdminUsersPanel, AppSettingsPanel, ComponentsPanel, DataMaintenancePanel, DepartmentsPanel, LeaveTypesPanel, OrgSettingsPanel, ProjectsPanel, ProjectTypesPanel } from '..'
+import { ActivityTypesPanel, AdminUsersPanel, AppSettingsPanel, ComponentsPanel, DataMaintenancePanel, DepartmentsPanel, LeaveTypesPanel, OrgSettingsPanel, ProjectsPanel, ProjectTypesPanel, SystemLogPanel } from '..'
 import type {
     AdminUser, AnnualLeave, AnnualLeaveStatus, AttendanceIssue, Department, DepartmentAttendance, EmployeeProfile, LeaveType,
     RecentActivity, TeamAttendance, TeamHistory, TeamMemberAttendance, Timesheet, TimesheetStatus, UserInfo,
@@ -134,6 +134,7 @@ const DashboardHome = observer(function DashboardHome() {
     if (isSystemAdmin && adminSection === 'organization') return <AppSettingsPanel />
     if (isSystemAdmin && adminSection === 'reminders-notifications') return <OrgSettingsPanel />
     if (isSystemAdmin && adminSection === 'maintenance') return <DataMaintenancePanel />
+    if (isSystemAdmin && adminSection === 'system-log') return <SystemLogPanel />
 
     // An HR Administrator has the reach without the configuration, and a dashboard
     // to match: the decisions waiting on them, who is away, and balances to watch —

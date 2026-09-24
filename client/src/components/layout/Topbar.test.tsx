@@ -1,0 +1,134 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { LeaveStatusHistory, SystemError, UserInfo } from '../../lib/types'
+import Topbar from './Topbar'
+
+/**
+ * Three bells. A Manager's lists what they can decide, an Employee's lists what
+ * happened to their own leave and timesheets, and a System Administrator's lists the
+ * errors the system hit. The last used to fall into the employee branch and show
+ * everyone's "Leave approved" and "Timesheet rejected" — news about decisions the
+ * role neither files nor makes — while the one thing the role is emailed about, a
+ * system error, never reached the bell at all.
+ */
+vi.mock('../../lib/api')
+vi.mock('../../lib/mobx')
+vi.mock('./AttendanceWidget', () => ({ default: () => null }))
+
+const api = vi.mocked(await import('../../lib/api'))
+const mobx = vi.mocked(await import('../../lib/mobx'))
+
+const SYSTEM_ADMIN: UserInfo = {
+    id: 'u-sys',
+    userName: 'systemadmin@worktrack.com',
+    email: 'systemadmin@worktrack.com',
+    displayName: 'Sam System',
+    imageUrl: '',
+    departmentId: null,
+    roles: ['System Administrator'],
+}
+
+const EMPLOYEE: UserInfo = {
+    ...SYSTEM_ADMIN,
+    id: 'u-emp',
+    userName: 'maria@worktrack.com',
+    email: 'maria@worktrack.com',
+    displayName: 'Maria Georgiou',
+    departmentId: 2,
+    departmentName: 'Finance',
+    roles: ['Employee'],
+}
+
+const recent = new Date(Date.now() - 60 * 60 * 1000).toISOString().replace('Z', '')
+
+const ERRORS: SystemError[] = [
+    { id: 7, source: 'GET /api/timesheets', exceptionType: 'System.InvalidCastException', message: 'Specified cast is not valid.', correlationId: 'abc123', occurredAtUtc: recent, lastOccurredAtUtc: recent, occurrences: 3 },
+    { id: 8, source: "reminder 'daily-attendance-report'", exceptionType: 'System.IO.IOException', message: 'smtp down', correlationId: null, occurredAtUtc: recent, lastOccurredAtUtc: recent, occurrences: 1 },
+]
+
+const HISTORY: LeaveStatusHistory[] = [
+    { id: 'h1', annualLeaveId: 'l1', employeeId: 'u-emp', employeeName: 'Maria Georgiou', changedByUserId: 'u-mgr', changedByUserName: 'Mia Manager', leaveTypeName: 'Annual Leave', oldStatus: 'Pending', newStatus: 'Approved', comment: null, changedAt: recent },
+]
+
+const navigateToAdminSection = vi.fn()
+
+function renderTopbarAs(user: UserInfo) {
+    mobx.useStore.mockReturnValue({
+        authStore: { user, isAuthenticated: true },
+        uiStore: { themePreference: 'light', setThemePreference: vi.fn(), navigateToAdminSection, navigateToMyLeave: vi.fn(), navigateToTimesheets: vi.fn(), navigateToTeamLeave: vi.fn(), navigateToTeamTimesheets: vi.fn() },
+    } as never)
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+        <MemoryRouter initialEntries={['/dashboard']}>
+            <QueryClientProvider client={queryClient}>
+                <Topbar />
+            </QueryClientProvider>
+        </MemoryRouter>,
+    )
+}
+
+beforeEach(() => {
+    vi.clearAllMocks()
+    window.localStorage.clear()
+    api.getSystemErrors.mockResolvedValue(ERRORS)
+    api.getLeaveStatusHistories.mockResolvedValue(HISTORY)
+    api.getTimesheetStatusHistories.mockResolvedValue([])
+    api.getAnnualLeaves.mockResolvedValue([])
+    api.getTimesheets.mockResolvedValue([])
+})
+
+describe("The System Administrator's bell", () => {
+    it('lists the system errors and not the leave status feed', async () => {
+        renderTopbarAs(SYSTEM_ADMIN)
+
+        await waitFor(() => expect(api.getSystemErrors).toHaveBeenCalled())
+        // The two unread, recent errors are the badge.
+        await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument())
+
+        fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+        expect(await screen.findByText('System error in GET /api/timesheets (×3)')).toBeInTheDocument()
+        expect(screen.getByText(/InvalidCastException/)).toBeInTheDocument()
+        expect(screen.getByText("System error in reminder 'daily-attendance-report'")).toBeInTheDocument()
+
+        expect(screen.queryByText(/Leave approved/)).not.toBeInTheDocument()
+        // And the status feeds were never even fetched for this role.
+        expect(api.getLeaveStatusHistories).not.toHaveBeenCalled()
+        expect(api.getTimesheetStatusHistories).not.toHaveBeenCalled()
+    })
+
+    it('opens the System Log at the row when an error is clicked, and marks it read', async () => {
+        renderTopbarAs(SYSTEM_ADMIN)
+        fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+        fireEvent.click(await screen.findByText('System error in GET /api/timesheets (×3)'))
+
+        expect(navigateToAdminSection).toHaveBeenCalledWith('system-log')
+        expect(window.location.hash).toBe('#system-error-7')
+        // One read, one still unread.
+        await waitFor(() => expect(screen.getByText('1')).toBeInTheDocument())
+    })
+
+    it('shows an empty state naming what would appear, not "No notifications yet"', async () => {
+        api.getSystemErrors.mockResolvedValue([])
+        renderTopbarAs(SYSTEM_ADMIN)
+        fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+
+        expect(await screen.findByText('No system errors')).toBeInTheDocument()
+        expect(screen.queryByText('No notifications yet')).not.toBeInTheDocument()
+    })
+})
+
+describe("An employee's bell", () => {
+    it('still lists their own status changes and never fetches system errors', async () => {
+        renderTopbarAs(EMPLOYEE)
+
+        await waitFor(() => expect(api.getLeaveStatusHistories).toHaveBeenCalled())
+        fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+        expect(await screen.findByText('Leave approved')).toBeInTheDocument()
+
+        expect(api.getSystemErrors).not.toHaveBeenCalled()
+        expect(screen.queryByText(/System error/)).not.toBeInTheDocument()
+    })
+})
