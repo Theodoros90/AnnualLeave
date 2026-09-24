@@ -55,7 +55,7 @@ public class DeleteAnnualLeave
             {
                 // Employees can only cancel their own pending leaves
                 canDelete = annualLeave.EmployeeId == request.RequestingUserId
-                    && annualLeave.Status == AnnualLeaveStatus.Pending;
+                    && ApprovalStageRule.IsOpen(annualLeave.Status);
             }
 
             if (!canDelete)

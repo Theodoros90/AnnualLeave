@@ -71,7 +71,7 @@ public class CreateAnnualLeaveRequestValidator : AbstractValidator<CreateAnnualL
 
                     return !await context.AnnualLeaves.AnyAsync(al =>
                         al.EmployeeId == annualLeave.EmployeeId
-                        && (al.Status == AnnualLeaveStatus.Pending || al.Status == AnnualLeaveStatus.Approved)
+                        && (al.Status == AnnualLeaveStatus.Pending || al.Status == AnnualLeaveStatus.AwaitingHrApproval || al.Status == AnnualLeaveStatus.Approved)
                         && al.StartDate.Date <= end
                         && al.EndDate.Date >= start,
                         cancellationToken);

@@ -91,7 +91,7 @@ public class ReminderDispatcher(
     private async Task PendingApprovalsAsync(AppSettings settings, CancellationToken ct)
     {
         var pendingLeave = await context.AnnualLeaves
-            .Where(l => l.Status == AnnualLeaveStatus.Pending)
+            .Where(l => l.Status == AnnualLeaveStatus.Pending || l.Status == AnnualLeaveStatus.AwaitingHrApproval)
             .Select(l => l.DepartmentId)
             .ToListAsync(ct);
 

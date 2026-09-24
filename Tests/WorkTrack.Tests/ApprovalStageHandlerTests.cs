@@ -381,4 +381,40 @@ public class ApprovalStageHandlerTests
         Assert.Equal(15m, await BalanceAsync(db));
         Assert.Contains(email.Sent, m => m.Recipient == "del@t.local");
     }
+
+    // ── Still open ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task The_employee_can_cancel_a_request_that_is_with_hr()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.AwaitingHrApproval);
+
+        var result = await new DeleteAnnualLeave.Handler(db).Handle(new DeleteAnnualLeave.Command
+        {
+            Id = "L1", RequestingUserId = Employee, IsAdmin = false, IsManager = false,
+        }, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Empty(db.AnnualLeaves);
+    }
+
+    [Fact]
+    public async Task A_request_with_hr_blocks_an_overlapping_one()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.AwaitingHrApproval);
+
+        var validator = new Application.AnnualLeaves.Validators.CreateAnnualLeaveRequestValidator(db);
+        var outcome = await validator.ValidateAsync(new CreateAnnualLeave.Command
+        {
+            AnnualLeave = new CreateAnnualLeaveRequest
+            {
+                EmployeeId = Employee, LeaveTypeId = ManagerOnlyType, StartDate = Start.AddDays(2), EndDate = End.AddDays(2),
+                Reason = "Overlaps", DelegateId = Delegate,
+            },
+        });
+
+        Assert.Contains(outcome.Errors, e => e.ErrorMessage.Contains("overlaps"));
+    }
 }
