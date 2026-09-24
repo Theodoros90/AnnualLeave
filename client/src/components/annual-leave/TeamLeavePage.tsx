@@ -23,7 +23,9 @@ import TableRow from '@mui/material/TableRow'
 import Tabs from '@mui/material/Tabs'
 import Typography from '@mui/material/Typography'
 import { getAnnualLeaves, getLeaveStatusHistories, getLeaveTypes, updateLeaveStatus } from '../../lib/api'
-import { approveButtonLabel, approveOutcome, canDecide, isOpenStatus, statusChipLabel } from '../../lib/approval-stage'
+import {
+    approveButtonLabel, approveOutcome, canApproveInDialog, canDecide, canRejectInDialog, isOpenStatus, statusChipLabel,
+} from '../../lib/approval-stage'
 import { isAwaitingDocument } from '../../lib/attachment-policy'
 import { isAdministrator, isHrAdministrator } from '../../lib/roles'
 import { resolveFileUrl } from '../../lib/api/file-url'
@@ -679,7 +681,7 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                     >
                         Close
                     </Button>
-                    {viewLeave && isOpenStatus(viewLeave.status) && canDecide(viewLeave, viewer) && (
+                    {viewLeave && canApproveInDialog(viewLeave, viewer) && (
                         <Button
                             size="small"
                             variant="contained"
@@ -701,7 +703,7 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                             ))}
                         </Button>
                     )}
-                    {viewLeave && viewLeave.status !== 'Cancelled' && viewLeave.status !== 'Rejected' && (viewLeave.status !== 'AwaitingHrApproval' || viewer.isHrAdministrator) && (
+                    {viewLeave && canRejectInDialog(viewLeave, viewer) && (
                         <Button
                             size="small"
                             variant="contained"

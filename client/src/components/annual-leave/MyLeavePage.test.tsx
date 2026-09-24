@@ -454,6 +454,14 @@ describe('MyLeavePage pending requests', () => {
         await screen.findByRole('button', { name: 'View details' })
         expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
     })
+
+    it('offers Cancel but no Edit on a request that is with HR', async () => {
+        api.getAnnualLeaves.mockResolvedValue([aRequest({ status: 'AwaitingHrApproval' })])
+        await renderPage()
+
+        await screen.findByRole('button', { name: 'Cancel' })
+        expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
+    })
 })
 
 /**

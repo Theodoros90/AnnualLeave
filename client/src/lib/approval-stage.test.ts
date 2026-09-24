@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-    approvalRule, approveButtonLabel, approveOutcome, autoApproves, canDecide, isOpenStatus, statusChipLabel,
+    approvalRule, approveButtonLabel, approveOutcome, autoApproves, canApproveInDialog, canDecide, canRejectInDialog,
+    isOpenStatus, statusChipLabel,
 } from './approval-stage'
 
 /**
@@ -52,9 +53,51 @@ describe('approveOutcome', () => {
         expect(approveOutcome({ status: 'Pending' }, managerOnly, MANAGER)).toBe('approved')
         expect(approveOutcome({ status: 'Pending' }, undefined, MANAGER)).toBe('approved')
     })
+    it('sends a reopened Rejected request to HR the same way a Pending one would', () => {
+        expect(approveOutcome({ status: 'Rejected' }, both, MANAGER)).toBe('awaiting-hr')
+        expect(approveOutcome({ status: 'Rejected' }, both, HR)).toBe('approved')
+    })
     it('labels the button accordingly', () => {
         expect(approveButtonLabel('awaiting-hr')).toBe('Approve & send to HR')
         expect(approveButtonLabel('approved')).toBe('Approve')
+    })
+})
+
+describe('canApproveInDialog', () => {
+    it('offers Approve on a rejected request being reopened, either role', () => {
+        expect(canApproveInDialog({ status: 'Rejected' }, MANAGER)).toBe(true)
+        expect(canApproveInDialog({ status: 'Rejected' }, HR)).toBe(true)
+    })
+    it('offers Approve on a Pending request, either role', () => {
+        expect(canApproveInDialog({ status: 'Pending' }, MANAGER)).toBe(true)
+        expect(canApproveInDialog({ status: 'Pending' }, HR)).toBe(true)
+    })
+    it('offers Approve on a request with HR only to HR', () => {
+        expect(canApproveInDialog({ status: 'AwaitingHrApproval' }, MANAGER)).toBe(false)
+        expect(canApproveInDialog({ status: 'AwaitingHrApproval' }, HR)).toBe(true)
+    })
+    it('offers no Approve on an already-approved or cancelled request', () => {
+        expect(canApproveInDialog({ status: 'Approved' }, HR)).toBe(false)
+        expect(canApproveInDialog({ status: 'Cancelled' }, HR)).toBe(false)
+    })
+})
+
+describe('canRejectInDialog', () => {
+    it('offers Reject on an approval being taken back, either role', () => {
+        expect(canRejectInDialog({ status: 'Approved' }, MANAGER)).toBe(true)
+        expect(canRejectInDialog({ status: 'Approved' }, HR)).toBe(true)
+    })
+    it('offers Reject on a Pending request, either role', () => {
+        expect(canRejectInDialog({ status: 'Pending' }, MANAGER)).toBe(true)
+        expect(canRejectInDialog({ status: 'Pending' }, HR)).toBe(true)
+    })
+    it('offers Reject on a request with HR only to HR', () => {
+        expect(canRejectInDialog({ status: 'AwaitingHrApproval' }, MANAGER)).toBe(false)
+        expect(canRejectInDialog({ status: 'AwaitingHrApproval' }, HR)).toBe(true)
+    })
+    it('offers no Reject on an already-rejected or cancelled request', () => {
+        expect(canRejectInDialog({ status: 'Rejected' }, HR)).toBe(false)
+        expect(canRejectInDialog({ status: 'Cancelled' }, HR)).toBe(false)
     })
 })
 

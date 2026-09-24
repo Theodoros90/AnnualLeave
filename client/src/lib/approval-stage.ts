@@ -35,18 +35,36 @@ export function canDecide(leave: Pick<AnnualLeave, 'status'>, viewer: ApprovalVi
     return false
 }
 
-/** Where this viewer's Approve lands the request. */
+/**
+ * Where this viewer's Approve lands the request. Any status but `AwaitingHrApproval`
+ * itself can be the start of this — Pending ordinarily, but also a Rejected or
+ * Cancelled row being reopened from the view dialog — matching the server's
+ * `ApprovalStageRule.Resolve`, which applies the same HR check regardless of which
+ * status the request is coming from.
+ */
 export function approveOutcome(
     leave: Pick<AnnualLeave, 'status'>,
     type: ApprovalFlags | undefined,
     viewer: ApprovalViewer,
 ): ApproveOutcome {
-    if (leave.status === 'Pending' && !!type?.requiresHrApproval && !viewer.isHrAdministrator) return 'awaiting-hr'
+    if (leave.status !== 'AwaitingHrApproval' && !!type?.requiresHrApproval && !viewer.isHrAdministrator) return 'awaiting-hr'
     return 'approved'
 }
 
 export function approveButtonLabel(outcome: ApproveOutcome): string {
     return outcome === 'awaiting-hr' ? 'Approve & send to HR' : 'Approve'
+}
+
+/** The view dialog's Approve: an open row this viewer may decide, or a rejected one being reopened — never a row already approved or cancelled. */
+export function canApproveInDialog(leave: Pick<AnnualLeave, 'status'>, viewer: ApprovalViewer): boolean {
+    if (leave.status === 'Rejected') return true
+    return canDecide(leave, viewer)
+}
+
+/** The view dialog's Reject: an open row this viewer may decide, or an approval being taken back — never a row already rejected or cancelled. */
+export function canRejectInDialog(leave: Pick<AnnualLeave, 'status'>, viewer: ApprovalViewer): boolean {
+    if (leave.status === 'Approved') return true
+    return canDecide(leave, viewer)
 }
 
 /** Filing is approval: neither switch is on. Undefined (type not loaded) reads as not. */

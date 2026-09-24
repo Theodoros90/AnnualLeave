@@ -263,7 +263,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
         const monthStart = new Date(calYear, calMonth, 1)
         const monthEnd = new Date(calYear, calMonth + 1, 0)
         for (const l of leaves) {
-            if (l.status !== 'Pending' && l.status !== 'Approved') continue
+            if (!isOpenStatus(l.status) && l.status !== 'Approved') continue
             const start = new Date(l.startDate); start.setHours(0, 0, 0, 0)
             const end = new Date(l.endDate); end.setHours(23, 59, 59, 999)
             if (end < monthStart || start > monthEnd) continue

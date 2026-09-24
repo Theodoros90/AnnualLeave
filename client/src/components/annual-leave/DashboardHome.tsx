@@ -21,7 +21,7 @@ import {
     getMyTimesheets, getProjectActivityTypes, getProjectComponents, getProjects, getProjectTypes,
     getTeamAttendance, getTeamAttendanceHistory, getTimesheets, rejectTimesheet, updateLeaveStatus,
 } from '../../lib/api'
-import { canDecide, isOpenStatus, type ApprovalViewer } from '../../lib/approval-stage'
+import { approveButtonLabel, approveOutcome, canDecide, isOpenStatus, type ApprovalViewer } from '../../lib/approval-stage'
 import { currentYearEntitlement } from '../../lib/leave-allowance'
 import { isAwaitingDocument } from '../../lib/attachment-policy'
 import { isAdministrator, isSystemAdministrator } from '../../lib/roles'
@@ -199,7 +199,7 @@ function EmployeeDashboard({ user }: { user: UserInfo }) {
     , [myApprovedThisYear, leaveTypeById])
 
     const balanceRemaining = Math.max(0, entitlement - balanceUsed)
-    const myPendingLeaves = leaves.filter((l) => l.employeeId === user.id && l.status === 'Pending')
+    const myPendingLeaves = leaves.filter((l) => l.employeeId === user.id && isOpenStatus(l.status))
     const myRejectedTs = timesheets.filter((t) => t.status === 'Rejected')
 
     // Current week timesheet
@@ -234,7 +234,7 @@ function EmployeeDashboard({ user }: { user: UserInfo }) {
     // Next upcoming leave (pending or approved, start >= today)
     const nextLeave: AnnualLeave | null = useMemo(() => {
         return [...leaves]
-            .filter((l) => l.employeeId === user.id && (l.status === 'Pending' || l.status === 'Approved') && new Date(l.startDate) >= today)
+            .filter((l) => l.employeeId === user.id && (isOpenStatus(l.status) || l.status === 'Approved') && new Date(l.startDate) >= today)
             .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())[0] ?? null
     }, [leaves, user.id, today])
 
@@ -1301,6 +1301,8 @@ interface QueueItem {
     blocked?: string
     /** False when the row is with HR and this viewer is not HR — shown, but with no buttons. */
     decidable: boolean
+    /** "Approve" or "Approve & send to HR", following `approveOutcome`. Always "Approve" for a timesheet. */
+    approveLabel: string
 }
 
 /**
@@ -1333,7 +1335,7 @@ function buildConflictMap(pendingLeaves: AnnualLeave[], leaves: AnnualLeave[]) {
 function buildApprovalQueue(
     pendingLeaves: AnnualLeave[],
     pendingTs: Timesheet[],
-    leaveTypeById: Map<number, { name: string; attachmentPolicy: LeaveType['attachmentPolicy'] }>,
+    leaveTypeById: Map<number, { name: string; attachmentPolicy: LeaveType['attachmentPolicy']; requiresManagerApproval: boolean; requiresHrApproval?: boolean }>,
     conflictMap: Map<string, string[]>,
     now: number,
     viewer: ApprovalViewer,
@@ -1363,6 +1365,7 @@ function buildApprovalQueue(
             urgent: daysNotice >= 0 && daysNotice < 1,
             blocked: awaitingDocument ? 'Document needed before approval' : undefined,
             decidable,
+            approveLabel: approveButtonLabel(approveOutcome(l, lt, viewer)),
         })
     }
     for (const t of pendingTs) {
@@ -1386,6 +1389,7 @@ function buildApprovalQueue(
             createdAt: t.submittedAt ?? t.createdAt,
             urgent: isLate,
             decidable: true,
+            approveLabel: 'Approve',
         })
     }
     items.sort((a, b) => {
@@ -1720,7 +1724,7 @@ function NextLeaveCard({ leave, typeName, today }: {
 }) {
     const start = new Date(leave.startDate); start.setHours(0, 0, 0, 0)
     const until = daysBetween(today, start)
-    const isPending = leave.status === 'Pending'
+    const isPending = isOpenStatus(leave.status)
     const countdown = until === 0 ? 'Today' : until === 1 ? 'Tomorrow' : `In ${until} days`
     const sameDay = leave.startDate.slice(0, 10) === leave.endDate.slice(0, 10)
 
@@ -1966,7 +1970,7 @@ function ApprovalQueueRow({ item, isLast, onApprove, onReject, disabled }: {
                                 '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
                             }}
                         >
-                            Approve
+                            {item.approveLabel}
                         </Box>
                         <Box
                             component="button"
@@ -2340,7 +2344,7 @@ function DepartmentHealthCard({ departments, leaves, timesheets, onLive }: {
     const pendingByDept = useMemo(() => {
         const m = new Map<string, number>()
         for (const l of leaves) {
-            if (l.status === 'Pending') {
+            if (isOpenStatus(l.status)) {
                 m.set(l.departmentName, (m.get(l.departmentName) ?? 0) + 1)
             }
         }
