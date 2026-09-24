@@ -107,8 +107,13 @@ public class TimesheetReviewRuleTests
         Assert.Equal(TimesheetStatus.Approved, (await db.Timesheets.FindAsync("ts"))!.Status);
     }
 
+    /// <summary>
+    /// A manager's own sheet is approved on submission now, so this is a legacy row:
+    /// one submitted before the rule, still sitting Submitted. HR is the only person
+    /// who can close it, and may.
+    /// </summary>
     [Fact]
-    public async Task Hr_reviews_the_only_managers_own_timesheet()
+    public async Task Hr_reviews_the_only_managers_own_legacy_submitted_timesheet()
     {
         using var db = await WorldAsync();
         db.Timesheets.Add(Sheet("ts-mgr", ManagerProfile));
@@ -188,8 +193,13 @@ public class TimesheetReviewRuleTests
         Assert.DoesNotContain(email.Sent, m => m.Recipient == "hr@t.local");
     }
 
+    /// <summary>
+    /// The department's only manager has nobody to review their hours — not
+    /// themselves, and HR's review is for a manager who is away — so their sheet
+    /// is approved on submission, with the history saying so, and nobody is told.
+    /// </summary>
     [Fact]
-    public async Task The_only_managers_own_submission_tells_hr_and_says_why()
+    public async Task The_only_managers_own_submission_is_approved_on_submission()
     {
         using var db = await WorldAsync();
         db.Timesheets.Add(Sheet("ts-mgr", ManagerProfile, TimesheetStatus.Draft));
@@ -198,8 +208,76 @@ public class TimesheetReviewRuleTests
 
         await SubmitAsync(db, email, "ts-mgr", Manager);
 
+        var stored = await db.Timesheets.AsNoTracking().FirstAsync(t => t.Id == "ts-mgr");
+        Assert.Equal(TimesheetStatus.Approved, stored.Status);
+        Assert.Equal(Manager, stored.ApproverId);
+        Assert.NotNull(stored.SubmittedAt);
+        Assert.NotNull(stored.ApprovedAt);
+        var history = await db.TimesheetStatusHistories.AsNoTracking().SingleAsync(h => h.TimesheetId == "ts-mgr");
+        Assert.Equal((int)TimesheetStatus.Submitted, history.FromStatus);
+        Assert.Equal((int)TimesheetStatus.Approved, history.ToStatus);
+        Assert.Equal(TimesheetReviewRule.SelfCertifiedComment, history.Comment);
+        Assert.Empty(email.Sent);
+    }
+
+    /// <summary>A manager with a colleague manager is reviewed like anyone else.</summary>
+    [Fact]
+    public async Task A_manager_with_a_colleague_manager_is_reviewed_not_self_certified()
+    {
+        using var db = await WorldAsync();
+        db.Users.Add(new User { Id = "u-mgr2", UserName = "u-mgr2", Email = "mgr2@t.local", DisplayName = "Eleni Manager", IsActive = true });
+        db.UserRoles.Add(new UserRole { UserId = "u-mgr2", RoleId = "r-mgr" });
+        db.EmployeeProfiles.Add(new EmployeeProfile { Id = "p-mgr2", UserId = "u-mgr2", DepartmentId = Dept });
+        db.Timesheets.Add(Sheet("ts-mgr", ManagerProfile, TimesheetStatus.Draft));
+        await db.SaveChangesAsync();
+        var email = new FakeEmailService();
+
+        await SubmitAsync(db, email, "ts-mgr", Manager);
+
+        Assert.Equal(TimesheetStatus.Submitted, (await db.Timesheets.AsNoTracking().FirstAsync(t => t.Id == "ts-mgr")).Status);
+        Assert.Contains(email.Sent, m => m.Recipient == "mgr2@t.local");
+        Assert.DoesNotContain(email.Sent, m => m.Recipient == "hr@t.local");
+    }
+
+    /// <summary>
+    /// An employee's sheet in a department with no manager is not self-certified —
+    /// only a manager certifies their own hours — so HR is told, as the only reviewer.
+    /// </summary>
+    [Fact]
+    public async Task An_employees_submission_with_no_manager_tells_hr_and_says_why()
+    {
+        using var db = await WorldAsync();
+        (await db.EmployeeProfiles.FirstAsync(p => p.Id == ManagerProfile)).DepartmentId = 99;
+        db.Timesheets.Add(Sheet("ts", EmployeeProfile, TimesheetStatus.Draft));
+        await db.SaveChangesAsync();
+        var email = new FakeEmailService();
+
+        await SubmitAsync(db, email, "ts", Employee);
+
+        Assert.Equal(TimesheetStatus.Submitted, (await db.Timesheets.AsNoTracking().FirstAsync(t => t.Id == "ts")).Status);
         var toHr = Assert.Single(email.Sent, m => m.Recipient == "hr@t.local");
         Assert.Contains("no manager in the department", toHr.HtmlBody);
+    }
+
+    [Fact]
+    public async Task A_submission_while_the_only_manager_is_on_leave_tells_hr()
+    {
+        using var db = await WorldAsync();
+        db.Timesheets.Add(Sheet("ts", EmployeeProfile, TimesheetStatus.Draft));
+        await db.SaveChangesAsync();
+        db.AnnualLeaves.Add(new AnnualLeave
+        {
+            Id = "L-mgr", EmployeeId = Manager, EmployeeProfileId = ManagerProfile, DepartmentId = Dept, LeaveTypeId = 1,
+            StartDate = DateTime.UtcNow.Date.AddDays(-1), EndDate = DateTime.UtcNow.Date.AddDays(2), Reason = "Away",
+            Status = AnnualLeaveStatus.Approved, CreatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+        var email = new FakeEmailService();
+
+        await SubmitAsync(db, email, "ts", Employee);
+
+        var toHr = Assert.Single(email.Sent, m => m.Recipient == "hr@t.local");
+        Assert.Contains("Theodoros Iona on leave", toHr.HtmlBody);
         Assert.DoesNotContain(email.Sent, m => m.Recipient == "mgr@t.local");
     }
 }

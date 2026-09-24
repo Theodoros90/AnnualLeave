@@ -1,5 +1,6 @@
 using Application.AnnualLeaves.Commands;
 using Application.Core;
+using Application.Timesheets.Support;
 using Domain;
 using Domain.Interfaces;
 using MediatR;
@@ -76,8 +77,32 @@ public class SubmitTimesheet
             }
 
             var isResubmission = timesheet.Status == TimesheetStatus.Rejected;
-            timesheet.Status = isResubmission ? TimesheetStatus.Resubmitted : TimesheetStatus.Submitted;
+            var submittedStatus = isResubmission ? TimesheetStatus.Resubmitted : TimesheetStatus.Submitted;
+            timesheet.Status = submittedStatus;
             timesheet.SubmittedAt = DateTime.UtcNow;
+
+            // The department's only manager has nobody to review their hours — not
+            // themselves, and not HR, whose review is for a manager who is away — so
+            // their sheet is self-certified: approved on submission, with the history
+            // saying so (TimesheetReviewRule.SelfCertifiesAsync).
+            var selfCertified = timesheet.Employee is not null
+                && await TimesheetReviewRule.SelfCertifiesAsync(context, timesheet.Employee, cancellationToken);
+            if (selfCertified)
+            {
+                timesheet.Status = TimesheetStatus.Approved;
+                timesheet.ApprovedAt = DateTime.UtcNow;
+                timesheet.ApproverId = timesheet.Employee!.UserId;
+                context.TimesheetStatusHistories.Add(new TimesheetStatusHistory
+                {
+                    TimesheetId = timesheet.Id,
+                    ChangedByUserId = timesheet.Employee.UserId,
+                    FromStatus = (int)submittedStatus,
+                    ToStatus = (int)TimesheetStatus.Approved,
+                    Comment = TimesheetReviewRule.SelfCertifiedComment,
+                    ChangedAt = DateTime.UtcNow,
+                });
+            }
+
             try
             {
                 await context.SaveChangesAsync(cancellationToken);
@@ -85,6 +110,12 @@ public class SubmitTimesheet
             catch (DbUpdateConcurrencyException)
             {
                 return Result<Unit>.Failure(ConcurrencyError.Message);
+            }
+
+            if (selfCertified)
+            {
+                logger.LogInformation("Timesheet {Id}: approved on submission — the submitter is the department's only manager", timesheet.Id);
+                return Result<Unit>.Success(Unit.Value);
             }
 
             await NotifyManagerAsync(timesheet, isResubmission, cancellationToken);

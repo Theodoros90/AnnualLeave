@@ -1,5 +1,7 @@
 using Application.AnnualLeaves.Commands;
+using Application.Core;
 using Domain;
+using Microsoft.EntityFrameworkCore;
 using Persistence;
 
 namespace Application.Timesheets.Support;
@@ -8,12 +10,22 @@ namespace Application.Timesheets.Support;
 /// Who reviews a submitted timesheet — the same shape as leave's manager stage
 /// (<see cref="ApprovalStageRule"/>). A submitted timesheet is the manager's to
 /// approve or reject. An HR Administrator reviews it only when no manager is
-/// available to: the submitter is the department's only manager (nobody approves
-/// their own hours), the department has no manager, or every manager who could
-/// review it is on approved leave today. "Available" is
-/// <see cref="ManagerAvailability"/>'s reading — the same set of managers that is
-/// emailed about the submission, minus the submitter, minus anyone away today —
-/// so the rule, the notification and the list agree.
+/// available to — every manager who could review it is on approved leave today,
+/// or the department has none. "Available" is <see cref="ManagerAvailability"/>'s
+/// reading — the same set of managers that is emailed about the submission, minus
+/// the submitter, minus anyone away today — so the rule, the notification and the
+/// list agree.
+///
+/// <para>
+/// A manager's own timesheet is the one case with nobody to hand it to: nobody
+/// approves their own hours, and when they are the department's only manager
+/// there is no other manager to ask. Rather than put a manager's hours in front
+/// of HR, such a sheet is <em>self-certified</em>: <c>SubmitTimesheet</c> files it
+/// straight into Approved (<see cref="SelfCertifiesAsync"/>, with a history row
+/// saying so), and nobody is emailed. HR still reviews an <em>employee's</em>
+/// sheet in a department with no manager — that is a configuration gap the
+/// workspace overview flags, and the sheet must not wait on nobody.
+/// </para>
 ///
 /// Unlike leave there is no status for "with HR": the sheet stays Submitted, and
 /// the question is asked when HR tries to decide it (<c>UpdateTimesheetStatus</c>)
@@ -28,6 +40,9 @@ public static class TimesheetReviewRule
 {
     public const string WithManagerMessage =
         "This timesheet is awaiting the manager's review; an HR Administrator reviews a timesheet only when no manager is available to.";
+
+    public const string SelfCertifiedComment =
+        "Approved on submission: the only manager in the department, with nobody else to review it.";
 
     /// <summary>Whether a manager other than the submitter is available today to review this submitter's timesheet.</summary>
     public static async Task<bool> ManagerAvailableAsync(
@@ -57,6 +72,29 @@ public static class TimesheetReviewRule
             result[submitter.Id] = await ManagerAvailableAsync(context, submitter, nowUtc, cancellationToken);
         }
         return result;
+    }
+
+    /// <summary>
+    /// Whether this submitter's sheet is approved on submission: they hold the
+    /// Manager role and no other manager could review it (the recipient set —
+    /// direct manager plus the department's managers, minus themselves — is
+    /// empty). A manager with a colleague manager, or one whose colleague is
+    /// merely on leave today, is not self-certified; that sheet is reviewed.
+    /// </summary>
+    public static async Task<bool> SelfCertifiesAsync(
+        AppDbContext context,
+        EmployeeProfile submitter,
+        CancellationToken cancellationToken)
+    {
+        var isManager = await (
+            from ur in context.UserRoles
+            join r in context.Roles on ur.RoleId equals r.Id
+            where ur.UserId == submitter.UserId && r.Name == AppRoles.Manager
+            select ur).AnyAsync(cancellationToken);
+        if (!isManager) return false;
+
+        var reviewers = await ManagerNotificationRecipients.ResolveAsync(context, submitter, cancellationToken);
+        return reviewers.Count == 0;
     }
 
     /// <summary>Submitted or resubmitted: the states a reviewer decides.</summary>
