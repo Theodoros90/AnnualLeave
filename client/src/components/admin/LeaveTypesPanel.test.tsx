@@ -737,6 +737,54 @@ it('saves a policy that differs by birth order', async () => {
     })))
 })
 
+it('offers the two approval switches, named for who approves', async () => {
+    await renderPanel()
+    fireEvent.click(screen.getByTitle('Edit'))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('switch', { name: 'Requires approval from Manager' })).toBeChecked()
+    expect(within(dialog).getByRole('switch', { name: 'Requires approval from HR' })).not.toBeChecked()
+})
+
+it('sends both approval flags when saving', async () => {
+    await renderPanel()
+    fireEvent.click(screen.getByTitle('Edit'))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('switch', { name: 'Requires approval from HR' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledWith(PATERNITY.id, expect.objectContaining({
+        requiresManagerApproval: true,
+        requiresHrApproval: true,
+    })))
+})
+
+it('sends the HR flag back unchanged when toggling a type off from the card', async () => {
+    api.getLeaveTypes.mockResolvedValue([leaveType({ name: 'Sabbatical', id: 9, perChildEntitlement: false, requiresHrApproval: true })])
+    await renderPanel()
+    // No dialog is open, so the card's own switch is the only one on screen.
+    fireEvent.click(screen.getAllByRole('switch')[0])
+
+    await waitFor(() => expect(api.updateLeaveType).toHaveBeenCalledWith(9, expect.objectContaining({
+        isActive: false,
+        requiresManagerApproval: true,
+        requiresHrApproval: true,
+    })))
+})
+
+it('describes the approval rule on the card', async () => {
+    api.getLeaveTypes.mockResolvedValue([
+        leaveType({ id: 1, name: 'Personal Days', perChildEntitlement: false, requiresManagerApproval: true, requiresHrApproval: true }),
+        leaveType({ id: 2, name: 'Sabbatical', perChildEntitlement: false, requiresManagerApproval: false, requiresHrApproval: true }),
+        leaveType({ id: 3, name: 'Volunteering', perChildEntitlement: false, requiresManagerApproval: false, requiresHrApproval: false }),
+    ])
+    await renderPanel()
+
+    expect(screen.getByText(/manager, then HR/)).toBeInTheDocument()
+    expect(screen.getByText(/Requires HR approval/)).toBeInTheDocument()
+    expect(screen.getByText(/Auto-approved/)).toBeInTheDocument()
+})
+
 /*
  * Same trap as the 18/5/15 case above: the card's switch is a full replace, so
  * the two later columns have to travel back exactly as stored -- null included.

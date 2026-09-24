@@ -33,6 +33,7 @@ import {
     type UpsertLeaveTypeRequest,
 } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
+import { approvalRule } from '../../lib/approval-stage'
 import { describeAllowance, resolvePerChildTotals } from '../../lib/leave-allowance'
 import { fixedAvailability, resolveAvailability } from '../../lib/parental-leave'
 import { softBg } from '../../lib/theme-tokens'
@@ -635,10 +636,7 @@ function LeaveTypeCard({ derived, onEdit, onToggle, onDelete }: {
                     ok={t.paid}
                     label={t.paid ? <><strong>Paid leave</strong> · counts against balance</> : <><strong>Unpaid</strong> · no balance deduction, no pay</>}
                 />
-                <Rule
-                    ok={t.requiresManagerApproval}
-                    label={t.requiresManagerApproval ? <strong>Requires manager approval</strong> : <>Auto-approved (no manager review)</>}
-                />
+                <ApprovalRuleLine type={t} />
                 <AttachmentRule policy={t.attachmentPolicy} />
                 <Rule
                     ok={true}
@@ -728,6 +726,20 @@ function AttachmentRule({ policy }: { policy: AttachmentPolicy }) {
         )
     }
     return <Rule ok={false} label={<>No attachment needed</>} />
+}
+
+/** The one-line reading of the two approval switches — see lib/approval-stage.ts. */
+function ApprovalRuleLine({ type }: { type: LeaveType }) {
+    switch (approvalRule(type)) {
+        case 'manager-then-hr':
+            return <Rule ok label={<>Requires <strong>manager, then HR</strong> approval</>} />
+        case 'hr':
+            return <Rule ok label={<strong>Requires HR approval</strong>} />
+        case 'manager':
+            return <Rule ok label={<strong>Requires manager approval</strong>} />
+        default:
+            return <Rule ok={false} label={<>Auto-approved (no review)</>} />
+    }
 }
 
 function Rule({ ok, label, glyph, glyphColor }: {
@@ -922,10 +934,8 @@ function LeaveTypeFormDialog(props: {
     const [icon, setIcon] = useState(i?.icon ?? '🏷️')
     const [colorKey, setColorKey] = useState<string>(i?.colorKey ?? 'default')
     const [description, setDescription] = useState(i?.description ?? '')
-    const [requiresManagerApproval, setRequiresApproval] = useState(i?.requiresManagerApproval ?? true)
-    // The switch that calls this setter is Task 10's; until then the value only
-    // rides along in `submit` below, unchanged from what the type already has.
-    const [requiresHrApproval, _setRequiresHrApproval] = useState(!!i?.requiresHrApproval)
+    const [requiresManagerApproval, setRequiresManagerApproval] = useState(i?.requiresManagerApproval ?? true)
+    const [requiresHrApproval, setRequiresHrApproval] = useState(!!i?.requiresHrApproval)
     const [isActive, setIsActive] = useState(i?.isActive ?? true)
     const [affectsBalance, setAffectsBalance] = useState(i?.affectsBalance ?? false)
     const [paid, setPaid] = useState(i?.paid ?? true)
@@ -1273,9 +1283,18 @@ function LeaveTypeFormDialog(props: {
                             control={<Switch checked={paid} onChange={(e) => setPaid(e.target.checked)} />}
                             label="Paid leave"
                         />
+                        {/* Two stages, mirrored from ApprovalStageRule: Manager on files
+                            the request Pending for the department's manager (or HR standing
+                            in); HR on needs an HR Administrator's sign-off — after the
+                            manager's when both are on, straight away when Manager is off.
+                            Neither: approved on filing. */}
                         <FormControlLabel
-                            control={<Switch checked={requiresManagerApproval} onChange={(e) => setRequiresApproval(e.target.checked)} />}
-                            label="Requires approval"
+                            control={<Switch checked={requiresManagerApproval} onChange={(e) => setRequiresManagerApproval(e.target.checked)} />}
+                            label="Requires approval from Manager"
+                        />
+                        <FormControlLabel
+                            control={<Switch checked={requiresHrApproval} onChange={(e) => setRequiresHrApproval(e.target.checked)} />}
+                            label="Requires approval from HR"
                         />
                         <Box>
                             <FormControlLabel
