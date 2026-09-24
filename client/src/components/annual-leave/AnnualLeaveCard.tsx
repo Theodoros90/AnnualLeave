@@ -29,12 +29,13 @@ import { useDeleteAnnualLeave, useLeaveTypes, useUpdateLeaveStatus } from '../..
 import type { AnnualLeave, AnnualLeaveStatus, UserInfo } from '../../lib/types'
 import AnnualLeaveForm from './AnnualLeaveForm'
 
-function statusColor(status: AnnualLeaveStatus): 'warning' | 'success' | 'error' | 'default' {
+function statusColor(status: AnnualLeaveStatus): 'warning' | 'success' | 'error' | 'default' | 'info' {
     switch (status) {
         case 'Pending': return 'warning'
         case 'Approved': return 'success'
         case 'Rejected': return 'error'
         case 'Cancelled': return 'default'
+        case 'AwaitingHrApproval': return 'info'
     }
 }
 

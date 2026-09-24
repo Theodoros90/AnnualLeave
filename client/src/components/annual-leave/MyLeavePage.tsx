@@ -1065,6 +1065,7 @@ function StatusBadge({ status }: { status: AnnualLeaveStatus }) {
         Approved:  { bg: softBg('success'), color: 'success.dark', label: 'Approved' },
         Rejected:  { bg: softBg('error'), color: 'error.dark', label: 'Rejected' },
         Cancelled: { bg: 'divider', color: 'text.secondary', label: 'Cancelled' },
+        AwaitingHrApproval: { bg: softBg('info'), color: 'info.dark', label: 'Awaiting HR approval' },
     }
     const c = config[status]
     return (

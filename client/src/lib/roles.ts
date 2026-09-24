@@ -39,3 +39,8 @@ export function isAdministrator(roles: readonly string[] | null | undefined): bo
 export function isSystemAdministrator(roles: readonly string[] | null | undefined): boolean {
     return !!roles && roles.some((role) => (SYSTEM_ADMINISTRATOR_ROLES as readonly string[]).includes(role))
 }
+
+/** Whether any of `roles` is the HR Administrator — the role that gives the final approval on a leave type that asks for HR. */
+export function isHrAdministrator(roles: readonly string[] | null | undefined): boolean {
+    return !!roles && roles.includes('HR Administrator')
+}

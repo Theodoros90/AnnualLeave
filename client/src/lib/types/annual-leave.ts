@@ -5,6 +5,8 @@ export type AnnualLeaveStatus =
     | 'Approved'
     | 'Rejected'
     | 'Cancelled'
+    /** Past the manager's approval, waiting on an HR Administrator's. Open like Pending, locked for editing like Approved. */
+    | 'AwaitingHrApproval'
 
 export interface AnnualLeaveBase {
     startDate: string

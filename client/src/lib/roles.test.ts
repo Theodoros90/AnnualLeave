@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ADMINISTRATOR_ROLES, SYSTEM_ADMINISTRATOR_ROLES, isAdministrator, isAdministratorRole, isSystemAdministrator } from './roles'
+import { ADMINISTRATOR_ROLES, SYSTEM_ADMINISTRATOR_ROLES, isAdministrator, isAdministratorRole, isHrAdministrator, isSystemAdministrator } from './roles'
 
 /**
  * Mirror of `AppRoles.Administrators`: HR Administrator is a copy of System
@@ -60,5 +60,14 @@ describe('isSystemAdministrator', () => {
 
     it('lists System Administrator alone', () => {
         expect([...SYSTEM_ADMINISTRATOR_ROLES]).toEqual(['System Administrator'])
+    })
+})
+
+describe('isHrAdministrator', () => {
+    it('recognises the HR Administrator role alone', () => {
+        expect(isHrAdministrator(['HR Administrator'])).toBe(true)
+        expect(isHrAdministrator(['System Administrator'])).toBe(false)
+        expect(isHrAdministrator(['Manager'])).toBe(false)
+        expect(isHrAdministrator(null)).toBe(false)
     })
 })
