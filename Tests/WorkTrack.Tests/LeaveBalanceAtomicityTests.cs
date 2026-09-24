@@ -169,7 +169,8 @@ public class LeaveBalanceAtomicityTests
         var interceptor = FailBalanceWrite();
         await using var db = await TransactionalTestDb.CreateAsync(interceptor);
         await SeedWorldAsync(db, requiresApproval: true);
-        await SeedLeaveAsync(db, AnnualLeaveStatus.Pending);
+        // With HR: the HR Administrator approving below does not decide the manager's stage.
+        await SeedLeaveAsync(db, AnnualLeaveStatus.AwaitingHrApproval);
         interceptor.Arm();
 
         var handler = new UpdateLeaveStatus.Handler(db, new FakeEmailService());
@@ -186,7 +187,7 @@ public class LeaveBalanceAtomicityTests
 
         db.ChangeTracker.Clear();
         var leave = await db.AnnualLeaves.AsNoTracking().SingleAsync();
-        Assert.Equal(AnnualLeaveStatus.Pending, leave.Status);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, leave.Status);
         Assert.Null(leave.ApprovedById);
         Assert.Null(leave.ApprovedAt);
         // The audit row rides the same save as the status change, so it has to go
@@ -268,7 +269,8 @@ public class LeaveBalanceAtomicityTests
     {
         await using var db = await TransactionalTestDb.CreateAsync();
         await SeedWorldAsync(db, requiresApproval: true);
-        await SeedLeaveAsync(db, AnnualLeaveStatus.Pending);
+        // With HR: the HR Administrator approving below does not decide the manager's stage.
+        await SeedLeaveAsync(db, AnnualLeaveStatus.AwaitingHrApproval);
 
         // A deliberately stale stored balance. The sync recomputes only the current
         // leave year, and the seeded leave is in a past one, so it recomputes to the

@@ -119,6 +119,10 @@ public class PerChildLeaveHandlerTests
         // nothing pending counts as used. The second approval is where it breaks.
         var first = PerChildLeaveWorld.Request(child.Id, new DateTime(2026, 1, 5), new DateTime(2026, 2, 6));
         var second = PerChildLeaveWorld.Request(child.Id, new DateTime(2026, 3, 2), new DateTime(2026, 4, 3));
+        // With HR, not Pending: the HR Administrator below does not decide the
+        // manager's stage (ApprovalStageRule.WithManagerMessage).
+        first.Status = AnnualLeaveStatus.AwaitingHrApproval;
+        second.Status = AnnualLeaveStatus.AwaitingHrApproval;
         db.AnnualLeaves.AddRange(first, second);
         db.Users.Add(new User { Id = "admin-1", UserName = "admin@example.com", Email = "admin@example.com", DisplayName = "HR Administrator" });
         // IsAdmin on UpdateLeaveStatus is now the HR Administrator acting on
@@ -245,6 +249,7 @@ public class PerChildLeaveHandlerTests
         await PerChildLeaveWorld.AddChildAsync(db, "Andreas", new DateOnly(2019, 3, 4));
 
         var legacy = PerChildLeaveWorld.Request(childId: null, new DateTime(2026, 6, 1), new DateTime(2026, 6, 5));
+        legacy.Status = AnnualLeaveStatus.AwaitingHrApproval; // HR's stage, so the HR Administrator may decide it
         db.AnnualLeaves.Add(legacy);
         db.Users.Add(new User { Id = "admin-1", UserName = "admin@example.com", Email = "admin@example.com", DisplayName = "HR Administrator" });
         // IsAdmin on UpdateLeaveStatus is now the HR Administrator acting on
@@ -274,6 +279,7 @@ public class PerChildLeaveHandlerTests
         var agedOut = await PerChildLeaveWorld.AddChildAsync(db, "Petros", new DateOnly(2005, 1, 20));
 
         var leave = PerChildLeaveWorld.Request(agedOut.Id, new DateTime(2026, 6, 1), new DateTime(2026, 6, 5));
+        leave.Status = AnnualLeaveStatus.AwaitingHrApproval; // HR's stage, so the HR Administrator may decide it
         db.AnnualLeaves.Add(leave);
         db.Users.Add(new User { Id = "admin-1", UserName = "admin@example.com", Email = "admin@example.com", DisplayName = "HR Administrator" });
         // IsAdmin on UpdateLeaveStatus is now the HR Administrator acting on

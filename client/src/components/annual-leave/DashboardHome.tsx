@@ -21,7 +21,7 @@ import {
     getMyTimesheets, getProjectActivityTypes, getProjectComponents, getProjects, getProjectTypes,
     getTeamAttendance, getTeamAttendanceHistory, getTimesheets, rejectTimesheet, updateLeaveStatus,
 } from '../../lib/api'
-import { approveButtonLabel, approveOutcome, canDecide, isOpenStatus, type ApprovalViewer } from '../../lib/approval-stage'
+import { approveButtonLabel, approveOutcome, canDecide, isOpenStatus, isWithManager, type ApprovalViewer } from '../../lib/approval-stage'
 import { currentYearEntitlement } from '../../lib/leave-allowance'
 import { isAwaitingDocument } from '../../lib/attachment-policy'
 import { isAdministrator, isSystemAdministrator } from '../../lib/roles'
@@ -907,11 +907,15 @@ function HrDashboard({ user }: { user: UserInfo }) {
     const leaveTypeById = useMemo(() => new Map(leaveTypes.map((lt) => [lt.id, lt])), [leaveTypes])
     const myProfileId = useMemo(() => profiles.find((p) => p.userId === user.id)?.id, [profiles, user.id])
 
-    // Everybody's, except the HR Administrator's own — nobody approves their own request.
+    // Everybody's, except the HR Administrator's own — nobody approves their own
+    // request — and except what is the manager's to decide: a Pending row on a type
+    // asking for the manager reaches this queue once the manager has passed it on
+    // (isWithManager, mirroring ApprovalStageRule).
     const pendingLeaves = useMemo(
-        () => leaves.filter((l) => isOpenStatus(l.status) && l.employeeId !== user.id)
+        () => leaves.filter((l) => isOpenStatus(l.status) && l.employeeId !== user.id
+                && !isWithManager(l, l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined, HR_VIEWER))
             .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
-        [leaves, user.id],
+        [leaves, leaveTypeById, user.id],
     )
     const pendingTs = useMemo(
         () => timesheets.filter((t) => (t.status === 'Submitted' || t.status === 'Resubmitted') && t.employeeId !== myProfileId)
@@ -920,7 +924,7 @@ function HrDashboard({ user }: { user: UserInfo }) {
     )
     const conflictMap = useMemo(() => buildConflictMap(pendingLeaves, leaves), [pendingLeaves, leaves])
     const queue = useMemo(
-        () => buildApprovalQueue(pendingLeaves, pendingTs, leaveTypeById, conflictMap, now, { isHrAdministrator: true }),
+        () => buildApprovalQueue(pendingLeaves, pendingTs, leaveTypeById, conflictMap, now, HR_VIEWER),
         [pendingLeaves, pendingTs, leaveTypeById, conflictMap, now],
     )
     const awaitingDocument = queue.filter((q) => q.blocked).length
@@ -1289,6 +1293,9 @@ interface AttentionItem {
 }
 
 interface QueueTag { label: string; tone: 'urgent' | 'warning' | 'info' | 'conflict' }
+/** The HR dashboard's viewer, hoisted so the memoised queue does not see a fresh object every render. */
+const HR_VIEWER: ApprovalViewer = { isHrAdministrator: true }
+
 interface QueueItem {
     kind: 'leave' | 'timesheet'
     id: string
@@ -1354,7 +1361,7 @@ function buildApprovalQueue(
         else if (l.evidenceUrl) tags.push({ label: '📎 Document attached', tone: 'info' })
         const conflicts = conflictMap.get(l.id)
         if (conflicts && conflicts.length > 0) tags.push({ label: `⚠ Overlaps with ${conflicts[0]}`, tone: 'conflict' })
-        const decidable = canDecide(l, viewer)
+        const decidable = canDecide(l, viewer, lt)
         if (!decidable) tags.push({ label: 'With HR', tone: 'info' })
         items.push({
             kind: 'leave',

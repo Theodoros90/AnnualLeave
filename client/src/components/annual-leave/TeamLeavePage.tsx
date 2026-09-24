@@ -365,9 +365,9 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                             <TableBody>
                                 {filtered.map((leave) => {
                                     const isOpen = isOpenStatus(leave.status)
-                                    const decidable = canDecide(leave, viewer)
-                                    const isWorking = actionTarget === leave.id
                                     const leaveType = leave.leaveTypeId != null ? leaveTypeById.get(leave.leaveTypeId) : undefined
+                                    const decidable = canDecide(leave, viewer, leaveType)
+                                    const isWorking = actionTarget === leave.id
                                     const leaveTypeName = leaveType?.name ?? 'Annual Leave'
                                     const approveLabel = approveButtonLabel(approveOutcome(leave, leaveType, viewer))
                                     /* Mirrors AttachmentPolicyRule, which refuses the
@@ -681,7 +681,7 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                     >
                         Close
                     </Button>
-                    {viewLeave && canApproveInDialog(viewLeave, viewer) && (
+                    {viewLeave && canApproveInDialog(viewLeave, viewer, viewLeave.leaveTypeId != null ? leaveTypeById.get(viewLeave.leaveTypeId) : undefined) && (
                         <Button
                             size="small"
                             variant="contained"
@@ -703,7 +703,7 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                             ))}
                         </Button>
                     )}
-                    {viewLeave && canRejectInDialog(viewLeave, viewer) && (
+                    {viewLeave && canRejectInDialog(viewLeave, viewer, viewLeave.leaveTypeId != null ? leaveTypeById.get(viewLeave.leaveTypeId) : undefined) && (
                         <Button
                             size="small"
                             variant="contained"

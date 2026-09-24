@@ -9,9 +9,11 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 
 /**
- * Reusable "reject with a required reason" dialog, shared by the annual-leave and
+ * Reusable "decline with a required reason" dialog, shared by the annual-leave and
  * timesheet admin pages. The caller owns the reason/error state and the
- * approve/reject mutation; this component is purely presentational.
+ * approve/reject mutation; this component is purely presentational. It reads as a
+ * rejection unless the caller relabels it — the HR Administrator's Cancel on an
+ * approved leave uses the same dialog with its own wording.
  */
 export default function RejectReasonDialog({
     open,
@@ -23,6 +25,9 @@ export default function RejectReasonDialog({
     onReasonChange,
     onClose,
     onConfirm,
+    confirmLabel = 'Confirm Reject',
+    busyLabel = 'Rejecting…',
+    placeholder = 'Reason for rejection (required)',
 }: {
     open: boolean
     title: string
@@ -33,6 +38,9 @@ export default function RejectReasonDialog({
     onReasonChange: (value: string) => void
     onClose: () => void
     onConfirm: () => void
+    confirmLabel?: string
+    busyLabel?: string
+    placeholder?: string
 }) {
     return (
         <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
@@ -54,7 +62,7 @@ export default function RejectReasonDialog({
                             minRows={3}
                             maxRows={6}
                             fullWidth
-                            placeholder="Reason for rejection (required)"
+                            placeholder={placeholder}
                             value={reason}
                             onChange={(e) => onReasonChange(e.target.value)}
                             error={!!error}
@@ -81,7 +89,7 @@ export default function RejectReasonDialog({
                     onClick={onConfirm}
                     sx={{ textTransform: 'none', bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' }, boxShadow: 'none' }}
                 >
-                    {isPending ? 'Rejecting…' : 'Confirm Reject'}
+                    {isPending ? busyLabel : confirmLabel}
                 </Button>
             </DialogActions>
         </Dialog>

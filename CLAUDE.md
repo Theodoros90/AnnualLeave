@@ -437,11 +437,11 @@ offers an Approve the API refuses. Keep the two in step, the same way
 | Manager | HR | Filed as | Who finishes it |
 |---|---|---|---|
 | off | off | `Approved` | nobody — filing is approval |
-| on | off | `Pending` | a Manager in the department, or an HR Administrator covering it |
+| on | off | `Pending` | a Manager in the department — HR sees it once approved, to cancel it before it starts |
 | off | on | `AwaitingHrApproval` | an HR Administrator |
-| on | on | `Pending` | a Manager's Approve moves it to `AwaitingHrApproval`; an HR Administrator's finishes it |
+| on | on | `Pending` | a Manager's Approve moves it to `AwaitingHrApproval`; an HR Administrator's finishes it from there |
 
-Seven things about it that are deliberate:
+Eight things about it that are deliberate:
 
 - **The client always asks for `Approved`; the server decides the stage.** A
   client-supplied `AwaitingHrApproval` is refused (`StageIsDerivedMessage`) —
@@ -457,14 +457,46 @@ Seven things about it that are deliberate:
   dialog layers `canApproveInDialog` / `canRejectInDialog` on top of the ordinary
   `canDecide` for the same reason — a Rejected request may be re-approved and an
   Approved one rejected there, not just a Pending one decided.
-- **An HR Administrator stands in for the manager.** Their Approve from `Pending`
-  finishes a request in one step even when the type asks for HR: they are the HR
-  sign-off. A Manager cannot approve, reject or cancel a request that is with HR
-  (`AwaitingHrMessage`); they had their say at stage one. "The caller is an HR
-  Administrator" is `IsAdmin` on `UpdateLeaveStatus`, and `actsAsAdmin` (HR
+- **Each stage belongs to its own role; HR does not stand in for the manager.**
+  A Manager cannot approve, reject or cancel a request that is with HR
+  (`AwaitingHrMessage`); they had their say at stage one. An HR Administrator
+  cannot approve, reject or cancel a `Pending` request on a type that asks for
+  the manager (`WithManagerMessage`, `ApprovalStageRule.IsWithManager`) — whether
+  or not HR comes after — and their pages leave such rows out altogether: the
+  HR dashboard's queue and Leave Management (`isWithManager` in
+  `approval-stage.ts`, applied to the list, the tabs and the stat card) show a
+  manager-stage request once the manager has decided it, approved or rejected.
+  `canDecide`, `canApproveInDialog` and `canRejectInDialog` therefore take the
+  leave type; a type not yet loaded reads as manager-only, matching the server's
+  reading of a deleted one. The one Pending row HR may still decide is on a type
+  whose manager switch is *off* — a legacy row, or one reconfigured after filing —
+  since nobody else can. It used to be the other way round (HR's Approve from
+  Pending finished a request in one step, as the HR sign-off), which put every
+  manager's queue in front of HR with Approve/Reject to hand. "The caller is an
+  HR Administrator" is `IsAdmin` on `UpdateLeaveStatus`, and `actsAsAdmin` (HR
   Administrator in scope) on `EditAnnualLeave` — both scoped by the same
   `ManagerAccessScopeResolver` test as a Manager, and that flag is what the rule
-  reads.
+  reads. Note the consequence for a `Pending` row nobody can reach — a
+  department whose only manager has since left, or an administrator's own
+  department-less request filed before this rule: it waits for a manager to be
+  assigned (new ones are routed at filing, next bullet but one). Tests that used
+  the HR Administrator as a convenient approver seed their rows in
+  `AwaitingHrApproval` now, or decide as the Manager.
+- **An approved leave can be cancelled only until it starts.**
+  `Application/AnnualLeaves/Commands/CancellationRule.cs` refuses `Approved` →
+  `Cancelled` once the start date is behind today's UTC date
+  (`AlreadyStartedMessage`), for whoever is cancelling — the days were taken, and
+  handing them back to the balance would misstate an absence that happened. It
+  measures only that transition: taking an approval back with Reject, or
+  cancelling a request never approved, is unchanged. Called from
+  `UpdateLeaveStatus` (which takes a nullable `NowUtc` test seam, like the
+  attendance queries) and the status path of `EditAnnualLeave` (against the dates
+  as edited). `canCancelApproved` in `approval-stage.ts` mirrors it, and is what
+  puts the **Cancel** button on an HR Administrator's approved rows on Leave
+  Management (a reason dialog, `updateLeaveStatus(id, 'Cancelled', reason)`; the
+  delegate is stood down and the employee emailed as before). A System
+  Administrator gets no such button — they neither file nor decide leave, and the
+  server refuses them anyway.
 - **Balance, per-child ledger, coverage announcement, `ApprovedAt`/`ApprovedById`
   move only into `Approved`.** `AwaitingHrApproval` charges nothing and tells the
   delegate nothing. The attachment policy runs on *both* steps out of `Pending`,
@@ -491,21 +523,24 @@ Seven things about it that are deliberate:
   by {manager} and is awaiting HR approval". A department with no HR
   Administrator assigned leaves an HR-stage request stuck, the same way a
   department with no manager leaves a `Pending` one.
-- **A manager on leave hands the manager stage to HR.** At filing,
-  `CreateAnnualLeave` asks `ManagerAvailability.CheckAsync` whether any of the
-  managers who would be emailed about the request (the same set
+- **A manager on leave, or no manager at all, hands the manager stage to HR.**
+  At filing, `CreateAnnualLeave` asks `ManagerAvailability.CheckAsync` whether
+  any of the managers who would be emailed about the request (the same set
   `ManagerNotificationRecipients` resolves) is *not* on an `Approved` leave
-  covering today. If the set is non-empty and every one of them is away,
-  `ApprovalStageRule.InitialStatus(leaveType, managerAvailable: false)` files
-  the request straight into `AwaitingHrApproval`: HR is emailed with a "Note:
-  Sent to HR for approval: {names} on leave." line, the absent manager gets no
-  new-request email, and a history row (Pending → AwaitingHrApproval, same
-  comment) tells the employee and the returning manager why it skipped them.
-  Three edges are deliberate: a department with no manager at all is *not*
-  rerouted (nobody is away; it waits Pending where HR can already decide it, as
-  before); the check runs at filing only, so a manager who goes on leave after
-  the request came in does not move it; and "today" is the UTC date the leave
-  rows themselves are stored on.
+  covering today. If every one of them is away — or the set is empty
+  (`Report.NoManager`) — `ApprovalStageRule.InitialStatus(leaveType,
+  managerAvailable: false)` files the request straight into `AwaitingHrApproval`:
+  HR is emailed with a "Note: Sent to HR for approval: {names} on leave." line
+  (or "…: no manager in the department to decide it."), the absent manager gets
+  no new-request email, and a history row (Pending → AwaitingHrApproval, same
+  comment) tells the employee and the returning manager why it skipped them. A
+  department-less request — an administrator's own — has no manager set either,
+  so it goes the same way. The empty set used to read as *available* and file
+  Pending, on the reasoning that HR could decide it there; HR no longer can
+  (previous bullet but one), so it would have waited on nobody. Two edges are
+  deliberate: the check runs at filing only, so a manager who goes on leave, or
+  leaves the department, after the request came in does not move it; and "today"
+  is the UTC date the leave rows themselves are stored on.
 - **Changing the switches sweeps what is in flight** (`UpdateLeaveType`): every
   switch off approves every open row, balance-checked; HR off approves the rows
   with HR, whose manager stage is done; Manager off while HR stays on moves

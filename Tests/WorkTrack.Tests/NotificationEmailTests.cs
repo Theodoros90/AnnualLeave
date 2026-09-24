@@ -229,7 +229,9 @@ public class NotificationEmailTests
             {
                 LeaveId = LeaveId,
                 ChangedByUserId = ManagerUserId,
-                IsAdmin = true,
+                // The manager's own decision on a Pending row: the manager's profile
+                // is in the leave's department, which is what scopes them to it.
+                IsManager = true,
                 Request = new UpdateLeaveStatusRequest
                 {
                     Status = AnnualLeaveStatus.Approved,

@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
-    approvalRule, approveButtonLabel, approveOutcome, autoApproves, canApproveInDialog, canDecide, canRejectInDialog,
-    isOpenStatus, statusChipLabel, statusPhrase,
+    approvalRule, approveButtonLabel, approveOutcome, autoApproves, canApproveInDialog, canCancelApproved, canDecide,
+    canRejectInDialog, isOpenStatus, isWithManager, statusChipLabel, statusPhrase,
 } from './approval-stage'
 
 /**
- * Mirror of `Application/AnnualLeaves/Commands/ApprovalStageRule.cs`. The server
- * decides the stage; this decides which buttons a page offers, so it must never
- * offer one the server refuses — and may under-offer when the type is not loaded.
+ * Mirror of `Application/AnnualLeaves/Commands/ApprovalStageRule.cs` and
+ * `CancellationRule.cs`. The server decides the stage; this decides which buttons a
+ * page offers, so it must never offer one the server refuses — and may under-offer
+ * when the type is not loaded.
  */
 const MANAGER = { isHrAdministrator: false }
 const HR = { isHrAdministrator: true }
@@ -26,18 +27,61 @@ describe('isOpenStatus', () => {
     })
 })
 
+describe('isWithManager', () => {
+    it("is a Pending request on a type asking for the manager, seen by HR", () => {
+        expect(isWithManager({ status: 'Pending' }, managerOnly, HR)).toBe(true)
+        expect(isWithManager({ status: 'Pending' }, both, HR)).toBe(true)
+    })
+    it('reads a type not yet loaded as manager-only, like the server reads a deleted one', () => {
+        expect(isWithManager({ status: 'Pending' }, undefined, HR)).toBe(true)
+    })
+    it('is never the case for a manager, a type with no manager stage, or a row past Pending', () => {
+        expect(isWithManager({ status: 'Pending' }, managerOnly, MANAGER)).toBe(false)
+        expect(isWithManager({ status: 'Pending' }, hrOnly, HR)).toBe(false)
+        expect(isWithManager({ status: 'AwaitingHrApproval' }, both, HR)).toBe(false)
+        expect(isWithManager({ status: 'Approved' }, managerOnly, HR)).toBe(false)
+    })
+})
+
 describe('canDecide', () => {
-    it('lets either role decide a Pending request', () => {
-        expect(canDecide({ status: 'Pending' }, MANAGER)).toBe(true)
-        expect(canDecide({ status: 'Pending' }, HR)).toBe(true)
+    it('lets a manager decide a Pending request', () => {
+        expect(canDecide({ status: 'Pending' }, MANAGER, managerOnly)).toBe(true)
+        expect(canDecide({ status: 'Pending' }, MANAGER, both)).toBe(true)
+        expect(canDecide({ status: 'Pending' }, MANAGER, undefined)).toBe(true)
+    })
+    it('keeps HR off a Pending request that is with the manager', () => {
+        expect(canDecide({ status: 'Pending' }, HR, managerOnly)).toBe(false)
+        expect(canDecide({ status: 'Pending' }, HR, both)).toBe(false)
+        expect(canDecide({ status: 'Pending' }, HR, undefined)).toBe(false)
+    })
+    it('lets HR decide a Pending request on a type with no manager stage', () => {
+        expect(canDecide({ status: 'Pending' }, HR, hrOnly)).toBe(true)
     })
     it('lets only HR decide a request that is with HR', () => {
-        expect(canDecide({ status: 'AwaitingHrApproval' }, MANAGER)).toBe(false)
-        expect(canDecide({ status: 'AwaitingHrApproval' }, HR)).toBe(true)
+        expect(canDecide({ status: 'AwaitingHrApproval' }, MANAGER, both)).toBe(false)
+        expect(canDecide({ status: 'AwaitingHrApproval' }, HR, both)).toBe(true)
     })
     it('offers nothing on a decided request', () => {
-        expect(canDecide({ status: 'Approved' }, HR)).toBe(false)
-        expect(canDecide({ status: 'Rejected' }, HR)).toBe(false)
+        expect(canDecide({ status: 'Approved' }, HR, both)).toBe(false)
+        expect(canDecide({ status: 'Rejected' }, HR, both)).toBe(false)
+    })
+})
+
+describe('canCancelApproved', () => {
+    const today = new Date(2026, 8, 24) // 24 September 2026, local
+    it('offers Cancel on an approved request starting today or later', () => {
+        expect(canCancelApproved({ status: 'Approved', startDate: '2026-09-24T00:00:00' }, today)).toBe(true)
+        expect(canCancelApproved({ status: 'Approved', startDate: '2026-10-01T00:00:00' }, today)).toBe(true)
+    })
+    it('offers none once the leave has started', () => {
+        expect(canCancelApproved({ status: 'Approved', startDate: '2026-09-23T00:00:00' }, today)).toBe(false)
+    })
+    it('offers none on a request that is not approved', () => {
+        expect(canCancelApproved({ status: 'Pending', startDate: '2026-10-01T00:00:00' }, today)).toBe(false)
+        expect(canCancelApproved({ status: 'Cancelled', startDate: '2026-10-01T00:00:00' }, today)).toBe(false)
+    })
+    it('ignores the time of day on either side', () => {
+        expect(canCancelApproved({ status: 'Approved', startDate: '2026-09-24T09:30:00' }, new Date(2026, 8, 24, 17, 45))).toBe(true)
     })
 })
 
@@ -45,8 +89,7 @@ describe('approveOutcome', () => {
     it("sends a manager's approve to HR when the type asks for HR", () => {
         expect(approveOutcome({ status: 'Pending' }, both, MANAGER)).toBe('awaiting-hr')
     })
-    it('finishes for HR from either open state', () => {
-        expect(approveOutcome({ status: 'Pending' }, both, HR)).toBe('approved')
+    it('finishes for HR from the HR stage', () => {
         expect(approveOutcome({ status: 'AwaitingHrApproval' }, both, HR)).toBe('approved')
     })
     it('finishes for a manager on a manager-only type, or when the type is not loaded', () => {
@@ -65,39 +108,39 @@ describe('approveOutcome', () => {
 
 describe('canApproveInDialog', () => {
     it('offers Approve on a rejected request being reopened, either role', () => {
-        expect(canApproveInDialog({ status: 'Rejected' }, MANAGER)).toBe(true)
-        expect(canApproveInDialog({ status: 'Rejected' }, HR)).toBe(true)
+        expect(canApproveInDialog({ status: 'Rejected' }, MANAGER, both)).toBe(true)
+        expect(canApproveInDialog({ status: 'Rejected' }, HR, both)).toBe(true)
     })
-    it('offers Approve on a Pending request, either role', () => {
-        expect(canApproveInDialog({ status: 'Pending' }, MANAGER)).toBe(true)
-        expect(canApproveInDialog({ status: 'Pending' }, HR)).toBe(true)
+    it('offers Approve on a Pending request to the manager, not to HR', () => {
+        expect(canApproveInDialog({ status: 'Pending' }, MANAGER, both)).toBe(true)
+        expect(canApproveInDialog({ status: 'Pending' }, HR, both)).toBe(false)
     })
     it('offers Approve on a request with HR only to HR', () => {
-        expect(canApproveInDialog({ status: 'AwaitingHrApproval' }, MANAGER)).toBe(false)
-        expect(canApproveInDialog({ status: 'AwaitingHrApproval' }, HR)).toBe(true)
+        expect(canApproveInDialog({ status: 'AwaitingHrApproval' }, MANAGER, both)).toBe(false)
+        expect(canApproveInDialog({ status: 'AwaitingHrApproval' }, HR, both)).toBe(true)
     })
     it('offers no Approve on an already-approved or cancelled request', () => {
-        expect(canApproveInDialog({ status: 'Approved' }, HR)).toBe(false)
-        expect(canApproveInDialog({ status: 'Cancelled' }, HR)).toBe(false)
+        expect(canApproveInDialog({ status: 'Approved' }, HR, both)).toBe(false)
+        expect(canApproveInDialog({ status: 'Cancelled' }, HR, both)).toBe(false)
     })
 })
 
 describe('canRejectInDialog', () => {
     it('offers Reject on an approval being taken back, either role', () => {
-        expect(canRejectInDialog({ status: 'Approved' }, MANAGER)).toBe(true)
-        expect(canRejectInDialog({ status: 'Approved' }, HR)).toBe(true)
+        expect(canRejectInDialog({ status: 'Approved' }, MANAGER, both)).toBe(true)
+        expect(canRejectInDialog({ status: 'Approved' }, HR, both)).toBe(true)
     })
-    it('offers Reject on a Pending request, either role', () => {
-        expect(canRejectInDialog({ status: 'Pending' }, MANAGER)).toBe(true)
-        expect(canRejectInDialog({ status: 'Pending' }, HR)).toBe(true)
+    it('offers Reject on a Pending request to the manager, not to HR', () => {
+        expect(canRejectInDialog({ status: 'Pending' }, MANAGER, both)).toBe(true)
+        expect(canRejectInDialog({ status: 'Pending' }, HR, both)).toBe(false)
     })
     it('offers Reject on a request with HR only to HR', () => {
-        expect(canRejectInDialog({ status: 'AwaitingHrApproval' }, MANAGER)).toBe(false)
-        expect(canRejectInDialog({ status: 'AwaitingHrApproval' }, HR)).toBe(true)
+        expect(canRejectInDialog({ status: 'AwaitingHrApproval' }, MANAGER, both)).toBe(false)
+        expect(canRejectInDialog({ status: 'AwaitingHrApproval' }, HR, both)).toBe(true)
     })
     it('offers no Reject on an already-rejected or cancelled request', () => {
-        expect(canRejectInDialog({ status: 'Rejected' }, HR)).toBe(false)
-        expect(canRejectInDialog({ status: 'Cancelled' }, HR)).toBe(false)
+        expect(canRejectInDialog({ status: 'Rejected' }, HR, both)).toBe(false)
+        expect(canRejectInDialog({ status: 'Cancelled' }, HR, both)).toBe(false)
     })
 })
 

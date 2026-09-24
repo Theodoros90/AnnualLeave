@@ -177,9 +177,16 @@ public class AttachmentPolicyEnforcementTests
                 },
             }, CancellationToken.None);
 
-    /// <summary>Writes an existing request directly, bypassing the create path.</summary>
+    /// <summary>
+    /// Writes an existing request directly, bypassing the create path. The default
+    /// status is the HR stage: the decisions below are made by the HR Administrator,
+    /// and a Pending row on a type that asks for the manager is the manager's, not
+    /// theirs (<see cref="ApprovalStageRule.WithManagerMessage"/>). Tests that edit
+    /// as the employee pass Pending explicitly, since an employee cannot edit a row
+    /// that is with HR.
+    /// </summary>
     private static async Task SeedLeaveAsync(
-        AppDbContext db, int leaveTypeId, string? evidenceUrl, AnnualLeaveStatus status = AnnualLeaveStatus.Pending)
+        AppDbContext db, int leaveTypeId, string? evidenceUrl, AnnualLeaveStatus status = AnnualLeaveStatus.AwaitingHrApproval)
     {
         db.AnnualLeaves.Add(new AnnualLeave
         {
@@ -248,7 +255,9 @@ public class AttachmentPolicyEnforcementTests
 
         Assert.True(result.IsSuccess);
         var leave = Assert.Single(await db.AnnualLeaves.ToListAsync());
-        Assert.Equal(AnnualLeaveStatus.Pending, leave.Status);
+        // Open, not approved. This world has no manager, so the request goes
+        // straight to HR rather than waiting Pending on nobody.
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, leave.Status);
         Assert.Null(leave.EvidenceUrl);
     }
 
@@ -313,7 +322,7 @@ public class AttachmentPolicyEnforcementTests
         Assert.False(result.IsSuccess);
         Assert.Equal(ApprovalRefusal, result.Error);
         var leave = await StoredLeaveAsync(db);
-        Assert.Equal(AnnualLeaveStatus.Pending, leave.Status);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, leave.Status);
         Assert.Null(leave.ApprovedAt);
     }
 
@@ -330,7 +339,7 @@ public class AttachmentPolicyEnforcementTests
         var result = await SetStatus(db, AnnualLeaveStatus.Approved);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(AnnualLeaveStatus.Pending, (await StoredLeaveAsync(db)).Status);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, (await StoredLeaveAsync(db)).Status);
     }
 
     [Fact]
@@ -368,7 +377,7 @@ public class AttachmentPolicyEnforcementTests
     public async Task An_employee_can_attach_the_document_to_their_pending_request()
     {
         await using var db = await WorldAsync();
-        await SeedLeaveAsync(db, RequiredTypeId, evidenceUrl: null);
+        await SeedLeaveAsync(db, RequiredTypeId, evidenceUrl: null, AnnualLeaveStatus.Pending);
 
         var result = await Edit(db, RequiredTypeId, EvidenceUrl);
 
@@ -400,7 +409,7 @@ public class AttachmentPolicyEnforcementTests
     public async Task An_edit_onto_a_type_that_requires_an_attachment_is_accepted_while_pending()
     {
         await using var db = await WorldAsync();
-        await SeedLeaveAsync(db, NoneTypeId, evidenceUrl: null);
+        await SeedLeaveAsync(db, NoneTypeId, evidenceUrl: null, AnnualLeaveStatus.Pending);
 
         var result = await Edit(db, RequiredTypeId, evidenceUrl: null);
 
@@ -420,7 +429,7 @@ public class AttachmentPolicyEnforcementTests
         Assert.False(result.IsSuccess);
         Assert.Equal(ApprovalRefusal, result.Error);
         var leave = await StoredLeaveAsync(db);
-        Assert.Equal(AnnualLeaveStatus.Pending, leave.Status);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, leave.Status);
         Assert.Equal("Out of office", leave.Reason);
     }
 

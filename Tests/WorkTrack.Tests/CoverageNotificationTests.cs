@@ -171,7 +171,13 @@ public class CoverageNotificationTests
 
     /* ── The other two ways a leave becomes approved ─────────────────────────── */
 
-    private static void SeedPendingLeave(AppDbContext db, string? delegateId, string reason = "Family trip to Greece")
+    /// <summary>
+    /// An open request. The tests that have the HR Administrator approve it seed it
+    /// in the HR stage: a Pending row on a type that asks for the manager is the
+    /// manager's to decide, not HR's (<see cref="ApprovalStageRule.WithManagerMessage"/>).
+    /// </summary>
+    private static void SeedPendingLeave(
+        AppDbContext db, string? delegateId, string reason = "Family trip to Greece", AnnualLeaveStatus status = AnnualLeaveStatus.Pending)
     {
         db.AnnualLeaves.Add(new AnnualLeave
         {
@@ -180,7 +186,7 @@ public class CoverageNotificationTests
             EmployeeProfileId = EmployeeProfileId,
             DepartmentId = DepartmentId,
             LeaveTypeId = LeaveTypeId,
-            Status = AnnualLeaveStatus.Pending,
+            Status = status,
             StartDate = LeaveStart,
             EndDate = LeaveEnd,
             Reason = reason,
@@ -192,7 +198,7 @@ public class CoverageNotificationTests
     public async Task A_manager_approving_a_request_announces_the_coverage()
     {
         await using var db = await SeedWorldAsync(requiresApproval: true);
-        SeedPendingLeave(db, DelegateUserId);
+        SeedPendingLeave(db, DelegateUserId, status: AnnualLeaveStatus.AwaitingHrApproval);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -221,7 +227,7 @@ public class CoverageNotificationTests
     public async Task An_admin_approving_through_the_edit_dialog_announces_the_coverage()
     {
         await using var db = await SeedWorldAsync(requiresApproval: true);
-        SeedPendingLeave(db, DelegateUserId);
+        SeedPendingLeave(db, DelegateUserId, status: AnnualLeaveStatus.AwaitingHrApproval);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -309,6 +315,8 @@ public class CoverageNotificationTests
                 ChangedByUserId = AdminUserId,
                 IsAdmin = true,
                 Request = new UpdateLeaveStatusRequest { Status = AnnualLeaveStatus.Cancelled },
+                // Before the leave starts: one that has begun can no longer be cancelled.
+                NowUtc = LeaveStart.AddDays(-7),
             },
             CancellationToken.None);
 

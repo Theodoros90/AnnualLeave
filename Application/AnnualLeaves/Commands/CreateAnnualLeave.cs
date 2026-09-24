@@ -128,8 +128,9 @@ public class CreateAnnualLeave
             /* Which stage the request opens in — Pending for the manager, straight to
                the HR stage on a type that asks for HR alone, or Approved when nobody
                has to look at it. ApprovalStageRule owns the table. One more input:
-               when every manager who could decide it is on leave today, the manager
-               stage goes to HR instead of waiting on somebody who is away. */
+               when nobody can take the manager stage — every manager who could
+               decide it is on leave today, or the department has none — it goes to
+               HR instead of waiting Pending on somebody absent or non-existent. */
             var managerAvailability = leaveType.RequiresManagerApproval
                 ? await ManagerAvailability.CheckAsync(context, employeeProfile, DateTime.UtcNow, cancellationToken)
                 : ManagerAvailability.Report.Available;

@@ -140,7 +140,7 @@ const Topbar = observer(function Topbar() {
     const employeeTsNotifications = employeeTsItems.map(e => e.item)
 
     const managerPendingRequests = (annualLeaves ?? [])
-        .filter((l) => canDecide(l, { isHrAdministrator: false }) && l.employeeId !== authStore.user?.id)
+        .filter((l) => canDecide(l, { isHrAdministrator: false }, undefined) && l.employeeId !== authStore.user?.id)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
     const managerPendingTimesheets = (timesheets ?? [])

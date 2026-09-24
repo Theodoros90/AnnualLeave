@@ -257,9 +257,18 @@ public class ParentalLeaveEligibilityTests
         await using var db = await WorldAsync(Gender.Male);
         await AddYoungChildAsync(db);
 
-        var created = await Create(db, AnnualTypeId);
-        Assert.True(created.IsSuccess);
-        var leaveId = await db.AnnualLeaves.Select(leave => leave.Id).SingleAsync();
+        // Seeded Pending rather than filed: this world has no manager, so filing
+        // would send the request straight to HR, where the employee can no longer
+        // edit it — and it is the employee's edit this test is about.
+        const string leaveId = "L1";
+        db.AnnualLeaves.Add(new AnnualLeave
+        {
+            Id = leaveId, EmployeeId = UserId, EmployeeProfileId = ProfileId, LeaveTypeId = AnnualTypeId,
+            StartDate = new DateTime(2026, 6, 1), EndDate = new DateTime(2026, 6, 5), Reason = "Annual leave",
+            Status = AnnualLeaveStatus.Pending, CreatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
 
         var result = await new EditAnnualLeave.Handler(db, new FakeEmailService()).Handle(new EditAnnualLeave.Command
         {

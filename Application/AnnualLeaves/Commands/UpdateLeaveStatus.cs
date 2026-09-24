@@ -17,6 +17,8 @@ public class UpdateLeaveStatus
         public string ChangedByUserId { get; set; } = string.Empty;
         public bool IsAdmin { get; set; }
         public bool IsManager { get; set; }
+        /// <summary>Test seam for <see cref="CancellationRule"/>; the controller leaves it null.</summary>
+        public DateTime? NowUtc { get; set; }
     }
 
     public class Handler(
@@ -65,13 +67,20 @@ public class UpdateLeaveStatus
 
             /* The client asks for Approved; the leave type's two switches and who is
                asking decide whether that means the HR stage or the end. A Manager on
-               a request that is already with HR is refused here, whatever they ask. */
+               a request that is already with HR is refused here, whatever they ask,
+               and so is an HR Administrator on a Pending request that is still the
+               manager's. */
             var stage = ApprovalStageRule.Resolve(leaveType, oldStatus, request.Request.Status, request.IsAdmin);
             if (stage.Error is not null)
                 return Result<Unit>.Failure(stage.Error);
             var newStatus = stage.Status!.Value;
 
             if (oldStatus == newStatus) return Result<Unit>.Success(Unit.Value);
+
+            // An approved leave is cancellable only until it starts.
+            var cancellationError = CancellationRule.Check(oldStatus, newStatus, annualLeave.StartDate, request.NowUtc ?? DateTime.UtcNow);
+            if (cancellationError is not null)
+                return Result<Unit>.Failure(cancellationError);
 
             annualLeave.Status = newStatus;
 

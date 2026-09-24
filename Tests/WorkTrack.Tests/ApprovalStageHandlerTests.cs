@@ -89,7 +89,7 @@ public class ApprovalStageHandlerTests
         return leave;
     }
 
-    private static Task<Result<Unit>> DecideAsync(AppDbContext db, FakeEmailService email, string leaveId, AnnualLeaveStatus status, bool asHr) =>
+    private static Task<Result<Unit>> DecideAsync(AppDbContext db, FakeEmailService email, string leaveId, AnnualLeaveStatus status, bool asHr, DateTime? nowUtc = null) =>
         new UpdateLeaveStatus.Handler(db, email).Handle(new UpdateLeaveStatus.Command
         {
             LeaveId = leaveId,
@@ -97,6 +97,7 @@ public class ApprovalStageHandlerTests
             IsAdmin = asHr,
             IsManager = !asHr,
             Request = new UpdateLeaveStatusRequest { Status = status },
+            NowUtc = nowUtc,
         }, CancellationToken.None);
 
     private static async Task<AnnualLeave> StoredAsync(AppDbContext db, string id = "L1") =>
@@ -181,21 +182,70 @@ public class ApprovalStageHandlerTests
         Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, history.NewStatus);
     }
 
-    [Fact]
-    public async Task Hr_approving_from_pending_finishes_the_request_in_one_step()
+    /// <summary>
+    /// The manager stage is the Manager's: HR is refused on a Pending request
+    /// whatever they ask, on a manager-only type and on one that comes to them
+    /// afterwards alike. Nothing is written and nobody is told.
+    /// </summary>
+    [Theory]
+    [InlineData(ManagerOnlyType, AnnualLeaveStatus.Approved)]
+    [InlineData(ManagerOnlyType, AnnualLeaveStatus.Rejected)]
+    [InlineData(BothType, AnnualLeaveStatus.Approved)]
+    [InlineData(BothType, AnnualLeaveStatus.Cancelled)]
+    public async Task Hr_is_refused_on_a_pending_request_that_is_with_the_manager(int leaveTypeId, AnnualLeaveStatus attempt)
     {
         using var db = await WorldAsync();
-        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.Pending);
+        await SeedLeaveAsync(db, leaveTypeId, AnnualLeaveStatus.Pending);
         var email = new FakeEmailService();
 
-        var result = await DecideAsync(db, email, "L1", AnnualLeaveStatus.Approved, asHr: true);
+        var result = await DecideAsync(db, email, "L1", attempt, asHr: true);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ApprovalStageRule.WithManagerMessage, result.Error);
+        var stored = await StoredAsync(db);
+        Assert.Equal(AnnualLeaveStatus.Pending, stored.Status);
+        Assert.Null(stored.ApprovedById);
+        Assert.Equal(20m, await BalanceAsync(db));
+        Assert.Empty(email.Sent);
+        Assert.Empty(db.LeaveStatusHistories);
+    }
+
+    /// <summary>
+    /// What HR does hold over an approved request: cancelling it before it starts.
+    /// The balance comes back, the delegate is stood down, the employee is told.
+    /// </summary>
+    [Fact]
+    public async Task Hr_cancelling_an_approved_request_before_it_starts_stands_the_delegate_down()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, ManagerOnlyType, AnnualLeaveStatus.Approved);
+        var email = new FakeEmailService();
+
+        var result = await DecideAsync(db, email, "L1", AnnualLeaveStatus.Cancelled, asHr: true, nowUtc: Start.AddDays(-10));
 
         Assert.True(result.IsSuccess, result.Error);
         var stored = await StoredAsync(db);
-        Assert.Equal(AnnualLeaveStatus.Approved, stored.Status);
-        Assert.Equal(Hr, stored.ApprovedById);
-        Assert.Equal(15m, await BalanceAsync(db));
-        Assert.Contains(email.Sent, m => m.Recipient == "del@t.local"); // coverage announced
+        Assert.Equal(AnnualLeaveStatus.Cancelled, stored.Status);
+        Assert.Null(stored.ApprovedAt);
+        Assert.Null(stored.ApprovedById);
+        Assert.Equal(20m, await BalanceAsync(db));
+        Assert.Contains(email.Sent, m => m.Recipient == "del@t.local");
+        Assert.Contains(email.Sent, m => m.Recipient == "emp@t.local" && m.Subject == "Your leave request was cancelled");
+    }
+
+    [Fact]
+    public async Task An_approved_request_that_has_started_cannot_be_cancelled()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, ManagerOnlyType, AnnualLeaveStatus.Approved);
+        var email = new FakeEmailService();
+
+        var result = await DecideAsync(db, email, "L1", AnnualLeaveStatus.Cancelled, asHr: true, nowUtc: Start.AddDays(1));
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(CancellationRule.AlreadyStartedMessage, result.Error);
+        Assert.Equal(AnnualLeaveStatus.Approved, (await StoredAsync(db)).Status);
+        Assert.Empty(email.Sent);
     }
 
     [Fact]
@@ -368,10 +418,26 @@ public class ApprovalStageHandlerTests
     }
 
     [Fact]
-    public async Task Hr_approving_from_the_edit_dialog_finishes_the_request()
+    public async Task Hr_approving_from_the_edit_dialog_is_refused_while_the_request_is_with_the_manager()
     {
         using var db = await WorldAsync();
         await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.Pending);
+        var email = new FakeEmailService();
+
+        var result = await EditAsync(db, email, Hr, isAdmin: true, isManager: false, status: AnnualLeaveStatus.Approved);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ApprovalStageRule.WithManagerMessage, result.Error);
+        Assert.Equal(AnnualLeaveStatus.Pending, (await StoredAsync(db)).Status);
+        Assert.Equal(20m, await BalanceAsync(db));
+        Assert.Empty(email.Sent);
+    }
+
+    [Fact]
+    public async Task Hr_approving_from_the_edit_dialog_finishes_a_request_that_is_with_them()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.AwaitingHrApproval);
         var email = new FakeEmailService();
 
         var result = await EditAsync(db, email, Hr, isAdmin: true, isManager: false, status: AnnualLeaveStatus.Approved);
@@ -380,6 +446,24 @@ public class ApprovalStageHandlerTests
         Assert.Equal(AnnualLeaveStatus.Approved, (await StoredAsync(db)).Status);
         Assert.Equal(15m, await BalanceAsync(db));
         Assert.Contains(email.Sent, m => m.Recipient == "del@t.local");
+    }
+
+    /// <summary>
+    /// The same clock reaches the edit dialog's status path: the leave starts on
+    /// 1 June 2026, which is behind the real clock, so cancelling it is refused.
+    /// </summary>
+    [Fact]
+    public async Task Cancelling_a_started_request_from_the_edit_dialog_is_refused()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, ManagerOnlyType, AnnualLeaveStatus.Approved);
+        var email = new FakeEmailService();
+
+        var result = await EditAsync(db, email, Hr, isAdmin: true, isManager: false, status: AnnualLeaveStatus.Cancelled, leaveTypeId: ManagerOnlyType);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(CancellationRule.AlreadyStartedMessage, result.Error);
+        Assert.Equal(AnnualLeaveStatus.Approved, (await StoredAsync(db)).Status);
     }
 
     // ── Still open ────────────────────────────────────────────────────────────
@@ -493,11 +577,12 @@ public class ApprovalStageHandlerTests
     }
 
     /// <summary>
-    /// Nobody to be away: a department with no manager is unchanged by this rule —
-    /// the request waits Pending, where an HR Administrator can already decide it.
+    /// A department with no manager has nobody to take the manager stage, and HR
+    /// no longer decides Pending rows in their place — so the request goes to HR
+    /// at filing, with a note saying why, rather than waiting on nobody.
     /// </summary>
     [Fact]
-    public async Task A_department_with_no_manager_still_files_pending()
+    public async Task A_department_with_no_manager_files_straight_to_hr()
     {
         using var db = await WorldAsync();
         var managerProfile = await db.EmployeeProfiles.FirstAsync(p => p.Id == "p-mgr");
@@ -509,7 +594,12 @@ public class ApprovalStageHandlerTests
         var result = await CreateAsync(db, email, BothType);
 
         Assert.True(result.IsSuccess, result.Error);
-        Assert.Equal(AnnualLeaveStatus.Pending, (await StoredAsync(db, result.Value!)).Status);
-        Assert.Empty(email.Sent);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, (await StoredAsync(db, result.Value!)).Status);
+        var toHr = Assert.Single(email.Sent, m => m.Recipient == "hr@t.local");
+        Assert.Contains("no manager in the department", toHr.HtmlBody);
+
+        var history = await db.LeaveStatusHistories.AsNoTracking().SingleAsync(h => h.AnnualLeaveId == result.Value);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, history.NewStatus);
+        Assert.Contains("no manager in the department", history.Comment);
     }
 }

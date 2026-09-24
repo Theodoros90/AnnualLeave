@@ -8,7 +8,10 @@ import {
     getAnnualLeaves, getAppSettings, getDepartments, getEmployeeProfiles, getHolidays,
     getLeaveStatusHistories, getLeaveTypes, updateLeaveStatus,
 } from '../../lib/api'
-import { approveButtonLabel, approveOutcome, canDecide, isOpenStatus, statusChipLabel, type ApprovalViewer } from '../../lib/approval-stage'
+import {
+    approveButtonLabel, approveOutcome, canCancelApproved, canDecide, isOpenStatus, isWithManager, statusChipLabel,
+    type ApprovalViewer,
+} from '../../lib/approval-stage'
 import { isAwaitingDocument } from '../../lib/attachment-policy'
 import { isHrAdministrator } from '../../lib/roles'
 import { resolveFileUrl } from '../../lib/api/file-url'
@@ -117,6 +120,9 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
     const [rejectDialog, setRejectDialog] = useState<{ ids: string[]; label: string } | null>(null)
     const [rejectReason, setRejectReason] = useState('')
     const [rejectError, setRejectError] = useState('')
+    const [cancelDialog, setCancelDialog] = useState<{ id: string; label: string } | null>(null)
+    const [cancelReason, setCancelReason] = useState('')
+    const [cancelError, setCancelError] = useState('')
 
     const { data: leaves = [], isLoading } = useQuery({ queryKey: ['annualLeaves'], queryFn: getAnnualLeaves })
     const { data: leaveTypes = [] } = useQuery({ queryKey: ['leaveTypes'], queryFn: getLeaveTypes })
@@ -133,6 +139,21 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
     })
 
     const leaveTypeById = useMemo(() => new Map(leaveTypes.map((lt) => [lt.id, lt])), [leaveTypes])
+    const typeOf = (l: AnnualLeave) => (l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined)
+
+    /* An HR Administrator's page leaves out what is the manager's to decide: a Pending
+       row on a type that asks for the manager (isWithManager, mirroring
+       ApprovalStageRule). They see such a request once the manager has decided it —
+       approved, to cancel before it starts, or rejected. The conflict map, the
+       calendar and the stat cards still read every row: an absence being decided
+       elsewhere still overlaps, and still falls in the month. */
+    const isHr = viewer.isHrAdministrator
+    const visibleLeaves = useMemo(
+        () => (isHr
+            ? leaves.filter((l) => !isWithManager(l, l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined, { isHrAdministrator: true }))
+            : leaves),
+        [leaves, leaveTypeById, isHr]
+    )
     /* An allowance belongs to a leave type, and Leave Types is where it is set. A
        type that sets none reads as 0, which renders "—". See lib/leave-allowance.ts. */
     const annualAllowance = useMemo(() => annualLeaveAllowance(leaveTypes), [leaveTypes])
@@ -191,7 +212,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
        but not yet by department or status tab. The department rollup counts against
        this, so its pending column sums to the page's pending total. */
     const inScope = useMemo(() => {
-        let out = leaves.slice()
+        let out = visibleLeaves.slice()
 
         if (typeFilter !== 'all') {
             const tid = Number(typeFilter)
@@ -208,7 +229,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
         }
 
         return out
-    }, [leaves, typeFilter, dateWindow, searchText])
+    }, [visibleLeaves, typeFilter, dateWindow, searchText])
 
     /* The same scope narrowed to the selected department — what the stat cards and the
        tab badges count, so no number claims more requests than the list can show. */
@@ -358,7 +379,18 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
         },
         onError: (err) => setApiError(getApiErrorMessage(err, 'Rejection failed.')),
     })
-    const isWorking = approveMut.isPending || rejectMut.isPending
+    /* The HR Administrator's standing power over an approved request: cancelling it
+       before it starts. The server refuses one that has begun (CancellationRule);
+       canCancelApproved keeps the button off such rows. */
+    const cancelMut = useMutation({
+        mutationFn: ({ id, comment }: { id: string; comment: string }) => updateLeaveStatus(id, 'Cancelled', comment),
+        onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: ['annualLeaves'] })
+            void queryClient.invalidateQueries({ queryKey: ['leaveStatusHistories'] })
+        },
+        onError: (err) => setApiError(getApiErrorMessage(err, 'Cancellation failed.')),
+    })
+    const isWorking = approveMut.isPending || rejectMut.isPending || cancelMut.isPending
 
     function toggleSelected(id: string) {
         setSelected((prev) => {
@@ -387,7 +419,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
             // refusal among a sweep would read as the whole sweep failing.
             const target = leaves.find((l) => l.id === id)
             if (target && awaitingDocument(target)) continue
-            if (target && !canDecide(target, viewer)) continue
+            if (target && !canDecide(target, viewer, typeOf(target))) continue
             await approveMut.mutateAsync(id).catch(() => {})
         }
         setSelected(new Set())
@@ -434,6 +466,35 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
         setRejectDialog(null)
         setRejectReason('')
         setRejectError('')
+    }
+
+    function openCancelDialog(leave: AnnualLeave) {
+        setCancelDialog({
+            id: leave.id,
+            label: `${leave.employeeName} · ${fmtShort(leave.startDate)} – ${fmtShort(leave.endDate)} · ${leave.totalDays} day${leave.totalDays === 1 ? '' : 's'}`,
+        })
+        setCancelReason('')
+        setCancelError('')
+    }
+
+    function closeCancelDialog() {
+        if (cancelMut.isPending) return
+        setCancelDialog(null)
+        setCancelReason('')
+        setCancelError('')
+    }
+
+    async function confirmCancel() {
+        if (!cancelDialog) return
+        const trimmed = cancelReason.trim()
+        if (trimmed.length === 0) {
+            setCancelError('Please provide a reason for cancelling.')
+            return
+        }
+        await cancelMut.mutateAsync({ id: cancelDialog.id, comment: trimmed }).catch(() => {})
+        setCancelDialog(null)
+        setCancelReason('')
+        setCancelError('')
     }
 
     function navMonth(delta: number) {
@@ -619,6 +680,8 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
                     onToggleSelect={() => toggleSelected(l.id)}
                     onApprove={() => approveMut.mutate(l.id)}
                     onReject={() => openRejectDialog(l)}
+                    onCancel={() => openCancelDialog(l)}
+                    canCancel={isHr && canCancelApproved(l, today)}
                     disabled={isWorking}
                     hideCheckbox
                 />
@@ -659,6 +722,25 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
                 }}
                 onClose={closeRejectDialog}
                 onConfirm={() => void confirmReject()}
+            />
+
+            {/* Cancel reason dialog — an approved leave, before it starts */}
+            <RejectReasonDialog
+                open={cancelDialog !== null}
+                title="Cancel approved leave"
+                label={cancelDialog?.label ?? ''}
+                reason={cancelReason}
+                error={cancelError}
+                isPending={cancelMut.isPending}
+                onReasonChange={(value) => {
+                    setCancelReason(value)
+                    if (cancelError) setCancelError('')
+                }}
+                onClose={closeCancelDialog}
+                onConfirm={() => void confirmCancel()}
+                confirmLabel="Confirm Cancel"
+                busyLabel="Cancelling…"
+                placeholder="Reason for cancelling (required)"
             />
         </Box>
     )
@@ -786,7 +868,7 @@ function SectionHeader({ title, subtitle, meta }: { title: string; subtitle?: st
 function LeaveRow({
     leave, leaveTypeById, profile, leaveYearStartMonth, viewer, isExpanded, isSelected, isUrgent,
     conflicts, history, lastHistory, leaves,
-    onToggleExpand, onToggleSelect, onApprove, onReject, disabled, hideCheckbox,
+    onToggleExpand, onToggleSelect, onApprove, onReject, onCancel, canCancel, disabled, hideCheckbox,
 }: {
     leave: AnnualLeave
     leaveTypeById: Map<number, LeaveType>
@@ -804,6 +886,9 @@ function LeaveRow({
     onToggleSelect: () => void
     onApprove: () => void
     onReject: () => void
+    /** Cancel an approved leave before it starts — the HR Administrator's, offered only while `canCancel`. */
+    onCancel?: () => void
+    canCancel?: boolean
     disabled: boolean
     hideCheckbox?: boolean
 }) {
@@ -811,7 +896,7 @@ function LeaveRow({
     const typeName = leaveType?.name ?? (leave.leaveTypeId != null ? undefined : 'Annual')
     const typeKey = leaveTypeKey(typeName)
     const isPending = isOpenStatus(leave.status)
-    const decidable = canDecide(leave, viewer)
+    const decidable = canDecide(leave, viewer, leaveType)
     /* Mirrors AttachmentPolicyRule, which refuses the approval outright: a Required
        type's document is checked when the request is approved, not when it is
        filed, so a pending row can be waiting on one. Reject stays available. */
@@ -1077,9 +1162,14 @@ function LeaveRow({
                             }}>With HR</Box>
                         )
                     ) : (
-                        <ActionBtn variant="ghost" onClick={(e) => { e.stopPropagation(); onToggleExpand() }}>
-                            {isExpanded ? 'Hide' : 'View'}
-                        </ActionBtn>
+                        <>
+                            {canCancel && onCancel && (
+                                <ActionBtn variant="danger" onClick={onCancel} disabled={disabled}>Cancel</ActionBtn>
+                            )}
+                            <ActionBtn variant="ghost" onClick={(e) => { e.stopPropagation(); onToggleExpand() }}>
+                                {isExpanded ? 'Hide' : 'View'}
+                            </ActionBtn>
+                        </>
                     )}
                 </Box>
             </Box>

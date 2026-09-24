@@ -208,12 +208,20 @@ public class EditAnnualLeave
                 var oldStatus = annualLeave.Status;
 
                 /* actsAsAdmin is an HR Administrator inside their scope — the caller
-                   for whom Approve finishes a request that asks for HR. A Manager's
-                   Approve on such a type advances it to the HR stage instead. */
+                   for whom Approve finishes a request that is with HR, and who is
+                   refused on a Pending request that is still the manager's. A
+                   Manager's Approve on a type asking for HR advances it to the HR
+                   stage instead. */
                 var stage = ApprovalStageRule.Resolve(editedLeaveType, oldStatus, request.AnnualLeave.Status.Value, actsAsAdmin);
                 if (stage.Error is not null)
                     return Result<Unit>.Failure(stage.Error);
                 var newStatus = stage.Status!.Value;
+
+                // An approved leave is cancellable only until it starts — measured
+                // against the dates as edited, since those are what will be stored.
+                var cancellationError = CancellationRule.Check(oldStatus, newStatus, request.AnnualLeave.StartDate, DateTime.UtcNow);
+                if (cancellationError is not null)
+                    return Result<Unit>.Failure(cancellationError);
 
                 if (newStatus != oldStatus)
                 {

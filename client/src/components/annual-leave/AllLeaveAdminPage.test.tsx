@@ -151,6 +151,11 @@ const MANAGER: UserInfo = {
     displayName: 'Manager One', imageUrl: '', roles: ['Manager'], departmentId: FINANCE.id,
 }
 
+const HR: UserInfo = {
+    id: 'hr-1', userName: 'hradmin@annualleave.com', email: 'hradmin@annualleave.com',
+    displayName: 'Helen HR', imageUrl: '', roles: ['HR Administrator'],
+}
+
 beforeEach(() => {
     vi.clearAllMocks()
     api.getAnnualLeaves.mockResolvedValue([...PENDING, ...DECIDED])
@@ -567,5 +572,87 @@ describe('AllLeaveAdminPage pro-rated first year', () => {
             `Sick Leave: 0 of ${expected} days/year used this year · `
             + `Pro-rated for the first year from 10 days/year · `
             + 'Tracked separately — not deducted from the annual balance')
+    })
+})
+
+/**
+ * Mirror of `ApprovalStageRule` and `CancellationRule`: the manager stage is the
+ * manager's, so an HR Administrator's page leaves out a Pending request on a type
+ * that asks for the manager and shows it once decided. What HR holds over an
+ * approved request is cancelling it before it starts.
+ */
+describe('AllLeaveAdminPage — an HR Administrator sees the manager\'s requests once decided', () => {
+    it('leaves the rows that are with the manager out of the queue and the counts', async () => {
+        await renderPage(HR)
+
+        // Every PENDING fixture is on Annual Leave, which asks for the manager.
+        expect(renderedPendingRows()).toBe(0)
+        expect(statCardValue('⏳ Awaiting Review')).toBe('0')
+        expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+        // The decided rows are still there as history.
+        expect(screen.getByText('Employee 1A')).toBeInTheDocument()
+    })
+
+    it('queues a request that is with HR, with Approve to hand', async () => {
+        api.getAnnualLeaves.mockResolvedValue([
+            ...PENDING,
+            leave({
+                id: 'h1', employeeId: 'emp-2b', employeeName: 'Employee 2B', status: 'AwaitingHrApproval',
+                startDate: monthOffset(1, 12), endDate: monthOffset(1, 13),
+            }),
+        ])
+        await renderPage(HR)
+
+        expect(renderedPendingRows()).toBe(1)
+        expect(statCardValue('⏳ Awaiting Review')).toBe('1')
+        expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    })
+
+    it('offers Cancel on an approved leave that has not started, and not on one that has', async () => {
+        api.getAnnualLeaves.mockResolvedValue([
+            ...DECIDED, // d1 is approved and four months ago
+            leave({
+                id: 'a-future', employeeId: 'emp-2b', employeeName: 'Employee 2B', status: 'Approved',
+                startDate: monthOffset(1, 12), endDate: monthOffset(1, 13), totalDays: 2,
+            }),
+        ])
+        await renderPage(HR)
+
+        const cancels = screen.getAllByRole('button', { name: 'Cancel' })
+        expect(cancels).toHaveLength(1)
+        expect(cancels[0].closest('[class]')!.parentElement!.parentElement!.textContent).toContain('Employee 2B')
+    })
+
+    it('does not offer Cancel to a System Administrator, who neither files nor decides leave', async () => {
+        api.getAnnualLeaves.mockResolvedValue([
+            leave({
+                id: 'a-future', employeeId: 'emp-2b', employeeName: 'Employee 2B', status: 'Approved',
+                startDate: monthOffset(1, 12), endDate: monthOffset(1, 13), totalDays: 2,
+            }),
+        ])
+        await renderPage(ADMIN)
+
+        expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
+    })
+
+    it('cancels with a reason the employee will see', async () => {
+        api.updateLeaveStatus.mockResolvedValue(undefined)
+        api.getAnnualLeaves.mockResolvedValue([
+            leave({
+                id: 'a-future', employeeId: 'emp-2b', employeeName: 'Employee 2B', status: 'Approved',
+                startDate: monthOffset(1, 12), endDate: monthOffset(1, 13), totalDays: 2,
+            }),
+        ])
+        await renderPage(HR)
+
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+        expect(await screen.findByText('Cancel approved leave')).toBeInTheDocument()
+
+        const confirm = screen.getByRole('button', { name: 'Confirm Cancel' })
+        expect(confirm).toBeDisabled()
+        fireEvent.change(screen.getByPlaceholderText('Reason for cancelling (required)'), { target: { value: 'Project deadline moved' } })
+        fireEvent.click(confirm)
+
+        await waitFor(() => expect(api.updateLeaveStatus).toHaveBeenCalledWith('a-future', 'Cancelled', 'Project deadline moved'))
     })
 })

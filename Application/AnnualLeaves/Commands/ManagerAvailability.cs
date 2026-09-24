@@ -11,15 +11,17 @@ namespace Application.AnnualLeaves.Commands;
 /// (<see cref="ManagerNotificationRecipients"/>: the direct manager plus every
 /// Manager-role user in the employee's department), and one is "on leave" when
 /// they have an <see cref="AnnualLeaveStatus.Approved"/> leave whose dates cover
-/// today. When that set is non-empty and every one of them is away, the request
-/// is filed straight into the HR stage (<see cref="ApprovalStageRule.InitialStatus"/>)
-/// instead of waiting on an absent manager.
+/// today. When nobody in that set can decide — every one of them is away, or the
+/// set is empty — the request is filed straight into the HR stage
+/// (<see cref="ApprovalStageRule.InitialStatus"/>) instead of waiting Pending on
+/// somebody who is absent or does not exist.
 ///
-/// Two things are deliberate. A department with <em>no</em> manager at all reads
-/// as available: there is nobody to be away, and such a request waits Pending
-/// where an HR Administrator can already decide it, as it always has. And the
-/// check runs at filing only — a manager who goes on leave after the request came
-/// in does not move it; HR can still step in, as they can on any Pending request.
+/// Two things are deliberate. A department with <em>no</em> manager reads as
+/// unavailable, not as available: an HR Administrator does not decide the manager
+/// stage (<see cref="ApprovalStageRule.WithManagerMessage"/>), so a Pending row
+/// there would wait on nobody. And the check runs at filing only — a manager who
+/// goes on leave, or leaves the department, after the request came in does not
+/// move it; such a row waits for a manager to be there again.
 ///
 /// "Today" is the UTC date, the same clock the leave dates themselves are stored on.
 /// </summary>
@@ -28,11 +30,12 @@ public static class ManagerAvailability
     /// <summary>
     /// <paramref name="AnyAvailable"/> is whether at least one manager can decide;
     /// <paramref name="OnLeaveNames"/> names the ones who cannot, for the note HR
-    /// and the history row carry.
+    /// and the history row carry — empty when there was nobody to name.
     /// </summary>
     public readonly record struct Report(bool AnyAvailable, IReadOnlyList<string> OnLeaveNames)
     {
         public static readonly Report Available = new(true, []);
+        public static readonly Report NoManager = new(false, []);
     }
 
     public static async Task<Report> CheckAsync(
@@ -43,7 +46,7 @@ public static class ManagerAvailability
     {
         var managers = await ManagerNotificationRecipients.ResolveAsync(context, employeeProfile, cancellationToken);
         if (managers.Count == 0)
-            return Report.Available;
+            return Report.NoManager;
 
         var managerIds = managers.Select(m => m.UserId).ToList();
         var today = nowUtc.Date;
@@ -69,5 +72,7 @@ public static class ManagerAvailability
 
     /// <summary>The one sentence both the HR email and the history row carry.</summary>
     public static string Describe(Report report) =>
-        $"Sent to HR for approval: {string.Join(", ", report.OnLeaveNames)} on leave.";
+        report.OnLeaveNames.Count == 0
+            ? "Sent to HR for approval: no manager in the department to decide it."
+            : $"Sent to HR for approval: {string.Join(", ", report.OnLeaveNames)} on leave.";
 }

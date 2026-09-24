@@ -9,9 +9,12 @@ import type { AnnualLeave, AnnualLeaveStatus, LeaveType } from './types'
  * `AttachmentPolicyRule`. A mirror may under-refuse (a type not yet loaded reads
  * as manager-only); it must never over-refuse.
  *
- * Manager first, then HR. An HR Administrator stands in for the manager, so their
- * Approve from Pending finishes a request even when the type asks for HR. A
- * Manager cannot decide a request that is with HR at all.
+ * Manager first, then HR, and each stage belongs to its own role. A Manager cannot
+ * decide a request that is with HR at all. An HR Administrator cannot decide a
+ * Pending request on a type that asks for the manager — that stage is the
+ * manager's, and HR's pages leave such rows out (`isWithManager`) until the manager
+ * has decided. What HR holds over an approved request is cancelling it before it
+ * starts (`canCancelApproved`, mirroring `CancellationRule.cs`).
  */
 export type ApprovalFlags = Pick<LeaveType, 'requiresManagerApproval'> & Partial<Pick<LeaveType, 'requiresHrApproval'>>
 
@@ -28,11 +31,38 @@ export function isOpenStatus(status: AnnualLeaveStatus): boolean {
     return status === 'Pending' || status === 'AwaitingHrApproval'
 }
 
+/**
+ * A Pending request that is the manager's to decide, seen by an HR Administrator:
+ * not theirs to approve, reject or cancel, and not shown in their queue. A type not
+ * loaded reads as manager-only, matching the server's reading of a deleted type. A
+ * Pending row on a type with no manager stage can only be a legacy row or one whose
+ * type was reconfigured after filing; nobody else can decide it, so HR may.
+ */
+export function isWithManager(
+    leave: Pick<AnnualLeave, 'status'>,
+    type: ApprovalFlags | undefined,
+    viewer: ApprovalViewer,
+): boolean {
+    return leave.status === 'Pending' && viewer.isHrAdministrator && (type === undefined || type.requiresManagerApproval)
+}
+
 /** Whether this viewer may approve or reject the request at its current stage. */
-export function canDecide(leave: Pick<AnnualLeave, 'status'>, viewer: ApprovalViewer): boolean {
-    if (leave.status === 'Pending') return true
+export function canDecide(leave: Pick<AnnualLeave, 'status'>, viewer: ApprovalViewer, type: ApprovalFlags | undefined): boolean {
+    if (leave.status === 'Pending') return !isWithManager(leave, type, viewer)
     if (leave.status === 'AwaitingHrApproval') return viewer.isHrAdministrator
     return false
+}
+
+/**
+ * Whether an approved request may still be cancelled: its start date is today or
+ * later. Mirrors `CancellationRule.cs`, which compares UTC dates; a request starting
+ * today is still cancellable on both sides.
+ */
+export function canCancelApproved(leave: Pick<AnnualLeave, 'status' | 'startDate'>, today: Date): boolean {
+    if (leave.status !== 'Approved') return false
+    const start = new Date(leave.startDate); start.setHours(0, 0, 0, 0)
+    const day = new Date(today); day.setHours(0, 0, 0, 0)
+    return start.getTime() >= day.getTime()
 }
 
 /**
@@ -56,15 +86,15 @@ export function approveButtonLabel(outcome: ApproveOutcome): string {
 }
 
 /** The view dialog's Approve: an open row this viewer may decide, or a rejected one being reopened — never a row already approved or cancelled. */
-export function canApproveInDialog(leave: Pick<AnnualLeave, 'status'>, viewer: ApprovalViewer): boolean {
+export function canApproveInDialog(leave: Pick<AnnualLeave, 'status'>, viewer: ApprovalViewer, type: ApprovalFlags | undefined): boolean {
     if (leave.status === 'Rejected') return true
-    return canDecide(leave, viewer)
+    return canDecide(leave, viewer, type)
 }
 
 /** The view dialog's Reject: an open row this viewer may decide, or an approval being taken back — never a row already rejected or cancelled. */
-export function canRejectInDialog(leave: Pick<AnnualLeave, 'status'>, viewer: ApprovalViewer): boolean {
+export function canRejectInDialog(leave: Pick<AnnualLeave, 'status'>, viewer: ApprovalViewer, type: ApprovalFlags | undefined): boolean {
     if (leave.status === 'Approved') return true
-    return canDecide(leave, viewer)
+    return canDecide(leave, viewer, type)
 }
 
 /** Filing is approval: neither switch is on. Undefined (type not loaded) reads as not. */

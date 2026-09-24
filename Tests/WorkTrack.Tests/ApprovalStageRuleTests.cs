@@ -33,12 +33,10 @@ public class ApprovalStageRuleTests
     }
 
     [Theory]
-    // From Pending on a manager-only type: either role approves outright.
+    // From Pending on a manager-only type: the manager approves outright.
     [InlineData(false, AnnualLeaveStatus.Pending, false, AnnualLeaveStatus.Approved)]
-    [InlineData(false, AnnualLeaveStatus.Pending, true, AnnualLeaveStatus.Approved)]
-    // From Pending on a type needing HR: a manager advances it, HR finishes it.
+    // From Pending on a type needing both: the manager advances it to HR.
     [InlineData(true, AnnualLeaveStatus.Pending, false, AnnualLeaveStatus.AwaitingHrApproval)]
-    [InlineData(true, AnnualLeaveStatus.Pending, true, AnnualLeaveStatus.Approved)]
     // From the HR stage, HR finishes it.
     [InlineData(true, AnnualLeaveStatus.AwaitingHrApproval, true, AnnualLeaveStatus.Approved)]
     // Reopening a rejected request from the edit dialog follows the Pending row.
@@ -50,6 +48,42 @@ public class ApprovalStageRuleTests
 
         Assert.Null(outcome.Error);
         Assert.Equal(expected, outcome.Status);
+    }
+
+    /// <summary>
+    /// The manager stage is the Manager's. An HR Administrator neither approves,
+    /// rejects nor cancels a Pending request on a type that asks for the manager,
+    /// whether or not HR comes after — they see it once the manager has decided.
+    /// </summary>
+    [Theory]
+    [InlineData(false, AnnualLeaveStatus.Approved)]
+    [InlineData(false, AnnualLeaveStatus.Rejected)]
+    [InlineData(false, AnnualLeaveStatus.Cancelled)]
+    [InlineData(true, AnnualLeaveStatus.Approved)]
+    [InlineData(true, AnnualLeaveStatus.Rejected)]
+    [InlineData(true, AnnualLeaveStatus.Cancelled)]
+    public void Hr_cannot_decide_a_pending_request_that_is_with_the_manager(bool needsHr, AnnualLeaveStatus requested)
+    {
+        var outcome = ApprovalStageRule.Resolve(Type(true, needsHr), AnnualLeaveStatus.Pending, requested, isHrAdministrator: true);
+
+        Assert.Null(outcome.Status);
+        Assert.Equal(ApprovalStageRule.WithManagerMessage, outcome.Error);
+    }
+
+    /// <summary>
+    /// A Pending row on a type that never asked for the manager can only be a
+    /// legacy row or one whose type was reconfigured after filing. Nobody else
+    /// can decide it, so HR may.
+    /// </summary>
+    [Theory]
+    [InlineData(AnnualLeaveStatus.Approved)]
+    [InlineData(AnnualLeaveStatus.Rejected)]
+    public void Hr_may_decide_a_pending_request_on_a_type_with_no_manager_stage(AnnualLeaveStatus requested)
+    {
+        var outcome = ApprovalStageRule.Resolve(Type(false, true), AnnualLeaveStatus.Pending, requested, isHrAdministrator: true);
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(requested, outcome.Status);
     }
 
     [Theory]
@@ -73,10 +107,10 @@ public class ApprovalStageRuleTests
     }
 
     [Fact]
-    public void Rejecting_from_pending_is_open_to_both_roles()
+    public void Rejecting_from_pending_is_the_managers()
     {
         Assert.Equal(AnnualLeaveStatus.Rejected, ApprovalStageRule.Resolve(Type(true, true), AnnualLeaveStatus.Pending, AnnualLeaveStatus.Rejected, false).Status);
-        Assert.Equal(AnnualLeaveStatus.Rejected, ApprovalStageRule.Resolve(Type(true, true), AnnualLeaveStatus.Pending, AnnualLeaveStatus.Rejected, true).Status);
+        Assert.Equal(ApprovalStageRule.WithManagerMessage, ApprovalStageRule.Resolve(Type(true, true), AnnualLeaveStatus.Pending, AnnualLeaveStatus.Rejected, true).Error);
     }
 
     [Fact]
@@ -91,14 +125,13 @@ public class ApprovalStageRuleTests
     /// <summary>
     /// A row whose leave type has since been deleted carries no flags. It was
     /// filed under the one-switch rule, so it is treated as manager-only rather
-    /// than refused or sent to HR.
+    /// than refused or sent to HR — which also means HR does not decide it.
     /// </summary>
     [Fact]
     public void A_missing_leave_type_reads_as_manager_only()
     {
-        var outcome = ApprovalStageRule.Resolve(null, AnnualLeaveStatus.Pending, AnnualLeaveStatus.Approved, isHrAdministrator: false);
-
-        Assert.Equal(AnnualLeaveStatus.Approved, outcome.Status);
+        Assert.Equal(AnnualLeaveStatus.Approved, ApprovalStageRule.Resolve(null, AnnualLeaveStatus.Pending, AnnualLeaveStatus.Approved, isHrAdministrator: false).Status);
+        Assert.Equal(ApprovalStageRule.WithManagerMessage, ApprovalStageRule.Resolve(null, AnnualLeaveStatus.Pending, AnnualLeaveStatus.Approved, isHrAdministrator: true).Error);
     }
 
     [Theory]
@@ -106,6 +139,7 @@ public class ApprovalStageRuleTests
     [InlineData(AnnualLeaveStatus.Approved, true)]
     [InlineData(AnnualLeaveStatus.Rejected, false)]
     [InlineData(AnnualLeaveStatus.Pending, false)]
+    [InlineData(AnnualLeaveStatus.Pending, true)]
     public void Asking_for_the_status_a_request_already_has_changes_nothing(AnnualLeaveStatus current, bool isHr)
     {
         var outcome = ApprovalStageRule.Resolve(Type(true, true), current, current, isHr);
@@ -115,9 +149,22 @@ public class ApprovalStageRuleTests
     }
 
     /// <summary>
-    /// With no manager available to decide it, a request that would have waited
-    /// on the manager goes to HR instead — HR stands in for the manager. A type
-    /// that never asked for the manager is unaffected.
+    /// HR's standing power over an approved request is to cancel it before it
+    /// starts. That is not the manager stage, so it is not refused.
+    /// </summary>
+    [Fact]
+    public void Hr_may_cancel_an_approved_request_on_a_manager_type()
+    {
+        var outcome = ApprovalStageRule.Resolve(Type(true, false), AnnualLeaveStatus.Approved, AnnualLeaveStatus.Cancelled, isHrAdministrator: true);
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(AnnualLeaveStatus.Cancelled, outcome.Status);
+    }
+
+    /// <summary>
+    /// With no manager available to decide it — every one of them away, or none
+    /// at all — a request that would have waited on the manager goes to HR
+    /// instead. A type that never asked for the manager is unaffected.
     /// </summary>
     [Theory]
     [InlineData(true, false, AnnualLeaveStatus.AwaitingHrApproval)]
@@ -126,4 +173,15 @@ public class ApprovalStageRuleTests
     [InlineData(false, true, AnnualLeaveStatus.AwaitingHrApproval)]
     public void With_no_manager_available_the_manager_stage_goes_to_hr(bool manager, bool hr, AnnualLeaveStatus expected) =>
         Assert.Equal(expected, ApprovalStageRule.InitialStatus(Type(manager, hr), managerAvailable: false));
+
+    [Fact]
+    public void A_department_with_no_manager_is_described_as_such()
+    {
+        Assert.Equal(
+            "Sent to HR for approval: no manager in the department to decide it.",
+            ManagerAvailability.Describe(ManagerAvailability.Report.NoManager));
+        Assert.Equal(
+            "Sent to HR for approval: Nikos Manager on leave.",
+            ManagerAvailability.Describe(new ManagerAvailability.Report(false, ["Nikos Manager"])));
+    }
 }

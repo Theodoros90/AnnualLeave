@@ -76,8 +76,10 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
     }, [leave.leaveTypeId, leaveTypes])
 
     // Approve / Reject: System Administrator any, Manager dept-team-only (server enforces), Employee never,
-    // and neither a Manager nor a System Administrator may decide a request that has moved on to HR.
-    const canApproveReject = (isAdmin || isManager) && canDecide(leave, viewer)
+    // neither a Manager nor a System Administrator may decide a request that has moved on to HR, and an
+    // HR Administrator may not decide one that is still the manager's.
+    const leaveType = leave.leaveTypeId != null ? leaveTypes.find((t) => t.id === leave.leaveTypeId) : undefined
+    const canApproveReject = (isAdmin || isManager) && canDecide(leave, viewer, leaveType)
 
     // Edit dates/type/reason: Approved/Rejected requests are admin-only; otherwise System Administrator any, Manager any, Employee own only
     const isLockedStatus = leave.status === 'Rejected' || leave.status === 'Approved' || leave.status === 'AwaitingHrApproval'

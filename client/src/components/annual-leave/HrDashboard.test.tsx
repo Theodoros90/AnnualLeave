@@ -101,8 +101,10 @@ beforeEach(() => {
     api.getAnnualLeaves.mockResolvedValue([
         // Away today, in Finance.
         leave({ id: 'l-away', employeeId: 'u-2', employeeName: 'Andreas Georgiou', status: 'Approved', departmentName: 'Finance', startDate: iso(-1), endDate: iso(1), totalDays: 3 }),
-        // Waiting for a decision — a sick-leave request with no document, which the type requires.
-        leave({ id: 'l-pending', employeeId: 'u-1', employeeName: 'Maria Ioannou', status: 'Pending', leaveTypeId: SICK_LEAVE_TYPE.id, startDate: iso(5), endDate: iso(5) }),
+        // Waiting on HR's decision — a sick-leave request with no document, which the
+        // type requires. With HR, not Pending: a Pending row on a type that asks for
+        // the manager is the manager's to decide and stays off this dashboard.
+        leave({ id: 'l-pending', employeeId: 'u-1', employeeName: 'Maria Ioannou', status: 'AwaitingHrApproval', leaveTypeId: SICK_LEAVE_TYPE.id, startDate: iso(5), endDate: iso(5) }),
     ])
 })
 
@@ -172,6 +174,22 @@ describe('The HR Administrator dashboard', () => {
 
         expect(screen.getByText('Maria Ioannou · Annual Leave')).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    })
+
+    /**
+     * The manager stage is the manager's. A Pending request on a type that asks
+     * for the manager is not HR's to decide, so it is not queued for them at all —
+     * they see it once the manager has approved it.
+     */
+    it("leaves a request that is with the manager off the queue", async () => {
+        api.getAnnualLeaves.mockResolvedValue([
+            leave({ id: 'l-mgr', employeeId: 'u-1', employeeName: 'Maria Ioannou', status: 'Pending', startDate: iso(5), endDate: iso(5) }),
+        ])
+        renderAs(HR)
+        await screen.findByText('Approval queue')
+
+        expect(screen.queryByText('Maria Ioannou · Annual Leave')).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
     })
 })
 

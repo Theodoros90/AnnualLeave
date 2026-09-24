@@ -50,14 +50,17 @@ public class HrAdministratorScopeTests
             new UserRole { UserId = Hr, RoleId = "r-hr" },
             new UserRole { UserId = Hr2, RoleId = "r-hr" });
         db.LeaveTypes.Add(new LeaveType { Id = 1, Name = "Annual Leave", IsActive = true, AffectsBalance = true, DefaultAllowance = 20, RequiresManagerApproval = true });
+        // All three are with HR: these tests are about the HR Administrator's reach,
+        // and a Pending row on a type that asks for the manager would be the
+        // manager's to decide, not theirs.
         db.AnnualLeaves.AddRange(
-            new AnnualLeave { Id = "la", EmployeeId = "ua", EmployeeProfileId = "pa", DepartmentId = A, LeaveTypeId = 1, StartDate = new DateTime(2026, 10, 5), EndDate = new DateTime(2026, 10, 6), Status = AnnualLeaveStatus.Pending, CreatedAt = DateTime.UtcNow },
-            new AnnualLeave { Id = "lb", EmployeeId = "ub", EmployeeProfileId = "pb", DepartmentId = B, LeaveTypeId = 1, StartDate = new DateTime(2026, 10, 5), EndDate = new DateTime(2026, 10, 6), Status = AnnualLeaveStatus.Pending, CreatedAt = DateTime.UtcNow },
+            new AnnualLeave { Id = "la", EmployeeId = "ua", EmployeeProfileId = "pa", DepartmentId = A, LeaveTypeId = 1, StartDate = new DateTime(2026, 10, 5), EndDate = new DateTime(2026, 10, 6), Status = AnnualLeaveStatus.AwaitingHrApproval, CreatedAt = DateTime.UtcNow },
+            new AnnualLeave { Id = "lb", EmployeeId = "ub", EmployeeProfileId = "pb", DepartmentId = B, LeaveTypeId = 1, StartDate = new DateTime(2026, 10, 5), EndDate = new DateTime(2026, 10, 6), Status = AnnualLeaveStatus.AwaitingHrApproval, CreatedAt = DateTime.UtcNow },
             // Nobody's assigned departments cover this one — an administrator's own
             // request, DepartmentId null like their profile. Only an HR
             // Administrator's reach (not a plain Manager's, not Hr's assignment to A)
             // should ever include it.
-            new AnnualLeave { Id = "lh", EmployeeId = Hr2, EmployeeProfileId = "hr2-p", DepartmentId = null, LeaveTypeId = 1, StartDate = new DateTime(2026, 10, 5), EndDate = new DateTime(2026, 10, 6), Status = AnnualLeaveStatus.Pending, CreatedAt = DateTime.UtcNow });
+            new AnnualLeave { Id = "lh", EmployeeId = Hr2, EmployeeProfileId = "hr2-p", DepartmentId = null, LeaveTypeId = 1, StartDate = new DateTime(2026, 10, 5), EndDate = new DateTime(2026, 10, 6), Status = AnnualLeaveStatus.AwaitingHrApproval, CreatedAt = DateTime.UtcNow });
         db.SaveChanges();
         return db;
     }
@@ -124,7 +127,7 @@ public class HrAdministratorScopeTests
 
         Assert.True(inside.IsSuccess, inside.Error);
         Assert.False(outside.IsSuccess);
-        Assert.Equal(AnnualLeaveStatus.Pending, (await db.AnnualLeaves.FindAsync("lb"))!.Status);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, (await db.AnnualLeaves.FindAsync("lb"))!.Status);
     }
 
     /// <summary>
@@ -166,7 +169,7 @@ public class HrAdministratorScopeTests
         }, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(AnnualLeaveStatus.Pending, (await db.AnnualLeaves.FindAsync("lh"))!.Status);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, (await db.AnnualLeaves.FindAsync("lh"))!.Status);
     }
 
     [Fact]
