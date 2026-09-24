@@ -559,8 +559,10 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
                 />
             )}
 
-            {/* Status tabs */}
-            <Box sx={{ display: 'flex', gap: '2px', mb: '14px', borderBottom: '1px solid', borderColor: 'divider', px: '2px', flexWrap: 'wrap' }}>
+            {/* Status tabs. Not for an HR Administrator: their page already holds only
+                what is theirs — the rows with HR above, the approved ones below — so a
+                Pending/Urgent/Conflicts/Rejected split is mostly zeros. */}
+            {!isHr && <Box sx={{ display: 'flex', gap: '2px', mb: '14px', borderBottom: '1px solid', borderColor: 'divider', px: '2px', flexWrap: 'wrap' }}>
                 {STATUS_TABS.map((tab) => {
                     const active = statusTab === tab.value
                     const c =
@@ -598,7 +600,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: 
                         </Box>
                     )
                 })}
-            </Box>
+            </Box>}
 
             {/* Filter toolbar */}
             <Box sx={{

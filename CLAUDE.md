@@ -464,7 +464,8 @@ Eight things about it that are deliberate:
   the manager (`WithManagerMessage`, `ApprovalStageRule.IsWithManager`) — whether
   or not HR comes after — and their pages leave such rows out altogether: the
   HR dashboard's queue and Leave Management (`isWithManager` in
-  `approval-stage.ts`, applied to the list, the tabs and the stat card) show a
+  `approval-stage.ts`, applied to the list and the stat card; the status tab bar
+  is not rendered for HR at all, since it would be mostly zeros) show a
   manager-stage request once the manager has **approved** it. A manager's
   rejection stays off HR's page too (`isManagersRejection`): a Rejected row is
   HR's to see only when the status history says the rejection came out of

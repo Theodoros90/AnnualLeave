@@ -608,8 +608,19 @@ describe('AllLeaveAdminPage — an HR Administrator sees the manager\'s requests
         expect(screen.queryByText('Employee 2A')).not.toBeInTheDocument()
         expect(screen.getByText('Employee 2B')).toBeInTheDocument()
         expect(screen.getByText('"Policy"')).toBeInTheDocument()
-        // The Rejected tab counts only what is on the page.
-        expect(screen.getByText('Rejected').parentElement!.textContent).toContain('1')
+    })
+
+    it('has no status tabs — the page already holds only what is theirs', async () => {
+        await renderPage(HR)
+
+        expect(screen.queryByRole('button', { name: /Conflicts/ })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /Urgent/ })).not.toBeInTheDocument()
+    })
+
+    it('keeps the status tabs for a System Administrator', async () => {
+        await renderPage(ADMIN)
+
+        expect(screen.getByRole('button', { name: /Conflicts/ })).toBeInTheDocument()
     })
 
     it('queues a request that is with HR, with Approve to hand', async () => {
