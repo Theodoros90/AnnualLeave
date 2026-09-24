@@ -49,3 +49,8 @@ export async function approveTimesheet(id: string): Promise<void> {
 export async function rejectTimesheet(id: string, comment: string): Promise<void> {
     await apiClient.patch(`/timesheets/${id}/reject`, { comment });
 }
+
+/** The HR Administrator takes an approval back: the sheet returns to Submitted for the manager to review again. */
+export async function reopenTimesheet(id: string, comment: string): Promise<void> {
+    await apiClient.patch(`/timesheets/${id}/reopen`, { comment });
+}

@@ -260,6 +260,28 @@ namespace API.Controllers
             return HandleResult(result);
         }
 
+        // PATCH: api/timesheets/{id}/reopen — the HR Administrator takes an approval
+        // back; the sheet returns to Submitted for the manager to review again.
+        [HttpPatch("{id}/reopen")]
+        [Authorize(Roles = AppRoles.HrAdministrator)]
+        public async Task<IActionResult> ReopenTimesheet(string id, [FromBody] RejectTimesheetRequest? body, CancellationToken cancellationToken)
+        {
+            var result = await Mediator.Send(new Application.Timesheets.Commands.ReopenTimesheet.Command
+            {
+                Id = id,
+                RequestingUserId = ResolveUserId(),
+                IsHrAdministrator = User.IsHrAdministrator(),
+                Comment = body?.Comment,
+            }, cancellationToken);
+
+            if (result.IsSuccess)
+            {
+                await NotifyForTimesheetAsync(id, cancellationToken);
+            }
+
+            return HandleResult(result);
+        }
+
         // GET: api/timesheets/{id}/history
         // Scoped through GetTimesheetStatusHistoryList rather than read directly, so
         // a caller with no claim on this timesheet gets an empty list — the same

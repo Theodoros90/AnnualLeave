@@ -20,6 +20,7 @@ import {
     getTimesheet,
     getTimesheets,
     rejectTimesheet,
+    reopenTimesheet,
 } from '../../lib/api'
 import type { Timesheet, TimesheetProjectSummary } from '../../lib/types/timesheet'
 import type { TimesheetEntry } from '../../lib/types/timesheet-entry'
@@ -301,6 +302,8 @@ function ReviewRow({
     deadlineDay,
     deadlineTime,
     own = false,
+    canReopen = false,
+    onReopen,
 }: {
     ts: Timesheet
     deptName: string
@@ -316,6 +319,9 @@ function ReviewRow({
     deadlineTime: string
     /** The viewer's own timesheet: shown, but nobody decides their own hours. */
     own?: boolean
+    /** The HR Administrator's Cancel approval on an approved sheet — back to the manager for review. */
+    canReopen?: boolean
+    onReopen?: () => void
 }) {
     const pending = isPendingStatus(ts.status) && !own
     const target = weeklyTarget
@@ -463,17 +469,35 @@ function ReviewRow({
                             </Button>
                         </>
                     ) : (
-                        <Box sx={{
-                            display: 'inline-flex', alignItems: 'center',
-                            bgcolor: statusBadge(ts.status).bg,
-                            color: statusBadge(ts.status).color,
-                            fontSize: 11, fontWeight: 500,
-                            px: 1.25, py: '3px',
-                            borderRadius: '20px',
-                            whiteSpace: 'nowrap',
-                        }}>
-                            {statusBadge(ts.status).label}
-                        </Box>
+                        <>
+                            {canReopen && onReopen && ts.status === 'Approved' && (
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    onClick={onReopen}
+                                    disabled={actionPending}
+                                    sx={{
+                                        fontSize: 12, textTransform: 'none',
+                                        color: RED, borderColor: RED,
+                                        px: 1.5, py: '4px', minWidth: 'unset',
+                                        '&:hover': { borderColor: 'error.dark', bgcolor: softBg('error') },
+                                    }}
+                                >
+                                    Cancel approval
+                                </Button>
+                            )}
+                            <Box sx={{
+                                display: 'inline-flex', alignItems: 'center',
+                                bgcolor: statusBadge(ts.status).bg,
+                                color: statusBadge(ts.status).color,
+                                fontSize: 11, fontWeight: 500,
+                                px: 1.25, py: '3px',
+                                borderRadius: '20px',
+                                whiteSpace: 'nowrap',
+                            }}>
+                                {statusBadge(ts.status).label}
+                            </Box>
+                        </>
                     )}
                 </Stack>
             </Box>
@@ -507,6 +531,9 @@ export default function AllTimesheetsPage() {
     const [expandedId, setExpandedId] = useState<string | null>(null)
     const [actionTarget, setActionTarget] = useState<string | null>(null)
     const [rejectDialog, setRejectDialog] = useState<{ ids: string[]; label: string } | null>(null)
+    const [reopenDialog, setReopenDialog] = useState<{ id: string; label: string } | null>(null)
+    const [reopenReason, setReopenReason] = useState('')
+    const [reopenError, setReopenError] = useState('')
     const [rejectReason, setRejectReason] = useState('')
     const [rejectError, setRejectError] = useState('')
 
@@ -636,6 +663,44 @@ export default function AllTimesheetsPage() {
             : timesheets),
         [timesheets, isHr],
     )
+
+    /* The HR Administrator's Cancel approval: the sheet goes back to Submitted for the
+       manager to review again (ReopenTimesheet), with a reason the employee reads. */
+    const reopenMutation = useMutation({
+        mutationFn: ({ id, comment }: { id: string; comment: string }) => reopenTimesheet(id, comment),
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: ['timesheets'] })
+            await queryClient.invalidateQueries({ queryKey: ['timesheetStatusHistories'] })
+        },
+    })
+
+    function openReopenDialog(ts: Timesheet) {
+        setReopenDialog({ id: ts.id, label: `${ts.employeeName} · ${formatWeekHeader(ts.periodStart)} · ${Number(ts.totalHours).toFixed(1)}h` })
+        setReopenReason('')
+        setReopenError('')
+    }
+
+    function closeReopenDialog() {
+        if (reopenMutation.isPending) return
+        setReopenDialog(null)
+        setReopenReason('')
+        setReopenError('')
+    }
+
+    async function confirmReopen() {
+        if (!reopenDialog) return
+        const trimmed = reopenReason.trim()
+        if (trimmed.length === 0) {
+            setReopenError('Please provide a reason for cancelling the approval.')
+            return
+        }
+        try {
+            await reopenMutation.mutateAsync({ id: reopenDialog.id, comment: trimmed })
+        } catch {/* the mutation state carries the error */}
+        setReopenDialog(null)
+        setReopenReason('')
+        setReopenError('')
+    }
 
     // Filter logic
     const filtered = useMemo(() => {
@@ -1161,12 +1226,33 @@ export default function AllTimesheetsPage() {
                                     deadlineDay={deadlineDay}
                                     deadlineTime={deadlineTime}
                                     own={isOwn(ts)}
+                                    canReopen={isHr && !isOwn(ts)}
+                                    onReopen={() => openReopenDialog(ts)}
                                 />
                             ))}
                         </Box>
                     )
                 })
             )}
+
+            {/* Cancel approval — the sheet goes back to the manager for review */}
+            <RejectReasonDialog
+                open={reopenDialog !== null}
+                title="Cancel approval"
+                label={reopenDialog?.label ?? ''}
+                reason={reopenReason}
+                error={reopenError}
+                isPending={reopenMutation.isPending}
+                onReasonChange={(value) => {
+                    setReopenReason(value)
+                    if (reopenError) setReopenError('')
+                }}
+                onClose={closeReopenDialog}
+                onConfirm={() => void confirmReopen()}
+                confirmLabel="Send back for review"
+                busyLabel="Sending back…"
+                placeholder="Reason for cancelling the approval (required)"
+            />
 
             {/* Reject reason dialog */}
             <RejectReasonDialog
