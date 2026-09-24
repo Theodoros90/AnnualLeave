@@ -6,7 +6,7 @@ function leaveType(name: string, availableTo: GenderAvailability = 'Both'): Leav
     return {
         id: 1,
         name,
-        requiresApproval: true,
+        requiresManagerApproval: true,
         isActive: true,
         affectsBalance: false,
         icon: '👶',

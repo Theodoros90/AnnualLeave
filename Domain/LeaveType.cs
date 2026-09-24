@@ -26,7 +26,16 @@ public class LeaveType
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
-    public bool RequiresApproval { get; set; }
+    /* Two switches, two stages. Manager on: a request is filed Pending and a Manager
+       in the department — or an HR Administrator covering it, who stands in for the
+       manager — approves it. HR on: an HR Administrator must sign it off; with
+       Manager also on that is a second stage (AnnualLeaveStatus.AwaitingHrApproval)
+       after the manager's, with Manager off the request is filed straight into it.
+       Neither: approved on filing. ApprovalStageRule is the one place this is
+       decided. RequiresHrApproval defaults to false, so every type predating it
+       keeps the single-stage behaviour the old RequiresApproval column meant. */
+    public bool RequiresManagerApproval { get; set; }
+    public bool RequiresHrApproval { get; set; }
     public bool IsActive { get; set; }
     public bool AffectsBalance { get; set; }
 

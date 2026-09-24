@@ -3,7 +3,8 @@ import type { AttachmentPolicy, GenderAvailability, LeaveType } from '../types'
 
 export interface UpsertLeaveTypeRequest {
     name: string
-    requiresApproval: boolean
+    requiresManagerApproval: boolean
+    requiresHrApproval: boolean
     isActive: boolean
     affectsBalance: boolean
     icon: string

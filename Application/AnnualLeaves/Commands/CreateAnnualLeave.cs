@@ -125,7 +125,7 @@ public class CreateAnnualLeave
             if (perChildError is not null)
                 return Result<string>.Failure(perChildError);
 
-            if (leaveType.RequiresApproval)
+            if (leaveType.RequiresManagerApproval)
             {
                 annualLeave.Status = AnnualLeaveStatus.Pending;
             }
@@ -174,7 +174,7 @@ public class CreateAnnualLeave
 
             await context.SaveChangesAsync(cancellationToken);
 
-            if (!leaveType.RequiresApproval)
+            if (!leaveType.RequiresManagerApproval)
             {
                 await AnnualLeaveBalanceCalculator.SyncCurrentYearBalanceAsync(context, employeeProfile, cancellationToken);
                 await context.SaveChangesAsync(cancellationToken);
@@ -184,7 +184,7 @@ public class CreateAnnualLeave
 
             // Manager notifications go out only once the write is committed: an email
             // about a request that rolled back is worse than a late one.
-            if (leaveType.RequiresApproval)
+            if (leaveType.RequiresManagerApproval)
             {
                 // Notify the employee's manager(s): the direct manager and every
                 // Manager-role user in the employee's department.

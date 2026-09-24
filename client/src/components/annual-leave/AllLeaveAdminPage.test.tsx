@@ -27,7 +27,7 @@ const ENGINEERING = { id: 1, name: 'Engineering', code: 'ENG', isActive: true, c
 const FINANCE = { id: 2, name: 'Finance', code: 'FIN', isActive: true, createdAt: '2026-01-01T00:00:00' }
 
 const ANNUAL_LEAVE_TYPE = {
-    id: 1, name: 'Annual Leave', requiresApproval: true, isActive: true, affectsBalance: true,
+    id: 1, name: 'Annual Leave', requiresManagerApproval: true, isActive: true, affectsBalance: true,
     icon: '', colorKey: 'primary', description: '', paid: true, attachmentPolicy: 'None',
     defaultAllowance: 25, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,

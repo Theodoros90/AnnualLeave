@@ -34,7 +34,7 @@ const api = vi.mocked(await import('../../lib/api'))
 const mobx = vi.mocked(await import('../../lib/mobx'))
 
 const EVIDENCE_TYPE = {
-    id: 1, name: 'Evidence Leave', requiresApproval: true, isActive: true, affectsBalance: false,
+    id: 1, name: 'Evidence Leave', requiresManagerApproval: true, isActive: true, affectsBalance: false,
     icon: '', colorKey: 'primary', description: '', paid: true, attachmentPolicy: 'Required',
     defaultAllowance: 10, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
@@ -48,7 +48,7 @@ const RELAXED_TYPE = {
 
 /** Filing is approval here, so filing is where the document is asked for. */
 const AUTO_EVIDENCE_TYPE = {
-    ...EVIDENCE_TYPE, id: 3, name: 'Self-Approving Evidence Leave', requiresApproval: false,
+    ...EVIDENCE_TYPE, id: 3, name: 'Self-Approving Evidence Leave', requiresManagerApproval: false,
 } as const
 
 const USER: UserInfo = {

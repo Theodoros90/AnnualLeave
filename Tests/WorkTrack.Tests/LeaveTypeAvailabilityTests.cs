@@ -32,7 +32,7 @@ public class LeaveTypeAvailabilityTests
     private static UpsertLeaveTypeRequest Request(string name, GenderAvailability availableTo) => new()
     {
         Name = name,
-        RequiresApproval = true,
+        RequiresManagerApproval = true,
         IsActive = true,
         AvailableTo = availableTo,
     };
@@ -140,7 +140,7 @@ public class LeaveTypeAvailabilityTests
             Id = MenOnlyTypeId,
             Name = "Reservist Training",
             IsActive = true,
-            RequiresApproval = true,
+            RequiresManagerApproval = true,
             AffectsBalance = false,
             DefaultAllowance = 10,
             AvailableTo = GenderAvailability.Male,
@@ -151,7 +151,7 @@ public class LeaveTypeAvailabilityTests
             Id = EveryoneTypeId,
             Name = "Study Leave",
             IsActive = true,
-            RequiresApproval = true,
+            RequiresManagerApproval = true,
             AffectsBalance = false,
             DefaultAllowance = 10,
             AvailableTo = GenderAvailability.Both,

@@ -36,7 +36,7 @@ const api = vi.mocked(await import('../../lib/api'))
 const mobx = vi.mocked(await import('../../lib/mobx'))
 
 const ANNUAL_LEAVE_TYPE = {
-    id: 1, name: 'Annual Leave', requiresApproval: true, isActive: true, affectsBalance: true,
+    id: 1, name: 'Annual Leave', requiresManagerApproval: true, isActive: true, affectsBalance: true,
     icon: '', colorKey: 'primary', description: '', paid: true, attachmentPolicy: 'None',
     defaultAllowance: 23, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,

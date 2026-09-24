@@ -9,7 +9,8 @@ public class UpsertLeaveTypeRequest
     [StringLength(100, MinimumLength = 1)]
     public string Name { get; set; } = string.Empty;
 
-    public bool RequiresApproval { get; set; } = true;
+    public bool RequiresManagerApproval { get; set; } = true;
+    public bool RequiresHrApproval { get; set; } = false;
     public bool IsActive { get; set; } = true;
     public bool AffectsBalance { get; set; } = false;
 

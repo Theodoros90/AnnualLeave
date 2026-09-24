@@ -19,7 +19,7 @@ function leaveType(overrides: Partial<LeaveType> = {}): LeaveType {
     return {
         id: 1,
         name: 'Annual Leave',
-        requiresApproval: true,
+        requiresManagerApproval: true,
         isActive: true,
         affectsBalance: true,
         icon: '🌴',

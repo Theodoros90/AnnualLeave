@@ -9,7 +9,17 @@ export type GenderAvailability = 'Both' | 'Male' | 'Female'
 export interface LeaveType {
     id: number
     name: string
-    requiresApproval: boolean
+    /**
+     * The two approval stages. Manager on: filed Pending, approved by a Manager
+     * in the department or an HR Administrator covering it. HR on: an HR
+     * Administrator must sign it off — a second stage after the manager's when
+     * both are on, the only stage when Manager is off. Neither: approved on
+     * filing. Mirrored from `ApprovalStageRule` by `lib/approval-stage.ts`.
+     * `requiresHrApproval` is optional because an API predating the column
+     * sends none, which reads as off.
+     */
+    requiresManagerApproval: boolean
+    requiresHrApproval?: boolean
     isActive: boolean
     affectsBalance: boolean
     icon: string

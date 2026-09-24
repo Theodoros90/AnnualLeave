@@ -16,7 +16,7 @@ function leaveType(overrides: Partial<LeaveType> = {}): LeaveType {
     return {
         id: 1,
         name: 'Personal Days',
-        requiresApproval: true,
+        requiresManagerApproval: true,
         isActive: true,
         affectsBalance: false,
         icon: '',

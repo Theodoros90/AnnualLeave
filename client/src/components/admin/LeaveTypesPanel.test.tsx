@@ -25,7 +25,7 @@ function leaveType(overrides: Partial<LeaveType> = {}): LeaveType {
     return {
         id: 1,
         name: 'Paternity Leave',
-        requiresApproval: true,
+        requiresManagerApproval: true,
         isActive: true,
         affectsBalance: false,
         icon: '👶',

@@ -81,7 +81,7 @@ public class MilitaryLeaveTypeConfigTests : IDisposable
         Assert.Equal(0, military.MinNoticeDays);
         Assert.Equal(30, military.MaxConsecutiveDays);
         Assert.False(military.HalfDayAllowed);
-        Assert.True(military.RequiresApproval);
+        Assert.True(military.RequiresManagerApproval);
         Assert.True(military.IsActive);
         Assert.Equal("military", military.ColorKey);
     }
@@ -137,7 +137,7 @@ public class MilitaryLeaveTypeConfigTests : IDisposable
         var result = new UpsertLeaveTypeRequestValidator().Validate(new UpsertLeaveTypeRequest
         {
             Name = military.Name,
-            RequiresApproval = military.RequiresApproval,
+            RequiresManagerApproval = military.RequiresManagerApproval,
             IsActive = military.IsActive,
             AffectsBalance = military.AffectsBalance,
             Icon = military.Icon,

@@ -36,7 +36,7 @@ public class CarryoverCapLivesOnTheLeaveTypeTests
     private static UpsertLeaveTypeRequest Request(string name, bool affectsBalance, int allowance, int carryover) => new()
     {
         Name = name,
-        RequiresApproval = true,
+        RequiresManagerApproval = true,
         IsActive = true,
         AffectsBalance = affectsBalance,
         DefaultAllowance = allowance,
@@ -76,7 +76,7 @@ public class CarryoverCapLivesOnTheLeaveTypeTests
         db.LeaveTypes.Add(new LeaveType
         {
             Id = 1, Name = "Annual Leave", IsActive = true,
-            RequiresApproval = true, AffectsBalance = true, DefaultAllowance = 25, MaxCarryoverDays = 5,
+            RequiresManagerApproval = true, AffectsBalance = true, DefaultAllowance = 25, MaxCarryoverDays = 5,
         });
         await db.SaveChangesAsync();
 
@@ -101,12 +101,12 @@ public class CarryoverCapLivesOnTheLeaveTypeTests
         db.LeaveTypes.Add(new LeaveType
         {
             Id = 1, Name = "Annual Leave", IsActive = true,
-            RequiresApproval = true, AffectsBalance = true, DefaultAllowance = 25,
+            RequiresManagerApproval = true, AffectsBalance = true, DefaultAllowance = 25,
         });
         db.LeaveTypes.Add(new LeaveType
         {
             Id = 2, Name = "Sick Leave", IsActive = true,
-            RequiresApproval = true, AffectsBalance = false, DefaultAllowance = 10,
+            RequiresManagerApproval = true, AffectsBalance = false, DefaultAllowance = 10,
         });
         await db.SaveChangesAsync();
 

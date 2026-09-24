@@ -42,7 +42,7 @@ public class CarryoverCapIsBoundedByTheAllowanceTests
     private static UpsertLeaveTypeRequest Request(int allowance, int? carryover) => new()
     {
         Name = "Annual Leave",
-        RequiresApproval = true,
+        RequiresManagerApproval = true,
         IsActive = true,
         AffectsBalance = true,
         DefaultAllowance = allowance,
@@ -100,7 +100,7 @@ public class CarryoverCapIsBoundedByTheAllowanceTests
         db.LeaveTypes.Add(new LeaveType
         {
             Id = 1, Name = "Annual Leave", IsActive = true,
-            RequiresApproval = true, AffectsBalance = true, DefaultAllowance = 23, MaxCarryoverDays = 5,
+            RequiresManagerApproval = true, AffectsBalance = true, DefaultAllowance = 23, MaxCarryoverDays = 5,
         });
         await db.SaveChangesAsync();
 
@@ -126,7 +126,7 @@ public class CarryoverCapIsBoundedByTheAllowanceTests
         db.LeaveTypes.Add(new LeaveType
         {
             Id = 1, Name = "Annual Leave", IsActive = true,
-            RequiresApproval = true, AffectsBalance = true, DefaultAllowance = 23,
+            RequiresManagerApproval = true, AffectsBalance = true, DefaultAllowance = 23,
         });
         await db.SaveChangesAsync();
 

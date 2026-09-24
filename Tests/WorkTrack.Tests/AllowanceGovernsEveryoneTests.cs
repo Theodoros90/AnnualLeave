@@ -39,13 +39,13 @@ public class AllowanceGovernsEveryoneTests
         db.LeaveTypes.Add(new LeaveType
         {
             Id = AnnualLeaveTypeId, Name = "Annual Leave", IsActive = true,
-            RequiresApproval = true, AffectsBalance = true, DefaultAllowance = 25,
+            RequiresManagerApproval = true, AffectsBalance = true, DefaultAllowance = 25,
         });
         // A separate budget with an allowance of its own; moving it must change nothing.
         db.LeaveTypes.Add(new LeaveType
         {
             Id = SickLeaveTypeId, Name = "Sick Leave", IsActive = true,
-            RequiresApproval = true, AffectsBalance = false, DefaultAllowance = 10,
+            RequiresManagerApproval = true, AffectsBalance = false, DefaultAllowance = 10,
         });
     }
 
@@ -79,7 +79,7 @@ public class AllowanceGovernsEveryoneTests
         LeaveType = new UpsertLeaveTypeRequest
         {
             Name = name,
-            RequiresApproval = true,
+            RequiresManagerApproval = true,
             IsActive = true,
             AffectsBalance = affectsBalance,
             DefaultAllowance = days,

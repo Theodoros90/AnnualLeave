@@ -22,7 +22,8 @@ public class GetLeaveTypeList
                 {
                     Id = lt.Id,
                     Name = lt.Name,
-                    RequiresApproval = lt.RequiresApproval,
+                    RequiresManagerApproval = lt.RequiresManagerApproval,
+                    RequiresHrApproval = lt.RequiresHrApproval,
                     IsActive = lt.IsActive,
                     AffectsBalance = lt.AffectsBalance,
                     Icon = lt.Icon,

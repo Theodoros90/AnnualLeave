@@ -11,7 +11,7 @@ using Xunit;
 namespace WorkTrack.Tests;
 
 /// <summary>
-/// Turning RequiresApproval off on an active leave type auto-approves everything
+/// Turning RequiresManagerApproval off on an active leave type auto-approves everything
 /// already pending against it. Each of those approvals has to clear the
 /// employee's balance, and this handler used to check that through the throwing
 /// wrapper — so an employee without the days turned an ordinary settings change
@@ -31,7 +31,7 @@ public class LeaveTypeAutoApprovalBalanceTests
 
     /// <summary>
     /// A leave type that currently requires approval and counts against balance,
-    /// which is what puts the auto-approval branch in play when RequiresApproval
+    /// which is what puts the auto-approval branch in play when RequiresManagerApproval
     /// is switched off.
     /// </summary>
     private static void SeedLeaveType(AppDbContext db) =>
@@ -40,7 +40,7 @@ public class LeaveTypeAutoApprovalBalanceTests
             Id = LeaveTypeId,
             Name = "Annual",
             IsActive = true,
-            RequiresApproval = true,
+            RequiresManagerApproval = true,
             AffectsBalance = true,
         });
 
@@ -79,7 +79,7 @@ public class LeaveTypeAutoApprovalBalanceTests
         LeaveType = new UpsertLeaveTypeRequest
         {
             Name = "Annual",
-            RequiresApproval = false,
+            RequiresManagerApproval = false,
             IsActive = true,
             AffectsBalance = true,
         },
@@ -163,7 +163,7 @@ public class LeaveTypeAutoApprovalBalanceTests
         var result = await Handle(db, StopRequiringApproval());
 
         Assert.True(result.IsSuccess, result.Error);
-        Assert.False(result.Value!.RequiresApproval);
+        Assert.False(result.Value!.RequiresManagerApproval);
         Assert.Equal(AnnualLeaveStatus.Approved, await StatusOf(db, "u-ample"));
     }
 }

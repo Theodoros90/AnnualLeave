@@ -96,7 +96,7 @@ public class CoverageNotificationTests
             Name = "Annual Leave",
             IsActive = true,
             AffectsBalance = true,
-            RequiresApproval = requiresApproval,
+            RequiresManagerApproval = requiresApproval,
         });
 
         await db.SaveChangesAsync();

@@ -80,7 +80,7 @@ public class PaternityLeaveTypeConfigTests : IDisposable
         bool affectsBalance = false) => new()
     {
         Name = "Paternity Leave",
-        RequiresApproval = true,
+        RequiresManagerApproval = true,
         IsActive = true,
         AffectsBalance = affectsBalance,
         // Fixed for the built-in type; anything else is a second refusal.

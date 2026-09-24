@@ -793,7 +793,7 @@ public class DbInitializer
             {
                 Name = "Annual Leave", Icon = "🌴", ColorKey = "annual",
                 Description = "Vacation days, holidays, and personal time off.",
-                RequiresApproval = true, IsActive = true, AffectsBalance = true, Paid = true,
+                RequiresManagerApproval = true, IsActive = true, AffectsBalance = true, Paid = true,
                 AttachmentPolicy = AttachmentPolicy.None,
                 DefaultAllowance = 25, AllowanceUnit = "days/year",
                 AccrualNotes = "Resets 1 Jan · No carryover",
@@ -803,7 +803,7 @@ public class DbInitializer
             {
                 Name = "Sick Leave", Icon = "🤒", ColorKey = "sick",
                 Description = "Time off due to illness or medical appointments.",
-                RequiresApproval = true, IsActive = true, AffectsBalance = false, Paid = true,
+                RequiresManagerApproval = true, IsActive = true, AffectsBalance = false, Paid = true,
                 AttachmentPolicy = AttachmentPolicy.Optional,
                 DefaultAllowance = 10, AllowanceUnit = "days/year",
                 AccrualNotes = "Resets 1 Jan · 5 days carryover allowed",
@@ -813,7 +813,7 @@ public class DbInitializer
             {
                 Name = "Personal Days", Icon = "🏠", ColorKey = "personal",
                 Description = "Family matters, errands, or personal appointments.",
-                RequiresApproval = true, IsActive = true, AffectsBalance = false, Paid = true,
+                RequiresManagerApproval = true, IsActive = true, AffectsBalance = false, Paid = true,
                 AttachmentPolicy = AttachmentPolicy.None,
                 DefaultAllowance = 3, AllowanceUnit = "days/year",
                 AccrualNotes = "Resets 1 Jan · No carryover",
@@ -823,7 +823,7 @@ public class DbInitializer
             {
                 Name = "Bereavement", Icon = "🕊️", ColorKey = "bereavement",
                 Description = "Time off following the loss of a loved one.",
-                RequiresApproval = true, IsActive = true, AffectsBalance = false, Paid = true,
+                RequiresManagerApproval = true, IsActive = true, AffectsBalance = false, Paid = true,
                 AttachmentPolicy = AttachmentPolicy.Optional,
                 DefaultAllowance = 5, AllowanceUnit = "days/event",
                 AccrualNotes = "Granted per event · No annual limit",
@@ -833,7 +833,7 @@ public class DbInitializer
             {
                 Name = "Maternity Leave", Icon = "👶", ColorKey = "maternity",
                 Description = "Time off for new mothers around the birth of a child.",
-                RequiresApproval = true, IsActive = true, AffectsBalance = false, Paid = true,
+                RequiresManagerApproval = true, IsActive = true, AffectsBalance = false, Paid = true,
                 AttachmentPolicy = AttachmentPolicy.Required,
                 DefaultAllowance = 90, AllowanceUnit = "days/event",
                 AccrualNotes = "Granted per event · Once per pregnancy",
@@ -844,7 +844,7 @@ public class DbInitializer
             {
                 Name = "Paternity Leave", Icon = "👨‍👶", ColorKey = "paternity",
                 Description = "Time off for a father around the birth of a child, and while that child is young.",
-                RequiresApproval = true, IsActive = true, AffectsBalance = false, Paid = true,
+                RequiresManagerApproval = true, IsActive = true, AffectsBalance = false, Paid = true,
                 AttachmentPolicy = AttachmentPolicy.Required,
                 // The flat allowance is dead: this type's budget is per child, not
                 // per employee, so DefaultAllowance is 0 and the per-child figures
@@ -860,7 +860,7 @@ public class DbInitializer
             {
                 Name = "Unpaid Leave", Icon = "💼", ColorKey = "unpaid",
                 Description = "Extended time off without pay or balance deduction.",
-                RequiresApproval = true, IsActive = true, AffectsBalance = false, Paid = false,
+                RequiresManagerApproval = true, IsActive = true, AffectsBalance = false, Paid = false,
                 AttachmentPolicy = AttachmentPolicy.None,
                 DefaultAllowance = 30, AllowanceUnit = "days/year",
                 AccrualNotes = "No annual limit · Manager + HR approval",
@@ -873,7 +873,7 @@ public class DbInitializer
             {
                 Name = "Sabbatical", Icon = "🎓", ColorKey = "default",
                 Description = "Extended career break for study, travel, or research.",
-                RequiresApproval = true, IsActive = false, AffectsBalance = false, Paid = false,
+                RequiresManagerApproval = true, IsActive = false, AffectsBalance = false, Paid = false,
                 AttachmentPolicy = AttachmentPolicy.None,
                 DefaultAllowance = 90, AllowanceUnit = "days/5 years",
                 AccrualNotes = "After 5 years of service · Once per period",
@@ -889,7 +889,7 @@ public class DbInitializer
                 // delete it like any other type it owns.
                 Name = "Military Leave", Icon = "🎖️", ColorKey = "military",
                 Description = "Compulsory national service, reservist call-up, or military training.",
-                RequiresApproval = true, IsActive = true,
+                RequiresManagerApproval = true, IsActive = true,
                 // A call-up is not a holiday. Charging it to the enforced pool would
                 // spend an annual allowance on time off the employee never asked for
                 // and cannot decline.

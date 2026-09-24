@@ -25,7 +25,7 @@ public class UpdateLeaveType
             if (leaveType is null)
                 return Result<LeaveTypeDto>.Failure("Leave type not found.");
 
-            var wasRequiringApproval = leaveType.RequiresApproval;
+            var wasRequiringApproval = leaveType.RequiresManagerApproval;
             var previousAllowance = leaveType.DefaultAllowance;
             var previouslyProRated = leaveType.ProRateFirstYear;
 
@@ -84,7 +84,7 @@ public class UpdateLeaveType
                     affectedProfiles[employeeProfile.Id] = employeeProfile;
             }
 
-            if (wasRequiringApproval && !leaveType.RequiresApproval && leaveType.IsActive)
+            if (wasRequiringApproval && !leaveType.RequiresManagerApproval && leaveType.IsActive)
             {
                 var pendingLeaves = await context.AnnualLeaves
                     .Where(al => al.LeaveTypeId == leaveType.Id && al.Status == AnnualLeaveStatus.Pending)

@@ -62,7 +62,7 @@ const SETTINGS: AppSettings = {
 /* The row both figures live in: the allowance and the cap that bounds it. Leave Types
    is the only screen that edits either. */
 const ANNUAL_LEAVE_TYPE = {
-    id: 1, name: 'Annual Leave', requiresApproval: true, isActive: true, affectsBalance: true,
+    id: 1, name: 'Annual Leave', requiresManagerApproval: true, isActive: true, affectsBalance: true,
     icon: '🌴', colorKey: 'annual', description: 'Vacation days.', paid: true,
     attachmentPolicy: 'None', defaultAllowance: 25, allowanceUnit: 'days/year',
     maxCarryoverDays: 5,

@@ -40,7 +40,7 @@ const api = vi.mocked(await import('../../lib/api'))
 // Annotated rather than `as const`: every test varies attachmentPolicy, which a
 // const assertion would narrow to the one literal spelled here.
 const BASE_TYPE: LeaveType = {
-    id: 1, name: 'Personal Days', requiresApproval: true, isActive: true, affectsBalance: false,
+    id: 1, name: 'Personal Days', requiresManagerApproval: true, isActive: true, affectsBalance: false,
     icon: '', colorKey: 'personal', description: '', paid: true, attachmentPolicy: 'None',
     defaultAllowance: 3, allowanceUnit: 'days/year', maxCarryoverDays: 0,
     perChildEntitlement: false, perChildTotalWeeks: 0, perChildWeeksPerYear: 0, childEligibleUntilAge: 0,
@@ -184,7 +184,7 @@ describe('ApplyLeavePage — supporting documents follow the attachment policy',
 
     /** Filing is approval for a type that approves itself, so filing is gated. */
     it('blocks submit for a Required policy on a type that approves itself', async () => {
-        await renderWithType({ attachmentPolicy: 'Required', requiresApproval: false })
+        await renderWithType({ attachmentPolicy: 'Required', requiresManagerApproval: false })
         pickDates()
 
         expect(within(documentsSection()).getByText('(required)')).toBeInTheDocument()

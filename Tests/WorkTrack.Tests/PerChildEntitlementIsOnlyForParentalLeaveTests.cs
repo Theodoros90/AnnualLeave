@@ -22,7 +22,7 @@ public class PerChildEntitlementIsOnlyForParentalLeaveTests
     private static UpsertLeaveTypeRequest Request(string name, bool perChild) => new()
     {
         Name = name,
-        RequiresApproval = true,
+        RequiresManagerApproval = true,
         IsActive = true,
         PerChildEntitlement = perChild,
         // The built-in types lock who they are available to; sending anything else

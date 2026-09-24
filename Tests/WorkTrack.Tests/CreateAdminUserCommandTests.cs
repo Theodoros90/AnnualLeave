@@ -160,7 +160,7 @@ public class CreateAdminUserCommandTests : IDisposable
             Name = "Annual Leave",
             IsActive = isActive,
             AffectsBalance = true,
-            RequiresApproval = true,
+            RequiresManagerApproval = true,
             DefaultAllowance = defaultAllowance,
         });
         await db.SaveChangesAsync();
@@ -218,7 +218,7 @@ public class CreateAdminUserCommandTests : IDisposable
             Name = "Sick Leave",
             IsActive = true,
             AffectsBalance = false,
-            RequiresApproval = true,
+            RequiresManagerApproval = true,
             DefaultAllowance = 99,
         });
         await db.SaveChangesAsync();

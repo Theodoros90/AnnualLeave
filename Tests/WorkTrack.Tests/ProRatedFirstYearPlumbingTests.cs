@@ -77,7 +77,7 @@ public class ProRatedFirstYearPlumbingTests : IDisposable
     {
         Db.LeaveTypes.Add(new LeaveType
         {
-            Id = AnnualLeaveTypeId, Name = "Annual Leave", IsActive = true, RequiresApproval = true,
+            Id = AnnualLeaveTypeId, Name = "Annual Leave", IsActive = true, RequiresManagerApproval = true,
             AffectsBalance = true, DefaultAllowance = 23, ProRateFirstYear = proRate,
         });
         await Db.SaveChangesAsync();
@@ -100,7 +100,7 @@ public class ProRatedFirstYearPlumbingTests : IDisposable
 
     private static UpsertLeaveTypeRequest AnnualLeaveRequest(bool proRate, bool affectsBalance = true) => new()
     {
-        Name = "Annual Leave", IsActive = true, RequiresApproval = true,
+        Name = "Annual Leave", IsActive = true, RequiresManagerApproval = true,
         AffectsBalance = affectsBalance, DefaultAllowance = 23, ProRateFirstYear = proRate,
     };
 

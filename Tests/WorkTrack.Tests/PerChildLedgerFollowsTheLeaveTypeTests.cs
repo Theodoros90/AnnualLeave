@@ -47,13 +47,13 @@ public class PerChildLedgerFollowsTheLeaveTypeTests
 
         db.LeaveTypes.Add(new LeaveType
         {
-            Id = MaternityTypeId, Name = "Maternity Leave", IsActive = true, RequiresApproval = true,
+            Id = MaternityTypeId, Name = "Maternity Leave", IsActive = true, RequiresManagerApproval = true,
             PerChildEntitlement = true,
             PerChildTotalWeeks = 4, PerChildWeeksPerYear = 4, ChildEligibleUntilAge = 4,
         });
         db.LeaveTypes.Add(new LeaveType
         {
-            Id = PaternityTypeId, Name = "Paternity Leave", IsActive = true, RequiresApproval = true,
+            Id = PaternityTypeId, Name = "Paternity Leave", IsActive = true, RequiresManagerApproval = true,
             PerChildEntitlement = true,
             PerChildTotalWeeks = 18, PerChildWeeksPerYear = 6, ChildEligibleUntilAge = 15,
         });

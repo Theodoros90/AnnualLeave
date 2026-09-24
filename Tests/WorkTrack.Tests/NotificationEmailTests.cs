@@ -161,7 +161,7 @@ public class NotificationEmailTests
             Name = "Annual",
             IsActive = true,
             AffectsBalance = true,
-            RequiresApproval = requiresApproval,
+            RequiresManagerApproval = requiresApproval,
         });
 
         await db.SaveChangesAsync();

@@ -608,7 +608,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
     // call-up papers are dated the day of service. Submit is disabled only where
     // submitting would approve, i.e. a type that approves itself.
     const attachmentMissing = isAttachmentMissing(selectedType, !!attachment)
-    const attachmentBlocking = isAttachmentBlockingSubmit(selectedType, !!attachment, selectedType?.requiresApproval === false)
+    const attachmentBlocking = isAttachmentBlockingSubmit(selectedType, !!attachment, selectedType?.requiresManagerApproval === false)
     // A required document the employee is allowed to bring later.
     const attachmentDeferrable = attachmentRule === 'required' && !attachmentBlocking && attachmentMissing
 
@@ -1255,7 +1255,7 @@ function ApplyLeavePage({ user }: { user: UserInfo }) {
                                 }}
                             >
                                 {attachmentRule === 'required'
-                                    ? (selectedType?.requiresApproval === false ? '(required)' : '(required before approval)')
+                                    ? (selectedType?.requiresManagerApproval === false ? '(required)' : '(required before approval)')
                                     : attachmentRule === 'encouraged' ? '(recommended)' : '(optional)'}
                             </Box>
                         </Box>

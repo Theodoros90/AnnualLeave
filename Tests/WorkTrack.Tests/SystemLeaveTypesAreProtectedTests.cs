@@ -36,7 +36,7 @@ public class SystemLeaveTypesAreProtectedTests
         {
             Name = name,
             IsActive = true,
-            RequiresApproval = true,
+            RequiresManagerApproval = true,
             DefaultAllowance = 25,
             AffectsBalance = name == SystemLeaveTypes.AnnualLeave,
         };
@@ -51,7 +51,7 @@ public class SystemLeaveTypesAreProtectedTests
     private static UpsertLeaveTypeRequest Request(string name) => new()
     {
         Name = name,
-        RequiresApproval = true,
+        RequiresManagerApproval = true,
         IsActive = true,
         DefaultAllowance = 25,
     };

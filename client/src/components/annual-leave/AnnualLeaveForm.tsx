@@ -157,7 +157,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
     const attachmentBlocking = isAttachmentBlockingSubmit(
         selectedLeaveType,
         !!evidenceFile || !!evidenceUrl.trim(),
-        isEdit ? leave?.status === 'Approved' : selectedLeaveType?.requiresApproval === false,
+        isEdit ? leave?.status === 'Approved' : selectedLeaveType?.requiresManagerApproval === false,
     )
     /* A type set to "No attachment needed" gets no upload at all. Evidence the
        request already carries is the exception: this dialog is the only place to

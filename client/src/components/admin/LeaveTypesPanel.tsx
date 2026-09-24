@@ -238,7 +238,8 @@ function LeaveTypesPanel() {
     const toggleActive = (t: LeaveType) => {
         const payload: UpsertLeaveTypeRequest = {
             name: t.name,
-            requiresApproval: t.requiresApproval,
+            requiresManagerApproval: t.requiresManagerApproval,
+            requiresHrApproval: !!t.requiresHrApproval,
             isActive: !t.isActive,
             affectsBalance: t.affectsBalance,
             icon: t.icon,
@@ -635,8 +636,8 @@ function LeaveTypeCard({ derived, onEdit, onToggle, onDelete }: {
                     label={t.paid ? <><strong>Paid leave</strong> · counts against balance</> : <><strong>Unpaid</strong> · no balance deduction, no pay</>}
                 />
                 <Rule
-                    ok={t.requiresApproval}
-                    label={t.requiresApproval ? <strong>Requires manager approval</strong> : <>Auto-approved (no manager review)</>}
+                    ok={t.requiresManagerApproval}
+                    label={t.requiresManagerApproval ? <strong>Requires manager approval</strong> : <>Auto-approved (no manager review)</>}
                 />
                 <AttachmentRule policy={t.attachmentPolicy} />
                 <Rule
@@ -921,7 +922,10 @@ function LeaveTypeFormDialog(props: {
     const [icon, setIcon] = useState(i?.icon ?? '🏷️')
     const [colorKey, setColorKey] = useState<string>(i?.colorKey ?? 'default')
     const [description, setDescription] = useState(i?.description ?? '')
-    const [requiresApproval, setRequiresApproval] = useState(i?.requiresApproval ?? true)
+    const [requiresManagerApproval, setRequiresApproval] = useState(i?.requiresManagerApproval ?? true)
+    // The switch that calls this setter is Task 10's; until then the value only
+    // rides along in `submit` below, unchanged from what the type already has.
+    const [requiresHrApproval, _setRequiresHrApproval] = useState(!!i?.requiresHrApproval)
     const [isActive, setIsActive] = useState(i?.isActive ?? true)
     const [affectsBalance, setAffectsBalance] = useState(i?.affectsBalance ?? false)
     const [paid, setPaid] = useState(i?.paid ?? true)
@@ -987,7 +991,8 @@ function LeaveTypeFormDialog(props: {
             icon: icon.trim() || '🏷️',
             colorKey,
             description: description.trim(),
-            requiresApproval,
+            requiresManagerApproval,
+            requiresHrApproval,
             isActive,
             // A per-child type keeps its own ledger and must never also be deducted
             // from the pooled balance — the server refuses that combination, and one
@@ -1269,7 +1274,7 @@ function LeaveTypeFormDialog(props: {
                             label="Paid leave"
                         />
                         <FormControlLabel
-                            control={<Switch checked={requiresApproval} onChange={(e) => setRequiresApproval(e.target.checked)} />}
+                            control={<Switch checked={requiresManagerApproval} onChange={(e) => setRequiresApproval(e.target.checked)} />}
                             label="Requires approval"
                         />
                         <Box>

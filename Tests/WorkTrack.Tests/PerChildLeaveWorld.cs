@@ -61,7 +61,7 @@ internal static class PerChildLeaveWorld
             Id = PaternityTypeId,
             Name = "Paternity Leave",
             IsActive = true,
-            RequiresApproval = true,
+            RequiresManagerApproval = true,
             AffectsBalance = false,
             DefaultAllowance = 0,
             AllowanceUnit = "weeks/child",
@@ -78,7 +78,7 @@ internal static class PerChildLeaveWorld
             Id = AnnualLeaveTypeId,
             Name = "Annual Leave",
             IsActive = true,
-            RequiresApproval = true,
+            RequiresManagerApproval = true,
             AffectsBalance = true,
             DefaultAllowance = 25,
         });

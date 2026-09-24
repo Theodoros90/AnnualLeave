@@ -6,7 +6,8 @@ public class LeaveTypeDto
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
-    public bool RequiresApproval { get; set; }
+    public bool RequiresManagerApproval { get; set; }
+    public bool RequiresHrApproval { get; set; }
     public bool IsActive { get; set; }
     public bool AffectsBalance { get; set; }
 
