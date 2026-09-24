@@ -89,7 +89,9 @@ public class UpdateLeaveType
                approve everything open, balance-checked, as the one-switch sweep
                always did. HR off with Manager still on: approve what was with HR —
                its manager stage is done. Manager off with HR on: Pending rows move
-               to HR, since there is no manager stage left for them to clear.
+               to HR, since there is no manager stage left for them to clear. HR-only
+               swapped for Manager-only in one save: the rows with HR never had a
+               manager stage, so they go back to the manager rather than through.
                Switching anything *on* moves nothing: a Pending row will be advanced
                by the manager, and a row with HR stays with HR. */
             if (leaveType.IsActive)
@@ -97,8 +99,12 @@ public class UpdateLeaveType
                 var nowManager = leaveType.RequiresManagerApproval;
                 var nowHr = leaveType.RequiresHrApproval;
                 var everythingOff = !nowManager && !nowHr && (wasRequiringManager || wasRequiringHr);
-                var hrDropped = wasRequiringHr && !nowHr && nowManager;
+                var hrDropped = wasRequiringHr && !nowHr && nowManager && wasRequiringManager;
                 var managerDropped = wasRequiringManager && !nowManager && nowHr;
+                // HR-only became Manager-only in one save: the rows with HR never had
+                // a manager stage, and the save just turned one on, so they go to the
+                // manager rather than through.
+                var hrSwappedForManager = wasRequiringHr && !wasRequiringManager && !nowHr && nowManager;
 
                 if (everythingOff || hrDropped)
                 {
@@ -161,6 +167,27 @@ public class UpdateLeaveType
                             OldStatus = AnnualLeaveStatus.Pending,
                             NewStatus = AnnualLeaveStatus.AwaitingHrApproval,
                             Comment = "Moved to HR approval based on leave type settings.",
+                            ChangedAt = DateTime.UtcNow,
+                        });
+                    }
+                }
+                else if (hrSwappedForManager)
+                {
+                    var toManager = await context.AnnualLeaves
+                        .Where(al => al.LeaveTypeId == leaveType.Id && al.Status == AnnualLeaveStatus.AwaitingHrApproval)
+                        .ToListAsync(cancellationToken);
+
+                    foreach (var annualLeave in toManager)
+                    {
+                        annualLeave.Status = AnnualLeaveStatus.Pending;
+                        context.LeaveStatusHistories.Add(new LeaveStatusHistory
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            AnnualLeaveId = annualLeave.Id,
+                            ChangedByUserId = annualLeave.EmployeeId,
+                            OldStatus = AnnualLeaveStatus.AwaitingHrApproval,
+                            NewStatus = AnnualLeaveStatus.Pending,
+                            Comment = "Moved to manager approval based on leave type settings.",
                             ChangedAt = DateTime.UtcNow,
                         });
                     }

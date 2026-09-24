@@ -107,4 +107,21 @@ public class LeaveTypeApprovalSweepTests
         Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, await StatusAsync(db, "with-hr"));
         Assert.Equal(0, await db.LeaveStatusHistories.CountAsync());
     }
+
+    [Fact]
+    public async Task Swapping_hr_for_manager_in_one_save_sends_the_rows_with_hr_back_to_the_manager()
+    {
+        using var db = await WorldAsync(manager: false, hr: true);
+
+        var result = await SaveAsync(db, manager: true, hr: false);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(AnnualLeaveStatus.Pending, await StatusAsync(db, "with-hr"));
+        // The seeded Pending row cannot exist on an HR-only type; it must simply be left alone.
+        Assert.Equal(AnnualLeaveStatus.Pending, await StatusAsync(db, "pending"));
+        var history = await db.LeaveStatusHistories.SingleAsync();
+        Assert.Equal("with-hr", history.AnnualLeaveId);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, history.OldStatus);
+        Assert.Equal(AnnualLeaveStatus.Pending, history.NewStatus);
+    }
 }
