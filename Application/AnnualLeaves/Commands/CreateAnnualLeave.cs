@@ -125,13 +125,14 @@ public class CreateAnnualLeave
             if (perChildError is not null)
                 return Result<string>.Failure(perChildError);
 
-            if (leaveType.RequiresManagerApproval)
+            /* Which stage the request opens in — Pending for the manager, straight to
+               the HR stage on a type that asks for HR alone, or Approved when nobody
+               has to look at it. ApprovalStageRule owns the table. */
+            var initialStatus = ApprovalStageRule.InitialStatus(leaveType);
+            annualLeave.Status = initialStatus;
+
+            if (initialStatus == AnnualLeaveStatus.Approved)
             {
-                annualLeave.Status = AnnualLeaveStatus.Pending;
-            }
-            else
-            {
-                annualLeave.Status = AnnualLeaveStatus.Approved;
                 annualLeave.ApprovedAt = DateTime.UtcNow;
 
                 /* The attachment policy gates approval, and here filing is approval.
@@ -174,7 +175,7 @@ public class CreateAnnualLeave
 
             await context.SaveChangesAsync(cancellationToken);
 
-            if (!leaveType.RequiresManagerApproval)
+            if (initialStatus == AnnualLeaveStatus.Approved)
             {
                 await AnnualLeaveBalanceCalculator.SyncCurrentYearBalanceAsync(context, employeeProfile, cancellationToken);
                 await context.SaveChangesAsync(cancellationToken);
@@ -184,7 +185,7 @@ public class CreateAnnualLeave
 
             // Manager notifications go out only once the write is committed: an email
             // about a request that rolled back is worse than a late one.
-            if (leaveType.RequiresManagerApproval)
+            if (initialStatus == AnnualLeaveStatus.Pending)
             {
                 // Notify the employee's manager(s): the direct manager and every
                 // Manager-role user in the employee's department.
@@ -231,6 +232,13 @@ public class CreateAnnualLeave
                             cancellationToken);
                     }
                 }
+            }
+            else if (initialStatus == AnnualLeaveStatus.AwaitingHrApproval)
+            {
+                // No manager stage on this type, so HR are the first and only people
+                // to hear about it.
+                await HrApprovalNotification.SendAsync(
+                    context, emailService, annualLeave, leaveType, employeeProfile, approvedByUserId: null, cancellationToken);
             }
             else
             {
