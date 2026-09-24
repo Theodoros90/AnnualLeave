@@ -77,6 +77,43 @@ public class TimesheetStatusTransitionTests
         Assert.Equal(TimesheetStatus.Resubmitted, reloaded!.Status);
     }
 
+    /// <summary>
+    /// A Manager's own timesheet sits inside their own department scope, and an HR
+    /// Administrator reaches their own department-less one — so scope alone would
+    /// let either sign off their own hours. The approval pages leave the caller's
+    /// own row out of the queue; this pins the rule behind that on the server.
+    /// </summary>
+    [Theory]
+    [InlineData(TimesheetStatus.Approved, false, true, false)]  // a Manager, their own
+    [InlineData(TimesheetStatus.Rejected, false, true, false)]
+    [InlineData(TimesheetStatus.Approved, false, true, true)]   // an HR Administrator, their own
+    [InlineData(TimesheetStatus.Approved, true, false, false)]  // even the unscoped admin flag
+    public async Task Nobody_decides_their_own_timesheet(TimesheetStatus target, bool isAdmin, bool isManager, bool isHr)
+    {
+        using var db = TestDb.Create();
+        db.Roles.Add(new Role { Id = "r-mgr", Name = AppRoles.Manager, NormalizedName = AppRoles.Manager.ToUpperInvariant() });
+        db.UserRoles.Add(new UserRole { UserId = "emp-user-1", RoleId = "r-mgr" });
+        var ts = SeedTimesheet(db, TimesheetStatus.Submitted);
+
+        var result = await StatusHandler(db).Handle(
+            new UpdateTimesheetStatus.Command
+            {
+                Id = ts.Id,
+                NewStatus = target,
+                RequestingUserId = "emp-user-1",
+                IsAdmin = isAdmin,
+                IsManager = isManager,
+                IsHrAdministrator = isHr,
+                Comment = "Looks fine",
+            },
+            CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(UpdateTimesheetStatus.OwnTimesheetMessage, result.Error);
+        Assert.Equal(TimesheetStatus.Submitted, (await db.Timesheets.FindAsync(ts.Id))!.Status);
+        Assert.False(await db.TimesheetStatusHistories.AnyAsync());
+    }
+
     [Fact]
     public async Task Submitted_is_approved_with_approver_stamp_and_history()
     {

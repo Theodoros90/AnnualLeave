@@ -22,7 +22,7 @@ import TableRow from '@mui/material/TableRow'
 import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import { approveTimesheet, getDepartments, getProjects, getProjectActivityTypes, getProjectComponents, getProjectTypes, getTimesheet, getTimesheets, rejectTimesheet } from '../../lib/api'
+import { approveTimesheet, getDepartments, getEmployeeProfiles, getProjects, getProjectActivityTypes, getProjectComponents, getProjectTypes, getTimesheet, getTimesheets, rejectTimesheet } from '../../lib/api'
 import type { TimesheetEntry, TimesheetStatus, UserInfo } from '../../lib/types'
 import type { Timesheet } from '../../lib/types/timesheet'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
@@ -129,6 +129,14 @@ const TeamTimesheetPage = observer(function TeamTimesheetPage({ user }: { user: 
         queryKey: ['timesheets'],
         queryFn: getTimesheets,
     })
+
+    /* Nobody decides their own hours. A Manager's own submitted timesheet is inside
+       their own department scope, so it lists here like anyone else's; the server
+       refuses the approval (UpdateTimesheetStatus.OwnTimesheetMessage) and this keeps
+       the buttons off the row. Timesheet.employeeId is the EmployeeProfile id. */
+    const { data: profiles = [] } = useQuery({ queryKey: ['employeeProfiles'], queryFn: getEmployeeProfiles })
+    const myProfileId = useMemo(() => profiles.find((p) => p.userId === user.id)?.id, [profiles, user.id])
+    const isOwn = (ts: Timesheet) => myProfileId !== undefined && ts.employeeId === myProfileId
 
     const { data: departments = [] } = useQuery({
         queryKey: ['departments'],
@@ -268,7 +276,7 @@ const TeamTimesheetPage = observer(function TeamTimesheetPage({ user }: { user: 
         [departments]
     )
 
-    const isPendingView = viewTs ? needsAction(viewTs.status) : false
+    const isPendingView = viewTs ? needsAction(viewTs.status) && !isOwn(viewTs) : false
     const isActioning = viewTs ? actionTarget === viewTs.id : false
 
     return (
@@ -363,6 +371,7 @@ const TeamTimesheetPage = observer(function TeamTimesheetPage({ user }: { user: 
                             <TableBody>
                                 {filtered.map((ts) => {
                                     const isPending = needsAction(ts.status)
+                                    const decidable = isPending && (isAdmin || isManager) && !isOwn(ts)
                                     const isWorking = actionTarget === ts.id
                                     const deptName = deptNameOf(ts.departmentId)
 
@@ -388,7 +397,7 @@ const TeamTimesheetPage = observer(function TeamTimesheetPage({ user }: { user: 
                                                     : '—'}
                                             </TableCell>
                                             <TableCell sx={TD}>
-                                                {isPending && (isAdmin || isManager) ? (
+                                                {decidable ? (
                                                     <Stack direction="row" spacing={0.75}>
                                                         <Button
                                                             size="small"

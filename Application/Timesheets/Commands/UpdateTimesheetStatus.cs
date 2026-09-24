@@ -21,6 +21,8 @@ public class UpdateTimesheetStatus
         public string? Comment { get; set; }
     }
 
+    public const string OwnTimesheetMessage = "You cannot approve or reject your own timesheet.";
+
     public class Handler(
         AppDbContext context,
         IEmailService emailService,
@@ -35,6 +37,21 @@ public class UpdateTimesheetStatus
             if (timesheet is null)
             {
                 return Result<Unit>.Failure("Timesheet not found.");
+            }
+
+            // Nobody approves or rejects their own hours — not a Manager, whose own
+            // timesheet sits inside their own department scope, and not an HR
+            // Administrator, who reaches their own department-less one. The approval
+            // pages leave the caller's own row out of the queue; this is the rule
+            // behind that, so a direct call cannot get round it.
+            var isOwn = await context.EmployeeProfiles
+                .AsNoTracking()
+                .AnyAsync(ep => ep.Id == timesheet.EmployeeProfileId && ep.UserId == request.RequestingUserId, cancellationToken);
+            if (isOwn)
+            {
+                return Result<Unit>.ValidationFailure(
+                    new Dictionary<string, string[]> { ["Authorization"] = [OwnTimesheetMessage] },
+                    OwnTimesheetMessage);
             }
 
             if (!request.IsAdmin)

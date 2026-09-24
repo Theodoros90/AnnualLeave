@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -13,6 +13,7 @@ import Typography from '@mui/material/Typography'
 import {
     approveTimesheet,
     getDepartments,
+    getEmployeeProfiles,
     getProjects,
     getProjectComponents,
     getProjectTypes,
@@ -23,6 +24,7 @@ import {
 import type { Timesheet, TimesheetProjectSummary } from '../../lib/types/timesheet'
 import type { TimesheetEntry } from '../../lib/types/timesheet-entry'
 import { useAppSettings } from '../../lib/hooks/useAppSettings'
+import { useStore } from '../../lib/mobx'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
 import { RejectReasonDialog } from '../ui'
 import { buildTimesheetsCsv } from './timesheet-csv'
@@ -296,6 +298,7 @@ function ReviewRow({
     weeklyTarget,
     deadlineDay,
     deadlineTime,
+    own = false,
 }: {
     ts: Timesheet
     deptName: string
@@ -309,8 +312,10 @@ function ReviewRow({
     weeklyTarget: number
     deadlineDay: string
     deadlineTime: string
+    /** The viewer's own timesheet: shown, but nobody decides their own hours. */
+    own?: boolean
 }) {
-    const pending = isPendingStatus(ts.status)
+    const pending = isPendingStatus(ts.status) && !own
     const target = weeklyTarget
     const hoursDiff = Number(ts.totalHours) < target * 0.9 ? 'under' : Number(ts.totalHours) > target ? 'over' : 'ok'
     const hoursColor = hoursDiff === 'under' ? AMBER : hoursDiff === 'over' ? BLUE : 'text.primary'
@@ -488,6 +493,7 @@ function ReviewRow({
 
 export default function AllTimesheetsPage() {
     const queryClient = useQueryClient()
+    const { authStore } = useStore()
 
     const [tab, setTab] = useState<FilterTab>('all')
     const [search, setSearch] = useState('')
@@ -506,6 +512,16 @@ export default function AllTimesheetsPage() {
         queryKey: ['timesheets'],
         queryFn: getTimesheets,
     })
+
+    /* Nobody decides their own hours. An HR Administrator's own department-less
+       timesheet is inside their reach, so it lists here; the server refuses the
+       approval (UpdateTimesheetStatus.OwnTimesheetMessage) and this keeps the buttons
+       off the row and the row out of a bulk selection. Timesheet.employeeId is the
+       EmployeeProfile id. */
+    const { data: profiles = [] } = useQuery({ queryKey: ['employeeProfiles'], queryFn: getEmployeeProfiles })
+    const myUserId = authStore.user?.id
+    const myProfileId = useMemo(() => profiles.find((p) => p.userId === myUserId)?.id, [profiles, myUserId])
+    const isOwn = useCallback((ts: Timesheet) => myProfileId !== undefined && ts.employeeId === myProfileId, [myProfileId])
 
     // Timesheet policy (weekly target + submission deadline) is admin-configurable
     // via AppSettings; fall back to the historical defaults until it loads.
@@ -692,8 +708,8 @@ export default function AllTimesheetsPage() {
 
     // Selection helpers
     const filteredPendingIds = useMemo(
-        () => filtered.filter((t) => isPendingStatus(t.status)).map((t) => t.id),
-        [filtered]
+        () => filtered.filter((t) => isPendingStatus(t.status) && !isOwn(t)).map((t) => t.id),
+        [filtered, isOwn]
     )
     const allSelectedInView = filteredPendingIds.length > 0
         && filteredPendingIds.every((id) => selectedIds.has(id))
@@ -1128,6 +1144,7 @@ export default function AllTimesheetsPage() {
                                     weeklyTarget={weeklyTarget}
                                     deadlineDay={deadlineDay}
                                     deadlineTime={deadlineTime}
+                                    own={isOwn(ts)}
                                 />
                             ))}
                         </Box>
