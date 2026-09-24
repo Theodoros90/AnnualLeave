@@ -66,9 +66,17 @@ public class EditAnnualLeave
                 return Result<Unit>.Failure("You can only update your own leave requests or requests in your managed departments.");
             }
 
-            if ((annualLeave.Status == AnnualLeaveStatus.Rejected || annualLeave.Status == AnnualLeaveStatus.Approved) && !actsAsAdmin)
+            if (!actsAsAdmin)
             {
-                return Result<Unit>.Conflict("Approved and rejected leave requests cannot be edited.");
+                // A manager has approved specific dates. An edit that quietly kept
+                // the stage would put different dates in front of HR under the
+                // manager's name, so the row is locked like an approved one. Cancel
+                // and file again is the way to change it.
+                if (annualLeave.Status == AnnualLeaveStatus.AwaitingHrApproval)
+                    return Result<Unit>.Conflict("This request has been approved by your manager and is awaiting HR; cancel it and file again to change it.");
+
+                if (annualLeave.Status == AnnualLeaveStatus.Rejected || annualLeave.Status == AnnualLeaveStatus.Approved)
+                    return Result<Unit>.Conflict("Approved and rejected leave requests cannot be edited.");
             }
 
             // Read before the edit overwrites them: what the coverage emails go out
@@ -198,31 +206,41 @@ public class EditAnnualLeave
                 }
 
                 var oldStatus = annualLeave.Status;
-                var newStatus = request.AnnualLeave.Status.Value;
-                annualLeave.Status = newStatus;
 
+                /* actsAsAdmin is an HR Administrator inside their scope — the caller
+                   for whom Approve finishes a request that asks for HR. A Manager's
+                   Approve on such a type advances it to the HR stage instead. */
+                var stage = ApprovalStageRule.Resolve(editedLeaveType, oldStatus, request.AnnualLeave.Status.Value, actsAsAdmin);
+                if (stage.Error is not null)
+                    return Result<Unit>.Failure(stage.Error);
+                var newStatus = stage.Status!.Value;
 
-                if (newStatus == AnnualLeaveStatus.Approved)
+                if (newStatus != oldStatus)
                 {
-                    annualLeave.ApprovedAt = DateTime.UtcNow;
-                    annualLeave.ApprovedById = changedByUserId;
+                    annualLeave.Status = newStatus;
+
+                    if (newStatus == AnnualLeaveStatus.Approved)
+                    {
+                        annualLeave.ApprovedAt = DateTime.UtcNow;
+                        annualLeave.ApprovedById = changedByUserId;
+                    }
+                    else if (oldStatus == AnnualLeaveStatus.Approved)
+                    {
+                        annualLeave.ApprovedAt = null;
+                        annualLeave.ApprovedById = null;
+                    }
+
+                    context.LeaveStatusHistories.Add(new LeaveStatusHistory
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        AnnualLeaveId = annualLeave.Id,
+                        ChangedByUserId = changedByUserId,
+                        OldStatus = oldStatus,
+                        NewStatus = newStatus,
+                        Comment = request.AnnualLeave.StatusComment,
+                        ChangedAt = DateTime.UtcNow
+                    });
                 }
-                else if (oldStatus == AnnualLeaveStatus.Approved)
-                {
-                    annualLeave.ApprovedAt = null;
-                    annualLeave.ApprovedById = null;
-                }
-
-                context.LeaveStatusHistories.Add(new LeaveStatusHistory
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    AnnualLeaveId = annualLeave.Id,
-                    ChangedByUserId = changedByUserId,
-                    OldStatus = oldStatus,
-                    NewStatus = newStatus,
-                    Comment = request.AnnualLeave.StatusComment,
-                    ChangedAt = DateTime.UtcNow
-                });
             }
 
             /* The attachment policy gates approval, not filing, so it is checked
@@ -232,7 +250,9 @@ public class EditAnnualLeave
                applied, so attaching and approving in one save passes. An edit that
                keeps the request Pending is not asked — that is the edit an employee
                makes to attach a document dated after they had to file. */
-            if (editedLeaveType is not null && annualLeave.Status == AnnualLeaveStatus.Approved)
+            var reachedAnApprovalStep = annualLeave.Status == AnnualLeaveStatus.Approved
+                || (annualLeave.Status == AnnualLeaveStatus.AwaitingHrApproval && statusBeforeEdit != AnnualLeaveStatus.AwaitingHrApproval);
+            if (editedLeaveType is not null && reachedAnApprovalStep)
             {
                 var attachmentError = AttachmentPolicyRule.Check(editedLeaveType, annualLeave.EvidenceUrl);
                 if (attachmentError is not null)
@@ -299,6 +319,16 @@ public class EditAnnualLeave
             {
                 await CoverageNotification.AnnounceStoodDownAsync(
                     context, emailService, annualLeave, delegateBeforeEdit, cancellationToken);
+            }
+
+            if (annualLeave.Status == AnnualLeaveStatus.AwaitingHrApproval
+                && statusBeforeEdit != AnnualLeaveStatus.AwaitingHrApproval
+                && editedLeaveType is not null
+                && employeeProfile is not null)
+            {
+                await HrApprovalNotification.SendAsync(
+                    context, emailService, annualLeave, editedLeaveType, employeeProfile,
+                    approvedByUserId: request.ChangedByUserId, cancellationToken);
             }
 
             return Result<Unit>.Success(Unit.Value);

@@ -299,4 +299,86 @@ public class ApprovalStageHandlerTests
         Assert.Empty(email.Sent);
         Assert.Empty(db.LeaveStatusHistories);
     }
+
+    // ── Editing ───────────────────────────────────────────────────────────────
+
+    private static Task<Result<Unit>> EditAsync(AppDbContext db, FakeEmailService email, string byUserId, bool isAdmin, bool isManager, AnnualLeaveStatus? status, int leaveTypeId = BothType) =>
+        new EditAnnualLeave.Handler(db, email).Handle(new EditAnnualLeave.Command
+        {
+            ChangedByUserId = byUserId, IsAdmin = isAdmin, IsManager = isManager,
+            AnnualLeave = new EditAnnualLeaveRequest
+            {
+                Id = "L1", LeaveTypeId = leaveTypeId, StartDate = Start, EndDate = End,
+                Reason = "Rebooked", DelegateId = Delegate, Status = status,
+            },
+        }, CancellationToken.None);
+
+    [Fact]
+    public async Task The_employee_cannot_edit_a_request_that_is_with_hr()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.AwaitingHrApproval);
+
+        var result = await EditAsync(db, new FakeEmailService(), Employee, isAdmin: false, isManager: false, status: null);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("awaiting HR", result.Error);
+        Assert.Equal("Family trip", (await StoredAsync(db)).Reason);
+    }
+
+    [Fact]
+    public async Task A_manager_cannot_edit_a_request_that_is_with_hr_either()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.AwaitingHrApproval);
+
+        var result = await EditAsync(db, new FakeEmailService(), Manager, isAdmin: false, isManager: true, status: null);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("Family trip", (await StoredAsync(db)).Reason);
+    }
+
+    [Fact]
+    public async Task Hr_in_scope_may_still_edit_it()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.AwaitingHrApproval);
+
+        var result = await EditAsync(db, new FakeEmailService(), Hr, isAdmin: true, isManager: false, status: null);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal("Rebooked", (await StoredAsync(db)).Reason);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, (await StoredAsync(db)).Status);
+    }
+
+    [Fact]
+    public async Task A_manager_approving_from_the_edit_dialog_advances_to_hr_and_tells_them()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.Pending);
+        var email = new FakeEmailService();
+
+        var result = await EditAsync(db, email, Manager, isAdmin: false, isManager: true, status: AnnualLeaveStatus.Approved);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, (await StoredAsync(db)).Status);
+        Assert.Equal(20m, await BalanceAsync(db));
+        Assert.Contains(email.Sent, m => m.Recipient == "hr@t.local" && m.Subject == HrApprovalNotification.Subject);
+        Assert.DoesNotContain(email.Sent, m => m.Recipient == "del@t.local");
+    }
+
+    [Fact]
+    public async Task Hr_approving_from_the_edit_dialog_finishes_the_request()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.Pending);
+        var email = new FakeEmailService();
+
+        var result = await EditAsync(db, email, Hr, isAdmin: true, isManager: false, status: AnnualLeaveStatus.Approved);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(AnnualLeaveStatus.Approved, (await StoredAsync(db)).Status);
+        Assert.Equal(15m, await BalanceAsync(db));
+        Assert.Contains(email.Sent, m => m.Recipient == "del@t.local");
+    }
 }
