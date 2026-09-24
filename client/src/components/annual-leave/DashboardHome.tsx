@@ -21,6 +21,7 @@ import {
     getMyTimesheets, getProjectActivityTypes, getProjectComponents, getProjects, getProjectTypes,
     getTeamAttendance, getTeamAttendanceHistory, getTimesheets, rejectTimesheet, updateLeaveStatus,
 } from '../../lib/api'
+import { canDecide, isOpenStatus, type ApprovalViewer } from '../../lib/approval-stage'
 import { currentYearEntitlement } from '../../lib/leave-allowance'
 import { isAwaitingDocument } from '../../lib/attachment-policy'
 import { isAdministrator, isSystemAdministrator } from '../../lib/roles'
@@ -404,7 +405,7 @@ function ManagerDashboard({ user }: { user: UserInfo }) {
 
     // Pending items NOT submitted by manager themselves
     const pendingLeaves = useMemo(
-        () => leaves.filter((l) => l.status === 'Pending' && l.employeeId !== user.id)
+        () => leaves.filter((l) => isOpenStatus(l.status) && l.employeeId !== user.id)
             .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
         [leaves, user.id]
     )
@@ -458,7 +459,7 @@ function ManagerDashboard({ user }: { user: UserInfo }) {
     // Build queue: merge leaves + timesheets, sort by age
     const now = useNow()
     const queue = useMemo(
-        () => buildApprovalQueue(pendingLeaves, pendingTs, leaveTypeById, conflictMap, now),
+        () => buildApprovalQueue(pendingLeaves, pendingTs, leaveTypeById, conflictMap, now, { isHrAdministrator: false }),
         [pendingLeaves, pendingTs, leaveTypeById, conflictMap, now],
     )
 
@@ -906,7 +907,7 @@ function HrDashboard({ user }: { user: UserInfo }) {
 
     // Everybody's, except the HR Administrator's own — nobody approves their own request.
     const pendingLeaves = useMemo(
-        () => leaves.filter((l) => l.status === 'Pending' && l.employeeId !== user.id)
+        () => leaves.filter((l) => isOpenStatus(l.status) && l.employeeId !== user.id)
             .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
         [leaves, user.id],
     )
@@ -917,7 +918,7 @@ function HrDashboard({ user }: { user: UserInfo }) {
     )
     const conflictMap = useMemo(() => buildConflictMap(pendingLeaves, leaves), [pendingLeaves, leaves])
     const queue = useMemo(
-        () => buildApprovalQueue(pendingLeaves, pendingTs, leaveTypeById, conflictMap, now),
+        () => buildApprovalQueue(pendingLeaves, pendingTs, leaveTypeById, conflictMap, now, { isHrAdministrator: true }),
         [pendingLeaves, pendingTs, leaveTypeById, conflictMap, now],
     )
     const awaitingDocument = queue.filter((q) => q.blocked).length
@@ -1298,6 +1299,8 @@ interface QueueItem {
     urgent: boolean
     /** Why Approve is not offered — a document the leave type insists on is still missing. */
     blocked?: string
+    /** False when the row is with HR and this viewer is not HR — shown, but with no buttons. */
+    decidable: boolean
 }
 
 /**
@@ -1310,7 +1313,7 @@ function buildConflictMap(pendingLeaves: AnnualLeave[], leaves: AnnualLeave[]) {
         const overlapping = leaves.filter((b) =>
             b.id !== a.id
             && b.departmentName === a.departmentName
-            && (b.status === 'Pending' || b.status === 'Approved')
+            && (isOpenStatus(b.status) || b.status === 'Approved')
             && b.startDate <= a.endDate && b.endDate >= a.startDate
         )
         if (overlapping.length > 0) {
@@ -1333,6 +1336,7 @@ function buildApprovalQueue(
     leaveTypeById: Map<number, { name: string; attachmentPolicy: LeaveType['attachmentPolicy'] }>,
     conflictMap: Map<string, string[]>,
     now: number,
+    viewer: ApprovalViewer,
 ): QueueItem[] {
     const items: QueueItem[] = []
     for (const l of pendingLeaves) {
@@ -1346,6 +1350,8 @@ function buildApprovalQueue(
         else if (l.evidenceUrl) tags.push({ label: '📎 Document attached', tone: 'info' })
         const conflicts = conflictMap.get(l.id)
         if (conflicts && conflicts.length > 0) tags.push({ label: `⚠ Overlaps with ${conflicts[0]}`, tone: 'conflict' })
+        const decidable = canDecide(l, viewer)
+        if (!decidable) tags.push({ label: 'With HR', tone: 'info' })
         items.push({
             kind: 'leave',
             id: l.id,
@@ -1356,6 +1362,7 @@ function buildApprovalQueue(
             createdAt: l.createdAt,
             urgent: daysNotice >= 0 && daysNotice < 1,
             blocked: awaitingDocument ? 'Document needed before approval' : undefined,
+            decidable,
         })
     }
     for (const t of pendingTs) {
@@ -1378,6 +1385,7 @@ function buildApprovalQueue(
             tags,
             createdAt: t.submittedAt ?? t.createdAt,
             urgent: isLate,
+            decidable: true,
         })
     }
     items.sort((a, b) => {
@@ -1943,35 +1951,39 @@ function ApprovalQueueRow({ item, isLast, onApprove, onReject, disabled }: {
                 whiteSpace: 'nowrap', display: { xs: 'none', md: 'block' },
             }}>{age}</Box>
             <Box sx={{ display: 'flex', gap: '6px', gridColumn: { xs: '1 / -1', md: 'auto' }, mt: { xs: '8px', md: 0 } }}>
-                <Box
-                    component="button"
-                    onClick={onApprove}
-                    disabled={disabled || !!item.blocked}
-                    title={item.blocked}
-                    sx={{
-                        bgcolor: 'success.main', color: '#fff', border: 'none', borderRadius: '6px',
-                        px: '12px', py: '5px', fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                        fontFamily: 'inherit',
-                        '&:hover:not(:disabled)': { bgcolor: 'success.dark' },
-                        '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
-                    }}
-                >
-                    Approve
-                </Box>
-                <Box
-                    component="button"
-                    onClick={onReject}
-                    disabled={disabled}
-                    sx={{
-                        bgcolor: 'error.main', color: '#fff', border: 'none', borderRadius: '6px',
-                        px: '12px', py: '5px', fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                        fontFamily: 'inherit',
-                        '&:hover:not(:disabled)': { bgcolor: 'error.dark' },
-                        '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
-                    }}
-                >
-                    Reject
-                </Box>
+                {item.decidable ? (
+                    <>
+                        <Box
+                            component="button"
+                            onClick={onApprove}
+                            disabled={disabled || !!item.blocked}
+                            title={item.blocked}
+                            sx={{
+                                bgcolor: 'success.main', color: '#fff', border: 'none', borderRadius: '6px',
+                                px: '12px', py: '5px', fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                                fontFamily: 'inherit',
+                                '&:hover:not(:disabled)': { bgcolor: 'success.dark' },
+                                '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
+                            }}
+                        >
+                            Approve
+                        </Box>
+                        <Box
+                            component="button"
+                            onClick={onReject}
+                            disabled={disabled}
+                            sx={{
+                                bgcolor: 'error.main', color: '#fff', border: 'none', borderRadius: '6px',
+                                px: '12px', py: '5px', fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                                fontFamily: 'inherit',
+                                '&:hover:not(:disabled)': { bgcolor: 'error.dark' },
+                                '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
+                            }}
+                        >
+                            Reject
+                        </Box>
+                    </>
+                ) : null}
             </Box>
         </Box>
     )

@@ -12,6 +12,7 @@ import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
+import { isOpenStatus, statusChipLabel } from '../../lib/approval-stage'
 import { currentYearEntitlement, describePerChildTotals, ordinal } from '../../lib/leave-allowance'
 import { isAdministrator } from '../../lib/roles'
 import { resolveFileUrl } from '../../lib/api/file-url'
@@ -147,14 +148,15 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
     )
 
     const filteredLeaves = useMemo(
-        () => statusFilter === 'All' ? myLeaves : myLeaves.filter((l) => l.status === statusFilter),
+        () => statusFilter === 'All' ? myLeaves : myLeaves.filter((l) => statusFilter === 'Pending' ? isOpenStatus(l.status) : l.status === statusFilter),
         [myLeaves, statusFilter]
     )
 
     const tabCounts = useMemo(() => {
         const c: Record<StatusFilter, number> = { All: myLeaves.length, Pending: 0, Approved: 0, Rejected: 0, Cancelled: 0 }
         for (const l of myLeaves) {
-            if (l.status in c) c[l.status as StatusFilter]++
+            const key = (isOpenStatus(l.status) ? 'Pending' : l.status) as StatusFilter
+            if (key in c) c[key]++
         }
         return c
     }, [myLeaves])
@@ -222,7 +224,7 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
             Array.from({ length: 12 }, () => ({ total: 0, dominant: null, perType: new Map() }))
 
         for (const l of myLeaves) {
-            if (l.status !== 'Approved' && l.status !== 'Pending') continue
+            if (l.status !== 'Approved' && !isOpenStatus(l.status)) continue
             const s = new Date(l.startDate)
             const e = new Date(l.endDate)
             const lt = l.leaveTypeId != null ? leaveTypeById.get(l.leaveTypeId) : undefined
@@ -251,7 +253,7 @@ const MyLeavePage = observer(function MyLeavePage({ user }: { user: UserInfo }) 
     const activeYearMonths = yearUsage.filter((b) => b.total > 0).length
 
     // Group requests for sections
-    const pendingLeaves = myLeaves.filter((l) => l.status === 'Pending')
+    const pendingLeaves = myLeaves.filter((l) => isOpenStatus(l.status))
     const approvedUpcoming = myLeaves
         .filter((l) => l.status === 'Approved' && new Date(l.startDate) > today)
         .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
@@ -590,7 +592,7 @@ function UpcomingCard({ leave, leaveTypeName, today }: {
     const start = new Date(leave.startDate)
     start.setHours(0, 0, 0, 0)
     const until = daysBetween(today, start)
-    const isPending = leave.status === 'Pending'
+    const isPending = isOpenStatus(leave.status)
     const countdown = until === 0 ? 'Today' : until === 1 ? 'Tomorrow' : `In ${until} days`
     const sameDay = leave.startDate.slice(0, 10) === leave.endDate.slice(0, 10)
     const datesStr = sameDay
@@ -621,7 +623,7 @@ function UpcomingCard({ leave, leaveTypeName, today }: {
                 {countdown}
             </Box>
             <Box sx={{ display: 'flex', gap: '18px', fontSize: 12, flexWrap: 'wrap' }}>
-                <MetaItem label="Status" value={isPending ? 'Awaiting approval' : 'Confirmed'} />
+                <MetaItem label="Status" value={isPending ? (leave.status === 'AwaitingHrApproval' ? 'Awaiting HR approval' : 'Awaiting approval') : 'Confirmed'} />
                 <MetaItem label="Back at work" value={nextWorkingDay(leave.endDate)} />
                 {leave.evidenceUrl && <MetaItem label="Documents" value="📎 1" />}
             </Box>
@@ -882,7 +884,7 @@ function LeaveCard({
     const startDate = new Date(leave.startDate)
     startDate.setHours(0, 0, 0, 0)
     const daysUntil = daysBetween(today, startDate)
-    const isUpcoming = (status === 'Pending' || status === 'Approved') && daysUntil >= 0
+    const isUpcoming = (isOpenStatus(status) || status === 'Approved') && daysUntil >= 0
     const showDaysPill = isUpcoming && daysUntil <= 14
 
     return (
@@ -892,6 +894,7 @@ function LeaveCard({
             borderLeft: '3px solid',
             borderLeftColor:
                 status === 'Pending' ? 'warning.main'
+                : status === 'AwaitingHrApproval' ? 'info.main'
                 : status === 'Approved' ? 'success.main'
                 : status === 'Rejected' ? 'error.main'
                 : 'text.disabled',
@@ -1047,10 +1050,10 @@ function LeaveCard({
                     {status === 'Pending' && onEdit && (
                         <ActionButton onClick={onEdit} variant="ghost">Edit</ActionButton>
                     )}
-                    {status === 'Pending' && onCancel && (
+                    {isOpenStatus(status) && onCancel && (
                         <ActionButton onClick={onCancel} variant="danger">Cancel</ActionButton>
                     )}
-                    {onView && status !== 'Pending' && (
+                    {onView && !isOpenStatus(status) && (
                         <ActionButton onClick={onView} variant="ghost">View details</ActionButton>
                     )}
                 </Box>
@@ -1065,7 +1068,7 @@ function StatusBadge({ status }: { status: AnnualLeaveStatus }) {
         Approved:  { bg: softBg('success'), color: 'success.dark', label: 'Approved' },
         Rejected:  { bg: softBg('error'), color: 'error.dark', label: 'Rejected' },
         Cancelled: { bg: 'divider', color: 'text.secondary', label: 'Cancelled' },
-        AwaitingHrApproval: { bg: softBg('info'), color: 'info.dark', label: 'Awaiting HR approval' },
+        AwaitingHrApproval: { bg: softBg('info'), color: 'info.dark', label: statusChipLabel('AwaitingHrApproval') },
     }
     const c = config[status]
     return (
@@ -1083,6 +1086,14 @@ function FeedbackBox({ status, feedback }: { status: AnnualLeaveStatus; feedback
             <Box sx={feedbackSx(softBg('warning'), 'warning.dark', 'warning.main')}>
                 <Box component="span">⏳</Box>
                 <Box>Submitted — waiting for manager to review</Box>
+            </Box>
+        )
+    }
+    if (status === 'AwaitingHrApproval') {
+        return (
+            <Box sx={feedbackSx(softBg('info'), 'info.dark', 'info.main')}>
+                <Box component="span">✓</Box>
+                <Box>Approved by your manager — waiting for HR to review</Box>
             </Box>
         )
     }

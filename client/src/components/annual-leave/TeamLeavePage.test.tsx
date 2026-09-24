@@ -51,6 +51,17 @@ function renderPage() {
     )
 }
 
+const HR_ADMIN: UserInfo = { ...MANAGER, id: 'u-hr', displayName: 'Helen HR', roles: ['HR Administrator'] } as unknown as UserInfo
+
+function renderPageAs(user: UserInfo) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return render(
+        <QueryClientProvider client={client}>
+            <TeamLeavePage user={user} />
+        </QueryClientProvider>
+    )
+}
+
 describe('TeamLeavePage coverage', () => {
     beforeEach(() => {
         vi.clearAllMocks()
@@ -125,6 +136,42 @@ describe('TeamLeavePage attachment policy', () => {
         api.getAnnualLeaves.mockResolvedValue([{ ...BASE_LEAVE, leaveTypeId: 1, evidenceUrl: null }] as never)
 
         renderPage()
+
+        const row = await screen.findByRole('row', { name: /Maria Ioannou/ })
+        expect(within(row).getByRole('button', { name: 'Approve' })).toBeEnabled()
+    })
+})
+
+describe('TeamLeavePage approval stages', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        api.getLeaveStatusHistories.mockResolvedValue([])
+        api.getLeaveTypes.mockResolvedValue([
+            { id: 1, name: 'Annual Leave', requiresManagerApproval: true, requiresHrApproval: true, attachmentPolicy: 'None' },
+        ] as never)
+    })
+
+    it("labels a manager's Approve as sending the request to HR when the type asks for HR", async () => {
+        api.getAnnualLeaves.mockResolvedValue([BASE_LEAVE] as never)
+        renderPageAs(MANAGER)
+
+        const row = await screen.findByRole('row', { name: /Maria Ioannou/ })
+        expect(within(row).getByRole('button', { name: 'Approve & send to HR' })).toBeInTheDocument()
+    })
+
+    it('shows a manager a request that is with HR without Approve or Reject', async () => {
+        api.getAnnualLeaves.mockResolvedValue([{ ...BASE_LEAVE, status: 'AwaitingHrApproval' }] as never)
+        renderPageAs(MANAGER)
+
+        const row = await screen.findByRole('row', { name: /Maria Ioannou/ })
+        expect(within(row).getByText('With HR')).toBeInTheDocument()
+        expect(within(row).queryByRole('button', { name: /Approve/ })).not.toBeInTheDocument()
+        expect(within(row).queryByRole('button', { name: 'Reject' })).not.toBeInTheDocument()
+    })
+
+    it('lets an HR Administrator approve a request that is with HR', async () => {
+        api.getAnnualLeaves.mockResolvedValue([{ ...BASE_LEAVE, status: 'AwaitingHrApproval' }] as never)
+        renderPageAs(HR_ADMIN)
 
         const row = await screen.findByRole('row', { name: /Maria Ioannou/ })
         expect(within(row).getByRole('button', { name: 'Approve' })).toBeEnabled()

@@ -23,8 +23,9 @@ import TableRow from '@mui/material/TableRow'
 import Tabs from '@mui/material/Tabs'
 import Typography from '@mui/material/Typography'
 import { getAnnualLeaves, getLeaveStatusHistories, getLeaveTypes, updateLeaveStatus } from '../../lib/api'
+import { approveButtonLabel, approveOutcome, canDecide, isOpenStatus, statusChipLabel } from '../../lib/approval-stage'
 import { isAwaitingDocument } from '../../lib/attachment-policy'
-import { isAdministrator } from '../../lib/roles'
+import { isAdministrator, isHrAdministrator } from '../../lib/roles'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import type { AnnualLeave, AnnualLeaveStatus, LeaveStatusHistory, UserInfo } from '../../lib/types'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
@@ -32,6 +33,7 @@ import { softBg, type SxColor } from '../../lib/theme-tokens'
 
 const STATUS_COLORS: Record<string, { bg: SxColor; color: string }> = {
     Pending:   { bg: softBg('warning'), color: 'warning.dark' },
+    AwaitingHrApproval: { bg: softBg('info'), color: 'info.dark' },
     Approved:  { bg: softBg('success'), color: 'success.dark' },
     Rejected:  { bg: softBg('error'), color: 'error.dark' },
     Cancelled: { bg: 'divider', color: 'text.secondary' },
@@ -55,7 +57,7 @@ function StatusBadge({ status }: { status: string }) {
                 whiteSpace: 'nowrap',
             }}
         >
-            {status}
+            {statusChipLabel(status as AnnualLeaveStatus)}
         </Box>
     )
 }
@@ -118,6 +120,7 @@ const TD = {
 const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo }) {
     const isAdmin = isAdministrator(user.roles)
     const isManager = user.roles.includes('Manager')
+    const viewer = { isHrAdministrator: isHrAdministrator(user.roles) }
     const queryClient = useQueryClient()
 
     const defaultTab: StatusTab = isManager && !isAdmin ? 'pending' : 'all'
@@ -185,7 +188,7 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
         return allLeaves.filter((l) =>
             l.id !== viewLeave.id
             && l.departmentName === viewLeave.departmentName
-            && (l.status === 'Pending' || l.status === 'Approved')
+            && (isOpenStatus(l.status) || l.status === 'Approved')
             && new Date(l.startDate).getTime() <= viewEnd
             && new Date(l.endDate).getTime() >= viewStart
         )
@@ -239,12 +242,13 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
         if (deptFilter !== 'all') leaves = leaves.filter((l) => l.departmentName === deptFilter)
         if (statusTab !== 'all') {
             const s = (statusTab.charAt(0).toUpperCase() + statusTab.slice(1)) as AnnualLeaveStatus
-            leaves = leaves.filter((l) => l.status === s)
+            // The Pending tab is every request still waiting on somebody, HR included.
+            leaves = leaves.filter((l) => s === 'Pending' ? isOpenStatus(l.status) : l.status === s)
         }
         return leaves.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     }, [allLeaves, deptFilter, statusTab])
 
-    const pendingCount = useMemo(() => allLeaves.filter((l) => l.status === 'Pending').length, [allLeaves])
+    const pendingCount = useMemo(() => allLeaves.filter((l) => isOpenStatus(l.status)).length, [allLeaves])
 
     const managerTabs: { value: StatusTab; label: string }[] = [
         { value: 'pending', label: pendingCount > 0 ? `Pending (${pendingCount})` : 'Pending' },
@@ -358,10 +362,12 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                             </TableHead>
                             <TableBody>
                                 {filtered.map((leave) => {
-                                    const isPending = leave.status === 'Pending'
+                                    const isOpen = isOpenStatus(leave.status)
+                                    const decidable = canDecide(leave, viewer)
                                     const isWorking = actionTarget === leave.id
                                     const leaveType = leave.leaveTypeId != null ? leaveTypeById.get(leave.leaveTypeId) : undefined
                                     const leaveTypeName = leaveType?.name ?? 'Annual Leave'
+                                    const approveLabel = approveButtonLabel(approveOutcome(leave, leaveType, viewer))
                                     /* Mirrors AttachmentPolicyRule, which refuses the
                                        approval outright: a Required type's document is
                                        checked when the request is approved, not when it
@@ -410,7 +416,7 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                                                 </TableCell>
                                             )}
                                             <TableCell sx={TD}>
-                                                {isPending ? (
+                                                {isOpen ? (
                                                     <Stack direction="row" spacing={0.75}>
                                                         <Button
                                                             size="small"
@@ -429,53 +435,64 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                                                         >
                                                             View
                                                         </Button>
-                                                        <Button
-                                                            size="small"
-                                                            variant="contained"
-                                                            disabled={isWorking || awaitingDocument}
-                                                            onClick={() => {
-                                                                setActionTarget(leave.id)
-                                                                approveMutation.mutate(leave.id)
-                                                            }}
-                                                            sx={{
-                                                                fontSize: 12,
-                                                                py: '5px',
-                                                                px: 1.5,
-                                                                minWidth: 'unset',
-                                                                bgcolor: 'success.main',
-                                                                '&:hover': { bgcolor: 'success.dark' },
-                                                                textTransform: 'none',
-                                                                boxShadow: 'none',
-                                                            }}
-                                                        >
-                                                            {isWorking && approveMutation.isPending ? '…' : 'Approve'}
-                                                        </Button>
-                                                        {awaitingDocument && (
+                                                        {decidable ? (
+                                                            <>
+                                                                <Button
+                                                                    size="small"
+                                                                    variant="contained"
+                                                                    disabled={isWorking || awaitingDocument}
+                                                                    onClick={() => {
+                                                                        setActionTarget(leave.id)
+                                                                        approveMutation.mutate(leave.id)
+                                                                    }}
+                                                                    sx={{
+                                                                        fontSize: 12,
+                                                                        py: '5px',
+                                                                        px: 1.5,
+                                                                        minWidth: 'unset',
+                                                                        bgcolor: 'success.main',
+                                                                        '&:hover': { bgcolor: 'success.dark' },
+                                                                        textTransform: 'none',
+                                                                        boxShadow: 'none',
+                                                                    }}
+                                                                >
+                                                                    {isWorking && approveMutation.isPending ? '…' : approveLabel}
+                                                                </Button>
+                                                                {awaitingDocument && (
+                                                                    <Typography
+                                                                        variant="caption"
+                                                                        sx={{ alignSelf: 'center', color: 'warning.dark', whiteSpace: 'nowrap' }}
+                                                                    >
+                                                                        📎 Awaiting document
+                                                                    </Typography>
+                                                                )}
+                                                                <Button
+                                                                    size="small"
+                                                                    variant="contained"
+                                                                    disabled={isWorking}
+                                                                    onClick={() => openRejectDialog(leave)}
+                                                                    sx={{
+                                                                        fontSize: 12,
+                                                                        py: '5px',
+                                                                        px: 1.5,
+                                                                        minWidth: 'unset',
+                                                                        bgcolor: 'error.main',
+                                                                        '&:hover': { bgcolor: 'error.dark' },
+                                                                        textTransform: 'none',
+                                                                        boxShadow: 'none',
+                                                                    }}
+                                                                >
+                                                                    {isWorking && rejectMutation.isPending ? '…' : 'Reject'}
+                                                                </Button>
+                                                            </>
+                                                        ) : (
                                                             <Typography
                                                                 variant="caption"
-                                                                sx={{ alignSelf: 'center', color: 'warning.dark', whiteSpace: 'nowrap' }}
+                                                                sx={{ alignSelf: 'center', color: 'info.dark', whiteSpace: 'nowrap' }}
                                                             >
-                                                                📎 Awaiting document
+                                                                With HR
                                                             </Typography>
                                                         )}
-                                                        <Button
-                                                            size="small"
-                                                            variant="contained"
-                                                            disabled={isWorking}
-                                                            onClick={() => openRejectDialog(leave)}
-                                                            sx={{
-                                                                fontSize: 12,
-                                                                py: '5px',
-                                                                px: 1.5,
-                                                                minWidth: 'unset',
-                                                                bgcolor: 'error.main',
-                                                                '&:hover': { bgcolor: 'error.dark' },
-                                                                textTransform: 'none',
-                                                                boxShadow: 'none',
-                                                            }}
-                                                        >
-                                                            {isWorking && rejectMutation.isPending ? '…' : 'Reject'}
-                                                        </Button>
                                                     </Stack>
                                                 ) : (
                                                     <Button
@@ -662,7 +679,7 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                     >
                         Close
                     </Button>
-                    {viewLeave && viewLeave.status !== 'Cancelled' && viewLeave.status !== 'Approved' && (
+                    {viewLeave && isOpenStatus(viewLeave.status) && canDecide(viewLeave, viewer) && (
                         <Button
                             size="small"
                             variant="contained"
@@ -677,10 +694,14 @@ const TeamLeavePage = observer(function TeamLeavePage({ user }: { user: UserInfo
                             }}
                             sx={{ textTransform: 'none', bgcolor: 'success.main', '&:hover': { bgcolor: 'success.dark' }, boxShadow: 'none' }}
                         >
-                            Approve
+                            {approveButtonLabel(approveOutcome(
+                                viewLeave,
+                                viewLeave.leaveTypeId != null ? leaveTypeById.get(viewLeave.leaveTypeId) : undefined,
+                                viewer,
+                            ))}
                         </Button>
                     )}
-                    {viewLeave && viewLeave.status !== 'Cancelled' && viewLeave.status !== 'Rejected' && (
+                    {viewLeave && viewLeave.status !== 'Cancelled' && viewLeave.status !== 'Rejected' && (viewLeave.status !== 'AwaitingHrApproval' || viewer.isHrAdministrator) && (
                         <Button
                             size="small"
                             variant="contained"

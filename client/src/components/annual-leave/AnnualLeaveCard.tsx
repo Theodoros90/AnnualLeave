@@ -1,7 +1,8 @@
 import { useMemo, useState, type MouseEvent } from 'react'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import { softBg } from '../../lib/theme-tokens'
-import { isAdministrator } from '../../lib/roles'
+import { canDecide, isOpenStatus, statusChipLabel } from '../../lib/approval-stage'
+import { isAdministrator, isHrAdministrator } from '../../lib/roles'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
@@ -62,6 +63,7 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
     const isAdmin = isAdministrator(user.roles)
     const isManager = user.roles.includes('Manager')
     const isOwnLeave = leave.employeeId === user.id
+    const viewer = { isHrAdministrator: isHrAdministrator(user.roles) }
 
     const { data: leaveTypes = [] } = useLeaveTypes()
 
@@ -73,24 +75,27 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
         return leaveTypes.find((leaveType) => leaveType.id === leave.leaveTypeId)?.name ?? 'Leave Type'
     }, [leave.leaveTypeId, leaveTypes])
 
-    // Approve / Reject: System Administrator any, Manager dept-team-only (server enforces), Employee never
-    const canApproveReject = (isAdmin || isManager) && leave.status === 'Pending'
+    // Approve / Reject: System Administrator any, Manager dept-team-only (server enforces), Employee never,
+    // and neither a Manager nor a System Administrator may decide a request that has moved on to HR.
+    const canApproveReject = (isAdmin || isManager) && canDecide(leave, viewer)
 
     // Edit dates/type/reason: Approved/Rejected requests are admin-only; otherwise System Administrator any, Manager any, Employee own only
-    const isLockedStatus = leave.status === 'Rejected' || leave.status === 'Approved'
+    const isLockedStatus = leave.status === 'Rejected' || leave.status === 'Approved' || leave.status === 'AwaitingHrApproval'
     const canEdit = isLockedStatus ? isAdmin : (isAdmin || isManager || isOwnLeave)
     const showLockedStatusNote = isLockedStatus && !isAdmin
     const lockedStatusMessage = leave.status === 'Rejected'
         ? 'This request was rejected and is now read-only. If needed, submit a new request.'
         : leave.status === 'Approved'
             ? 'This request has been approved and is now read-only.'
-            : 'This request can no longer be edited.'
+            : leave.status === 'AwaitingHrApproval'
+                ? 'This request has been approved by your manager and is awaiting HR. Cancel it and file again to change it.'
+                : 'This request can no longer be edited.'
 
-    // Cancel: System Administrator any, Manager own, Employee own-pending-only
+    // Cancel: System Administrator any, Manager own, Employee own-pending-or-awaiting-HR
     const canCancel =
         isAdmin ||
         (isManager && isOwnLeave) ||
-        (isOwnLeave && leave.status === 'Pending')
+        (isOwnLeave && isOpenStatus(leave.status))
     const hasOverflowActions = canEdit || canCancel
     const isActionsMenuOpen = Boolean(actionsAnchorEl)
 
@@ -112,7 +117,9 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
                 ? 'error.main'
                 : leave.status === 'Cancelled'
                     ? 'text.disabled'
-                    : 'warning.main'
+                    : leave.status === 'AwaitingHrApproval'
+                        ? 'info.main'
+                        : 'warning.main'
 
     return (
         <>
@@ -143,7 +150,7 @@ function AnnualLeaveCard({ leave, user }: AnnualLeaveCardProps) {
                         <Stack spacing={0.55} sx={{ minWidth: 0 }}>
                             <Stack direction="row" spacing={0.55} flexWrap="wrap" useFlexGap alignItems="center">
                                 <Chip
-                                    label={leave.status}
+                                    label={statusChipLabel(leave.status)}
                                     color={statusColor(leave.status)}
                                     size="small"
                                     sx={{ fontWeight: 800 }}

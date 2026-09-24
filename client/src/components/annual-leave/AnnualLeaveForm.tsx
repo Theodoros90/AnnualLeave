@@ -14,6 +14,7 @@ import Typography from '@mui/material/Typography'
 import { AttachFile as AttachFileIcon, CalendarMonth as CalendarMonthIcon, OpenInNew as OpenInNewIcon } from '@mui/icons-material'
 import Box from '@mui/material/Box'
 import { createAnnualLeave, editAnnualLeave, getChildLeaveEntitlements, getLeaveTypes, getAdminUsers, getTeammates, uploadCoverageHandover, uploadLeaveEvidence } from '../../lib/api'
+import { autoApproves } from '../../lib/approval-stage'
 import { COVERAGE_NOTE_MAX_LENGTH, isCoverageRequired } from '../../lib/coverage'
 import { isLeaveTypeOffered } from '../../lib/parental-leave'
 import { attachmentRequirement, isAttachmentBlockingSubmit, isAttachmentMissing, isAttachmentOffered } from '../../lib/attachment-policy'
@@ -157,7 +158,7 @@ function AnnualLeaveForm({ open, onClose, leave, isAdmin = false, readOnly = fal
     const attachmentBlocking = isAttachmentBlockingSubmit(
         selectedLeaveType,
         !!evidenceFile || !!evidenceUrl.trim(),
-        isEdit ? leave?.status === 'Approved' : selectedLeaveType?.requiresManagerApproval === false,
+        isEdit ? leave?.status === 'Approved' : autoApproves(selectedLeaveType),
     )
     /* A type set to "No attachment needed" gets no upload at all. Evidence the
        request already carries is the exception: this dialog is the only place to

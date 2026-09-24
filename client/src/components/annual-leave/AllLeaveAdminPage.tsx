@@ -8,7 +8,9 @@ import {
     getAnnualLeaves, getAppSettings, getDepartments, getEmployeeProfiles, getHolidays,
     getLeaveStatusHistories, getLeaveTypes, updateLeaveStatus,
 } from '../../lib/api'
+import { approveButtonLabel, approveOutcome, canDecide, isOpenStatus, type ApprovalViewer } from '../../lib/approval-stage'
 import { isAwaitingDocument } from '../../lib/attachment-policy'
+import { isHrAdministrator } from '../../lib/roles'
 import { resolveFileUrl } from '../../lib/api/file-url'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import {
@@ -90,16 +92,17 @@ function overlaps(a: AnnualLeave, b: AnnualLeave) {
     return a.id !== b.id
         && a.startDate <= b.endDate
         && a.endDate >= b.startDate
-        && (b.status === 'Pending' || b.status === 'Approved')
+        && (isOpenStatus(b.status) || b.status === 'Approved')
 }
 
 /* ═══════════════════════════════════════════════════════════════════════ */
 /* Main page                                                                */
 /* ═══════════════════════════════════════════════════════════════════════ */
 
-const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: { user: UserInfo }) {
+const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user }: { user: UserInfo }) {
     const queryClient = useQueryClient()
     const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d }, [])
+    const viewer = { isHrAdministrator: isHrAdministrator(user.roles) }
 
     const [statusTab, setStatusTab] = useState<StatusTab>('all')
     const [deptFilter, setDeptFilter] = useState<string>('all')
@@ -139,7 +142,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
     const conflictMap = useMemo(() => {
         const map = new Map<string, AnnualLeave[]>()
         for (const a of leaves) {
-            if (a.status !== 'Pending' && a.status !== 'Approved') continue
+            if (!isOpenStatus(a.status) && a.status !== 'Approved') continue
             const collisions = leaves.filter((b) =>
                 deptOf(b) === deptOf(a) && overlaps(a, b)
             )
@@ -160,7 +163,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
 
     /* Per-leave: detect "urgent" — submitted < 24h before start, and still pending */
     function isUrgent(l: AnnualLeave) {
-        if (l.status !== 'Pending') return false
+        if (!isOpenStatus(l.status)) return false
         const start = new Date(l.startDate)
         const created = new Date(l.createdAt)
         return start.getTime() - created.getTime() < 86_400_000 && start.getTime() >= Date.now() - 86_400_000
@@ -218,7 +221,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
     const filtered = useMemo(() => {
         let out = scoped
 
-        if (statusTab === 'pending') out = out.filter((l) => l.status === 'Pending')
+        if (statusTab === 'pending') out = out.filter((l) => isOpenStatus(l.status))
         else if (statusTab === 'urgent') out = out.filter(isUrgent)
         else if (statusTab === 'conflict') out = out.filter((l) => conflictMap.has(l.id))
         else if (statusTab === 'approved') out = out.filter((l) => l.status === 'Approved')
@@ -231,7 +234,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
        status tab (a badge has to advertise the tab you are not on). */
     const counts = useMemo(() => ({
         all: scoped.length,
-        pending: scoped.filter((l) => l.status === 'Pending').length,
+        pending: scoped.filter((l) => isOpenStatus(l.status)).length,
         approved: scoped.filter((l) => l.status === 'Approved').length,
         rejected: scoped.filter((l) => l.status === 'Rejected').length,
         urgent: scoped.filter(isUrgent).length,
@@ -307,7 +310,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
 
         /* Pending reports the page scope, so these numbers sum to the awaiting-review total. */
         for (const l of inScope) {
-            if (l.status !== 'Pending') continue
+            if (!isOpenStatus(l.status)) continue
             const cur = bucket(deptOf(l))
             cur.people.add(l.employeeId)
             cur.pending++
@@ -384,6 +387,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
             // refusal among a sweep would read as the whole sweep failing.
             const target = leaves.find((l) => l.id === id)
             if (target && awaitingDocument(target)) continue
+            if (target && !canDecide(target, viewer)) continue
             await approveMut.mutateAsync(id).catch(() => {})
         }
         setSelected(new Set())
@@ -442,8 +446,8 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
         return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress size={28} /></Box>
     }
 
-    const pending = filtered.filter((l) => l.status === 'Pending')
-    const decided = filtered.filter((l) => l.status !== 'Pending')
+    const pending = filtered.filter((l) => isOpenStatus(l.status))
+    const decided = filtered.filter((l) => !isOpenStatus(l.status))
     const pendingUrgent = pending.filter(isUrgent).length
     const pendingConflict = pending.filter((l) => conflictMap.has(l.id)).length
     const showHeatmapAlert = Array.from(heatmap.entries())
@@ -575,6 +579,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
                     leaveTypeById={leaveTypeById}
                     profile={profileByUserId.get(l.employeeId)}
                     leaveYearStartMonth={settings?.leaveYearStartMonth ?? 1}
+                    viewer={viewer}
                     isExpanded={expanded.has(l.id)}
                     isSelected={selected.has(l.id)}
                     isUrgent={isUrgent(l)}
@@ -602,6 +607,7 @@ const AllLeaveAdminPage = observer(function AllLeaveAdminPage({ user: _user }: {
                     leaveTypeById={leaveTypeById}
                     profile={profileByUserId.get(l.employeeId)}
                     leaveYearStartMonth={settings?.leaveYearStartMonth ?? 1}
+                    viewer={viewer}
                     isExpanded={expanded.has(l.id)}
                     isSelected={false}
                     isUrgent={false}
@@ -778,7 +784,7 @@ function SectionHeader({ title, subtitle, meta }: { title: string; subtitle?: st
 }
 
 function LeaveRow({
-    leave, leaveTypeById, profile, leaveYearStartMonth, isExpanded, isSelected, isUrgent,
+    leave, leaveTypeById, profile, leaveYearStartMonth, viewer, isExpanded, isSelected, isUrgent,
     conflicts, history, lastHistory, leaves,
     onToggleExpand, onToggleSelect, onApprove, onReject, disabled, hideCheckbox,
 }: {
@@ -786,6 +792,7 @@ function LeaveRow({
     leaveTypeById: Map<number, LeaveType>
     profile?: EmployeeProfile
     leaveYearStartMonth: number
+    viewer: ApprovalViewer
     isExpanded: boolean
     isSelected: boolean
     isUrgent: boolean
@@ -803,7 +810,8 @@ function LeaveRow({
     const leaveType = leave.leaveTypeId != null ? leaveTypeById.get(leave.leaveTypeId) : undefined
     const typeName = leaveType?.name ?? (leave.leaveTypeId != null ? undefined : 'Annual')
     const typeKey = leaveTypeKey(typeName)
-    const isPending = leave.status === 'Pending'
+    const isPending = isOpenStatus(leave.status)
+    const decidable = canDecide(leave, viewer)
     /* Mirrors AttachmentPolicyRule, which refuses the approval outright: a Required
        type's document is checked when the request is approved, not when it is
        filed, so a pending row can be waiting on one. Reject stays available. */
@@ -841,6 +849,7 @@ function LeaveRow({
         </Box>
     ) : null
     const accent = isUrgent ? 'error.main' : hasConflict ? 'warning.main'
+        : leave.status === 'AwaitingHrApproval' ? 'info.main'
         : isPending ? 'warning.main'
         : leave.status === 'Approved' ? 'success.main'
         : leave.status === 'Rejected' ? 'error.main' : 'text.disabled'
@@ -866,7 +875,7 @@ function LeaveRow({
         employmentStartDate: profile?.employmentStartDate,
         leaveYearStartMonth,
     })
-    const balAfter = entitlement - usedThisYear - (leave.status === 'Pending' ? leave.totalDays : 0)
+    const balAfter = entitlement - usedThisYear - (isOpenStatus(leave.status) ? leave.totalDays : 0)
     const balPct = entitlement > 0 ? Math.min(100, (usedThisYear / entitlement) * 100) : 0
     const fillColor = balPct >= 95 ? 'error.main' : balPct >= 80 ? 'warning.main' : 'success.main'
 
@@ -936,14 +945,14 @@ function LeaveRow({
                         component="input"
                         type="checkbox"
                         checked={isSelected}
-                        disabled={!isPending}
+                        disabled={!decidable}
                         onChange={onToggleSelect}
                         onClick={(e: React.MouseEvent) => e.stopPropagation()}
                         sx={{
-                            cursor: isPending ? 'pointer' : 'not-allowed',
+                            cursor: decidable ? 'pointer' : 'not-allowed',
                             width: 16, height: 16,
                             accentColor: 'primary.main',
-                            opacity: isPending ? 1 : 0.3,
+                            opacity: decidable ? 1 : 0.3,
                         }}
                     />
                 )}
@@ -1046,17 +1055,27 @@ function LeaveRow({
                     sx={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexShrink: 0 }}
                 >
                     {isPending ? (
-                        <>
-                            {awaitingDocument && (
-                                <Box component="span" sx={{
-                                    alignSelf: 'center', fontSize: 11, color: 'warning.dark',
-                                    bgcolor: softBg('warning'), border: '1px solid', borderColor: 'warning.main',
-                                    borderRadius: '10px', px: '8px', py: '2px', whiteSpace: 'nowrap',
-                                }}>📎 Awaiting document</Box>
-                            )}
-                            <ActionBtn variant="success" onClick={onApprove} disabled={disabled || awaitingDocument}>Approve</ActionBtn>
-                            <ActionBtn variant="danger" onClick={onReject} disabled={disabled}>Reject</ActionBtn>
-                        </>
+                        decidable ? (
+                            <>
+                                {awaitingDocument && (
+                                    <Box component="span" sx={{
+                                        alignSelf: 'center', fontSize: 11, color: 'warning.dark',
+                                        bgcolor: softBg('warning'), border: '1px solid', borderColor: 'warning.main',
+                                        borderRadius: '10px', px: '8px', py: '2px', whiteSpace: 'nowrap',
+                                    }}>📎 Awaiting document</Box>
+                                )}
+                                <ActionBtn variant="success" onClick={onApprove} disabled={disabled || awaitingDocument}>
+                                    {approveButtonLabel(approveOutcome(leave, leaveType, viewer))}
+                                </ActionBtn>
+                                <ActionBtn variant="danger" onClick={onReject} disabled={disabled}>Reject</ActionBtn>
+                            </>
+                        ) : (
+                            <Box component="span" sx={{
+                                alignSelf: 'center', fontSize: 11, color: 'info.dark',
+                                bgcolor: softBg('info'), border: '1px solid', borderColor: 'info.main',
+                                borderRadius: '10px', px: '8px', py: '2px',
+                            }}>With HR</Box>
+                        )
                     ) : (
                         <ActionBtn variant="ghost" onClick={(e) => { e.stopPropagation(); onToggleExpand() }}>
                             {isExpanded ? 'Hide' : 'View'}

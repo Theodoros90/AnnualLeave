@@ -162,6 +162,17 @@ describe('The HR Administrator dashboard', () => {
         expect(screen.getByText('Maria Ioannou')).toBeInTheDocument()
         expect(screen.queryByText('Helen HR')).not.toBeInTheDocument()
     })
+
+    it('queues a request that is with HR, with Approve to hand', async () => {
+        api.getAnnualLeaves.mockResolvedValue([
+            leave({ id: 'l-hr', employeeId: 'u-1', employeeName: 'Maria Ioannou', status: 'AwaitingHrApproval', startDate: iso(5), endDate: iso(5) }),
+        ])
+        renderAs(HR)
+        await screen.findByText('Approval queue')
+
+        expect(screen.getByText('Maria Ioannou · Annual Leave')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled()
+    })
 })
 
 describe('The System Administrator dashboard', () => {
