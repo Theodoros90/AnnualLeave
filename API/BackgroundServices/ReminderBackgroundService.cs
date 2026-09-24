@@ -1,5 +1,6 @@
 using Application.Reminders;
 using Application.Settings.Support;
+using Application.SystemErrors;
 using Domain;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
@@ -17,6 +18,11 @@ namespace API.BackgroundServices;
 //   • Dedup is in-memory (a last-fired calendar date per reminder id). A restart
 //     can re-send once if it happens within the same day after the fire time;
 //     acceptable for this use case and avoids a DB migration.
+//   • A reminder that throws is logged, reported to the System Administrators
+//     (SystemErrorNotifier) and does not stop the reminders after it in the same
+//     tick. It is still marked as run for the day: retrying a broken reminder
+//     every minute would send the same error email and, worse, could send half
+//     a digest sixty times.
 public class ReminderBackgroundService(
     IServiceScopeFactory scopeFactory,
     ILogger<ReminderBackgroundService> logger) : BackgroundService
@@ -83,7 +89,28 @@ public class ReminderBackgroundService(
             logger.LogInformation("Reminder '{Id}' is due (scheduled {Time}, {Freq}); dispatching.", r.Id, r.Time, r.Frequency);
 
             dispatcher ??= scope.ServiceProvider.GetRequiredService<ReminderDispatcher>();
-            await dispatcher.DispatchAsync(r.Id, settings, ct);
+            try
+            {
+                await dispatcher.DispatchAsync(r.Id, settings, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Reminder '{Id}' failed.", r.Id);
+                await ReportAsync(r.Id, ex, ct);
+            }
         }
+    }
+
+    // Its own scope: the DbContext the dispatcher was using may be the thing
+    // that broke, and the report must not depend on it.
+    private async Task ReportAsync(string reminderId, Exception ex, CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var notifier = scope.ServiceProvider.GetRequiredService<SystemErrorNotifier>();
+        await notifier.NotifyAsync(new SystemErrorReport($"reminder '{reminderId}'", ex), ct);
     }
 }

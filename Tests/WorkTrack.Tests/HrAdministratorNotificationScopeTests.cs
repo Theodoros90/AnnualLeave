@@ -140,6 +140,7 @@ public class HrAdministratorNotificationScopeTests : IDisposable
         Db.LeaveTypes.Add(new LeaveType { Id = 1, Name = "Annual Leave", IsActive = true });
         await Db.SaveChangesAsync();
         var hr = await GivenUserAsync("hr@t.local", AppRoles.HrAdministrator, null, 1);
+        await GivenUserAsync("sys@t.local", AppRoles.SystemAdministrator, null);
         await GivenUserAsync("anna@t.local", AppRoles.Employee, 1);
         await GivenUserAsync("ben@t.local", AppRoles.Employee, 2);
         var email = new FakeEmailService();
@@ -151,5 +152,8 @@ public class HrAdministratorNotificationScopeTests : IDisposable
         // Neither checked in yesterday; only Anna is HR's to be told about.
         Assert.Contains("anna@t.local", toHr.HtmlBody);
         Assert.DoesNotContain("ben@t.local", toHr.HtmlBody);
+        // Attendance is HR's to run. The System Administrator is told about
+        // system errors instead (SystemErrorNotifierTests).
+        Assert.DoesNotContain(email.Sent, m => m.Recipient == "sys@t.local");
     }
 }

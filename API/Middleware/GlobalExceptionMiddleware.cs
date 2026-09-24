@@ -1,5 +1,6 @@
 using System.Text.Json;
 using API.Extensions;
+using Application.SystemErrors;
 using FluentValidation;
 
 namespace API.Middleware;
@@ -86,6 +87,8 @@ public class GlobalExceptionMiddleware(
 
         if (context.Response.HasStarted)
         {
+            if (statusCode >= StatusCodes.Status500InternalServerError)
+                await ReportSystemErrorAsync(context, ex);
             throw ex;
         }
 
@@ -99,6 +102,40 @@ public class GlobalExceptionMiddleware(
 
         var response = ApiErrorResponseExtensions.Create(context, statusCode, message, details);
         await context.Response.WriteAsJsonAsync(response);
+
+        // After the response, so a slow mail provider does not hold up the
+        // caller's error page; the request scope (and its DbContext) is still
+        // alive until this middleware returns.
+        if (statusCode >= StatusCodes.Status500InternalServerError)
+            await ReportSystemErrorAsync(context, ex);
+    }
+
+    /// <summary>
+    /// A 500 is the system's fault, and the System Administrators are the people
+    /// who keep the system running, so they are told — with the correlation id
+    /// that finds the log lines. A 4xx is the caller's mistake and is not.
+    ///
+    /// The notifier runs in a scope of its own rather than the request's: it holds
+    /// a DbContext, and the request's may be the very thing that just threw. It
+    /// is optional, so a host that has not registered it (a test) still works,
+    /// and it is given no cancellation token, because a caller who hangs up the
+    /// moment the 500 lands must not take the report with them. The notifier
+    /// never throws; the guard here is for resolution failing.
+    /// </summary>
+    private async Task ReportSystemErrorAsync(HttpContext context, Exception ex)
+    {
+        try
+        {
+            using var scope = context.RequestServices.GetRequiredService<IServiceScopeFactory>().CreateScope();
+            var notifier = scope.ServiceProvider.GetService<SystemErrorNotifier>();
+            if (notifier is null) return;
+            var source = $"{context.Request.Method} {context.Request.Path}";
+            await notifier.NotifyAsync(new SystemErrorReport(source, ex, context.TraceIdentifier), CancellationToken.None);
+        }
+        catch (Exception reportEx)
+        {
+            logger.LogError(reportEx, "Could not report the unhandled exception for {Path} to the System Administrators.", context.Request.Path);
+        }
     }
 
     private async Task HandleOAuthFailureAsync(HttpContext context, Exception ex)
