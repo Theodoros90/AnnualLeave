@@ -417,4 +417,99 @@ public class ApprovalStageHandlerTests
 
         Assert.Contains(outcome.Errors, e => e.ErrorMessage.Contains("overlaps"));
     }
+
+    // ── The manager is on leave ───────────────────────────────────────────────
+
+    /// <summary>An approved leave for the given user that covers today.</summary>
+    private static async Task SeedManagerLeaveAsync(AppDbContext db, string userId, string profileId, int daysFromToday, string id = "mgr-leave")
+    {
+        var today = DateTime.UtcNow.Date;
+        db.AnnualLeaves.Add(new AnnualLeave
+        {
+            Id = id, EmployeeId = userId, EmployeeProfileId = profileId, DepartmentId = Dept,
+            LeaveTypeId = ManagerOnlyType, StartDate = today.AddDays(daysFromToday - 1), EndDate = today.AddDays(daysFromToday + 1),
+            Reason = "Away", Status = AnnualLeaveStatus.Approved, CreatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+    }
+
+    [Fact]
+    public async Task A_request_goes_to_hr_when_the_only_manager_is_on_leave_today()
+    {
+        using var db = await WorldAsync();
+        await SeedManagerLeaveAsync(db, Manager, "p-mgr", daysFromToday: 0);
+        var email = new FakeEmailService();
+
+        var result = await CreateAsync(db, email, ManagerOnlyType);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, (await StoredAsync(db, result.Value!)).Status);
+        var toHr = Assert.Single(email.Sent, m => m.Recipient == "hr@t.local");
+        Assert.Equal(HrApprovalNotification.Subject, toHr.Subject);
+        Assert.Contains("Nikos Manager", toHr.HtmlBody);
+        Assert.Contains("on leave", toHr.HtmlBody);
+        Assert.DoesNotContain(email.Sent, m => m.Recipient == "mgr@t.local");
+
+        var history = await db.LeaveStatusHistories.AsNoTracking().SingleAsync(h => h.AnnualLeaveId == result.Value);
+        Assert.Equal(AnnualLeaveStatus.Pending, history.OldStatus);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, history.NewStatus);
+        Assert.Contains("Nikos Manager", history.Comment);
+        Assert.Contains("on leave", history.Comment);
+    }
+
+    [Fact]
+    public async Task A_managers_leave_that_ended_yesterday_does_not_reroute()
+    {
+        using var db = await WorldAsync();
+        await SeedManagerLeaveAsync(db, Manager, "p-mgr", daysFromToday: -2);
+        var email = new FakeEmailService();
+
+        var result = await CreateAsync(db, email, ManagerOnlyType);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(AnnualLeaveStatus.Pending, (await StoredAsync(db, result.Value!)).Status);
+        Assert.Contains(email.Sent, m => m.Recipient == "mgr@t.local");
+        Assert.DoesNotContain(email.Sent, m => m.Recipient == "hr@t.local");
+    }
+
+    [Fact]
+    public async Task One_available_manager_is_enough_to_keep_the_manager_stage()
+    {
+        using var db = await WorldAsync();
+        db.Users.Add(new User { Id = "u-mgr2", UserName = "u-mgr2", Email = "mgr2@t.local", DisplayName = "Eleni Manager" });
+        db.UserRoles.Add(new UserRole { UserId = "u-mgr2", RoleId = "r-mgr" });
+        db.EmployeeProfiles.Add(new EmployeeProfile { Id = "p-mgr2", UserId = "u-mgr2", DepartmentId = Dept, AnnualLeaveEntitlement = 20, LeaveBalance = 20 });
+        await db.SaveChangesAsync();
+        await SeedManagerLeaveAsync(db, Manager, "p-mgr", daysFromToday: 0);
+        var email = new FakeEmailService();
+
+        var result = await CreateAsync(db, email, ManagerOnlyType);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(AnnualLeaveStatus.Pending, (await StoredAsync(db, result.Value!)).Status);
+        Assert.Contains(email.Sent, m => m.Recipient == "mgr2@t.local");
+        Assert.DoesNotContain(email.Sent, m => m.Recipient == "hr@t.local");
+    }
+
+    /// <summary>
+    /// Nobody to be away: a department with no manager is unchanged by this rule —
+    /// the request waits Pending, where an HR Administrator can already decide it.
+    /// </summary>
+    [Fact]
+    public async Task A_department_with_no_manager_still_files_pending()
+    {
+        using var db = await WorldAsync();
+        var managerProfile = await db.EmployeeProfiles.FirstAsync(p => p.Id == "p-mgr");
+        managerProfile.DepartmentId = 99;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var email = new FakeEmailService();
+
+        var result = await CreateAsync(db, email, BothType);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(AnnualLeaveStatus.Pending, (await StoredAsync(db, result.Value!)).Status);
+        Assert.Empty(email.Sent);
+    }
 }

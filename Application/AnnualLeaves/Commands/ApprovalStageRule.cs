@@ -29,12 +29,19 @@ public static class ApprovalStageRule
     public const string StageIsDerivedMessage =
         "A request cannot be put into 'Awaiting HR approval' directly. Approve it and the stage is decided for you.";
 
-    /// <summary>The status a fresh request is filed in.</summary>
-    public static AnnualLeaveStatus InitialStatus(LeaveType leaveType) =>
+    /// <summary>
+    /// The status a fresh request is filed in. <paramref name="managerAvailable"/>
+    /// is false when every manager who could decide the request is on leave today
+    /// (<see cref="ManagerAvailability"/>): the manager stage then goes to HR, who
+    /// stand in for the manager, rather than waiting on somebody who is away. A
+    /// type that never asked for the manager is unaffected by it.
+    /// </summary>
+    public static AnnualLeaveStatus InitialStatus(LeaveType leaveType, bool managerAvailable = true) =>
         (leaveType.RequiresManagerApproval, leaveType.RequiresHrApproval) switch
         {
             (false, false) => AnnualLeaveStatus.Approved,
             (false, true) => AnnualLeaveStatus.AwaitingHrApproval,
+            (true, _) when !managerAvailable => AnnualLeaveStatus.AwaitingHrApproval,
             _ => AnnualLeaveStatus.Pending,
         };
 

@@ -113,4 +113,17 @@ public class ApprovalStageRuleTests
         Assert.Null(outcome.Error);
         Assert.Equal(current, outcome.Status);
     }
+
+    /// <summary>
+    /// With no manager available to decide it, a request that would have waited
+    /// on the manager goes to HR instead — HR stands in for the manager. A type
+    /// that never asked for the manager is unaffected.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, AnnualLeaveStatus.AwaitingHrApproval)]
+    [InlineData(true, true, AnnualLeaveStatus.AwaitingHrApproval)]
+    [InlineData(false, false, AnnualLeaveStatus.Approved)]
+    [InlineData(false, true, AnnualLeaveStatus.AwaitingHrApproval)]
+    public void With_no_manager_available_the_manager_stage_goes_to_hr(bool manager, bool hr, AnnualLeaveStatus expected) =>
+        Assert.Equal(expected, ApprovalStageRule.InitialStatus(Type(manager, hr), managerAvailable: false));
 }

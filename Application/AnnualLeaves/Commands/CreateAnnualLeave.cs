@@ -127,9 +127,31 @@ public class CreateAnnualLeave
 
             /* Which stage the request opens in — Pending for the manager, straight to
                the HR stage on a type that asks for HR alone, or Approved when nobody
-               has to look at it. ApprovalStageRule owns the table. */
-            var initialStatus = ApprovalStageRule.InitialStatus(leaveType);
+               has to look at it. ApprovalStageRule owns the table. One more input:
+               when every manager who could decide it is on leave today, the manager
+               stage goes to HR instead of waiting on somebody who is away. */
+            var managerAvailability = leaveType.RequiresManagerApproval
+                ? await ManagerAvailability.CheckAsync(context, employeeProfile, DateTime.UtcNow, cancellationToken)
+                : ManagerAvailability.Report.Available;
+            var initialStatus = ApprovalStageRule.InitialStatus(leaveType, managerAvailability.AnyAvailable);
             annualLeave.Status = initialStatus;
+
+            var reroutedFromManager = leaveType.RequiresManagerApproval && !managerAvailability.AnyAvailable;
+            if (reroutedFromManager)
+            {
+                // Say why it skipped the manager, for the employee watching the
+                // request and for the manager reading the history when they return.
+                context.LeaveStatusHistories.Add(new LeaveStatusHistory
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    AnnualLeaveId = annualLeave.Id,
+                    ChangedByUserId = annualLeave.EmployeeId,
+                    OldStatus = AnnualLeaveStatus.Pending,
+                    NewStatus = AnnualLeaveStatus.AwaitingHrApproval,
+                    Comment = ManagerAvailability.Describe(managerAvailability),
+                    ChangedAt = DateTime.UtcNow,
+                });
+            }
 
             if (initialStatus == AnnualLeaveStatus.Approved)
             {
@@ -235,10 +257,11 @@ public class CreateAnnualLeave
             }
             else if (initialStatus == AnnualLeaveStatus.AwaitingHrApproval)
             {
-                // No manager stage on this type, so HR are the first and only people
-                // to hear about it.
+                // No manager stage on this type — or nobody there to take it — so HR
+                // are the first and only people to hear about it.
                 await HrApprovalNotification.SendAsync(
-                    context, emailService, annualLeave, leaveType, employeeProfile, approvedByUserId: null, cancellationToken);
+                    context, emailService, annualLeave, leaveType, employeeProfile, approvedByUserId: null, cancellationToken,
+                    note: reroutedFromManager ? ManagerAvailability.Describe(managerAvailability) : null);
             }
             else
             {

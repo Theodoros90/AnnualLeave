@@ -31,7 +31,8 @@ public static class HrApprovalNotification
         LeaveType leaveType,
         EmployeeProfile employeeProfile,
         string? approvedByUserId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? note = null)
     {
         var recipients = await HrApprovalRecipients.ResolveAsync(
             context, annualLeave.DepartmentId, approvedByUserId ?? annualLeave.EmployeeId, cancellationToken);
@@ -66,6 +67,10 @@ public static class HrApprovalNotification
                 .Sentence(sentence)
                 .Detail("Reason", annualLeave.Reason)
                 .Detail("Coverage", coverage)
+                // Why this landed with HR rather than the manager, when it did not
+                // come through the manager: "Sent to HR for approval: X on leave."
+                // Detail skips a blank value, so the line is simply absent otherwise.
+                .Detail("Note", note)
                 .Closing("Please log in to the Annual Leave system to review and take action.")
                 .Build();
 
