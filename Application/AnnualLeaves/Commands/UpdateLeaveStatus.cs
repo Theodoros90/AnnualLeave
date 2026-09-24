@@ -58,7 +58,18 @@ public class UpdateLeaveStatus
                 return Result<Unit>.Failure("You can only change status for leaves in your managed scope.");
 
             var oldStatus = annualLeave.Status;
-            var newStatus = request.Request.Status;
+
+            var leaveType = await context.LeaveTypes
+                .AsNoTracking()
+                .FirstOrDefaultAsync(type => type.Id == annualLeave.LeaveTypeId, cancellationToken);
+
+            /* The client asks for Approved; the leave type's two switches and who is
+               asking decide whether that means the HR stage or the end. A Manager on
+               a request that is already with HR is refused here, whatever they ask. */
+            var stage = ApprovalStageRule.Resolve(leaveType, oldStatus, request.Request.Status, request.IsAdmin);
+            if (stage.Error is not null)
+                return Result<Unit>.Failure(stage.Error);
+            var newStatus = stage.Status!.Value;
 
             if (oldStatus == newStatus) return Result<Unit>.Success(Unit.Value);
 
@@ -67,20 +78,16 @@ public class UpdateLeaveStatus
             /* The attachment policy gates this transition rather than filing: the
                document a type requires may be dated after the request had to go in
                (call-up papers), so the employee files, attaches it from My Leave,
-               and only then can this approve. Rejecting or cancelling asks nothing.
-               No exemption for an admin — the rule is about the leave type, not
-               about who is clicking. */
-            if (oldStatus != AnnualLeaveStatus.Approved && newStatus == AnnualLeaveStatus.Approved)
+               and only then can this approve. It gates both steps out of Pending —
+               a manager cannot pass an undocumented request along to HR either.
+               Rejecting or cancelling asks nothing. No exemption for an admin — the
+               rule is about the leave type, not about who is clicking. */
+            var isApprovalStep = newStatus is AnnualLeaveStatus.Approved or AnnualLeaveStatus.AwaitingHrApproval;
+            if (leaveType is not null && oldStatus != AnnualLeaveStatus.Approved && isApprovalStep)
             {
-                var leaveType = await context.LeaveTypes
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(type => type.Id == annualLeave.LeaveTypeId, cancellationToken);
-                if (leaveType is not null)
-                {
-                    var attachmentError = AttachmentPolicyRule.Check(leaveType, annualLeave.EvidenceUrl);
-                    if (attachmentError is not null)
-                        return Result<Unit>.Failure(attachmentError);
-                }
+                var attachmentError = AttachmentPolicyRule.Check(leaveType, annualLeave.EvidenceUrl);
+                if (attachmentError is not null)
+                    return Result<Unit>.Failure(attachmentError);
             }
 
             var employeeProfile = await context.EmployeeProfiles
@@ -182,6 +189,15 @@ public class UpdateLeaveStatus
                     context, emailService, annualLeave, annualLeave.DelegateId, cancellationToken);
             }
 
+            if (newStatus == AnnualLeaveStatus.AwaitingHrApproval && leaveType is not null && employeeProfile is not null)
+            {
+                // The manager has had their say; the HR Administrators covering the
+                // department now need to hear it is with them.
+                await HrApprovalNotification.SendAsync(
+                    context, emailService, annualLeave, leaveType, employeeProfile,
+                    approvedByUserId: request.ChangedByUserId, cancellationToken);
+            }
+
             var employeeContact = await context.Users
                 .AsNoTracking()
                 .Where(user => user.Id == annualLeave.EmployeeId)
@@ -208,28 +224,32 @@ public class UpdateLeaveStatus
                 .FirstOrDefaultAsync(cancellationToken)
                 ?? "Manager";
 
-            var leaveTypeName = annualLeave.LeaveTypeId.HasValue
-                ? await context.LeaveTypes
-                    .AsNoTracking()
-                    .Where(leaveType => leaveType.Id == annualLeave.LeaveTypeId.Value)
-                    .Select(leaveType => leaveType.Name)
-                    .FirstOrDefaultAsync(cancellationToken)
-                : null;
+            var leaveTypeName = leaveType?.Name;
 
             var statusLabel = newStatus.ToString();
-            var subject = $"Your leave request was {statusLabel.ToLowerInvariant()}";
+            var subject = newStatus == AnnualLeaveStatus.AwaitingHrApproval
+                ? "Your leave request is awaiting HR approval"
+                : $"Your leave request was {statusLabel.ToLowerInvariant()}";
             var comment = string.IsNullOrWhiteSpace(request.Request.StatusComment)
                 ? "No additional comment was provided."
                 : request.Request.StatusComment!;
             var leaveName = leaveTypeName ?? "leave request";
             var dateRange = $"{annualLeave.StartDate:dd MMM yyyy} to {annualLeave.EndDate:dd MMM yyyy}";
 
+            // Sentence takes a FormattableString; a ternary of two interpolations
+            // would decay to a plain string and lose the per-value encoding.
+            FormattableString sentence;
+            if (newStatus == AnnualLeaveStatus.AwaitingHrApproval)
+                sentence = $"Your {leaveName} request for {dateRange} has been approved by {NotificationEmail.Plain(changedByName)} and is awaiting HR approval.";
+            else
+                sentence = $"Your {leaveName} request for {dateRange} has been {statusLabel} by {NotificationEmail.Plain(changedByName)}.";
+
             // Six WebUtility.HtmlEncode calls used to sit here, one per value. They
             // were correct; the same email in CreateAnnualLeave had none. The
             // builder does the encoding now, for both.
             var body = NotificationEmail
                 .To(employeeContact.Name)
-                .Sentence($"Your {leaveName} request for {dateRange} has been {statusLabel} by {NotificationEmail.Plain(changedByName)}.")
+                .Sentence(sentence)
                 .Detail("Comment", comment)
                 .Closing("Please log in to the Annual Leave system to review the latest update.")
                 .Build();

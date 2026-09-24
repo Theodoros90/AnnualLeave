@@ -148,4 +148,127 @@ public class ApprovalStageHandlerTests
         Assert.True(result.IsSuccess, result.Error);
         Assert.Equal(AnnualLeaveStatus.Pending, (await StoredAsync(db, result.Value!)).Status);
     }
+
+    // ── Deciding ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_managers_approve_on_a_type_needing_hr_advances_it_and_tells_hr_and_the_employee()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.Pending);
+        var email = new FakeEmailService();
+
+        var result = await DecideAsync(db, email, "L1", AnnualLeaveStatus.Approved, asHr: false);
+
+        Assert.True(result.IsSuccess, result.Error);
+        var stored = await StoredAsync(db);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, stored.Status);
+        Assert.Null(stored.ApprovedAt);
+        Assert.Null(stored.ApprovedById);
+        Assert.Equal(20m, await BalanceAsync(db));
+
+        var toHr = Assert.Single(email.Sent, m => m.Recipient == "hr@t.local");
+        Assert.Equal(HrApprovalNotification.Subject, toHr.Subject);
+        Assert.Contains("Nikos Manager", toHr.HtmlBody);
+        var toEmployee = Assert.Single(email.Sent, m => m.Recipient == "emp@t.local");
+        Assert.Equal("Your leave request is awaiting HR approval", toEmployee.Subject);
+        Assert.Contains("awaiting HR approval", toEmployee.HtmlBody);
+        // Coverage is not announced before the final approval.
+        Assert.DoesNotContain(email.Sent, m => m.Recipient == "del@t.local");
+
+        var history = await db.LeaveStatusHistories.AsNoTracking().SingleAsync();
+        Assert.Equal(AnnualLeaveStatus.Pending, history.OldStatus);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, history.NewStatus);
+    }
+
+    [Fact]
+    public async Task Hr_approving_from_pending_finishes_the_request_in_one_step()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.Pending);
+        var email = new FakeEmailService();
+
+        var result = await DecideAsync(db, email, "L1", AnnualLeaveStatus.Approved, asHr: true);
+
+        Assert.True(result.IsSuccess, result.Error);
+        var stored = await StoredAsync(db);
+        Assert.Equal(AnnualLeaveStatus.Approved, stored.Status);
+        Assert.Equal(Hr, stored.ApprovedById);
+        Assert.Equal(15m, await BalanceAsync(db));
+        Assert.Contains(email.Sent, m => m.Recipient == "del@t.local"); // coverage announced
+    }
+
+    [Fact]
+    public async Task Hr_approving_from_the_hr_stage_finishes_the_request()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.AwaitingHrApproval);
+        var email = new FakeEmailService();
+
+        var result = await DecideAsync(db, email, "L1", AnnualLeaveStatus.Approved, asHr: true);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(AnnualLeaveStatus.Approved, (await StoredAsync(db)).Status);
+        Assert.Equal(15m, await BalanceAsync(db));
+        Assert.Contains(email.Sent, m => m.Recipient == "emp@t.local" && m.Subject == "Your leave request was approved");
+    }
+
+    [Theory]
+    [InlineData(AnnualLeaveStatus.Approved)]
+    [InlineData(AnnualLeaveStatus.Rejected)]
+    public async Task A_manager_is_refused_on_a_request_that_is_with_hr(AnnualLeaveStatus attempt)
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.AwaitingHrApproval);
+        var email = new FakeEmailService();
+
+        var result = await DecideAsync(db, email, "L1", attempt, asHr: false);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ApprovalStageRule.AwaitingHrMessage, result.Error);
+        Assert.Equal(AnnualLeaveStatus.AwaitingHrApproval, (await StoredAsync(db)).Status);
+        Assert.Empty(email.Sent);
+    }
+
+    [Fact]
+    public async Task Nobody_can_ask_for_the_hr_stage_directly()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.Pending);
+
+        var result = await DecideAsync(db, new FakeEmailService(), "L1", AnnualLeaveStatus.AwaitingHrApproval, asHr: true);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ApprovalStageRule.StageIsDerivedMessage, result.Error);
+    }
+
+    [Fact]
+    public async Task A_manager_cannot_pass_an_undocumented_request_to_hr()
+    {
+        using var db = await WorldAsync();
+        var type = await db.LeaveTypes.FindAsync(BothType);
+        type!.AttachmentPolicy = AttachmentPolicy.Required;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        await SeedLeaveAsync(db, BothType, AnnualLeaveStatus.Pending);
+
+        var result = await DecideAsync(db, new FakeEmailService(), "L1", AnnualLeaveStatus.Approved, asHr: false);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("supporting document", result.Error);
+        Assert.Equal(AnnualLeaveStatus.Pending, (await StoredAsync(db)).Status);
+    }
+
+    [Fact]
+    public async Task A_manager_only_type_still_approves_outright()
+    {
+        using var db = await WorldAsync();
+        await SeedLeaveAsync(db, ManagerOnlyType, AnnualLeaveStatus.Pending);
+
+        var result = await DecideAsync(db, new FakeEmailService(), "L1", AnnualLeaveStatus.Approved, asHr: false);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(AnnualLeaveStatus.Approved, (await StoredAsync(db)).Status);
+        Assert.Equal(15m, await BalanceAsync(db));
+    }
 }
