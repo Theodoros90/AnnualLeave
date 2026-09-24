@@ -1,3 +1,4 @@
+using Application.AnnualLeaves.Commands;
 using Application.Core;
 using Domain;
 using Domain.Interfaces;
@@ -100,13 +101,28 @@ public class SubmitTimesheet
             }
 
             // Notify the direct manager AND every Manager-role user in the
-            // employee's department (matches how manager team scope works).
-            var recipients = await ManagerNotificationRecipients.ResolveAsync(
-                context, timesheet.Employee, cancellationToken);
+            // employee's department (matches how manager team scope works) — or,
+            // when none of them is available today (all on leave, or there is none,
+            // or the submitter is the only manager), the HR Administrators covering
+            // the department, who are the ones who can review it
+            // (TimesheetReviewRule). The same routing leave takes at filing.
+            var availability = await ManagerAvailability.CheckAsync(context, timesheet.Employee, DateTime.UtcNow, cancellationToken);
+            string? note = null;
+            List<ManagerContact> recipients;
+            if (availability.AnyAvailable)
+            {
+                recipients = await ManagerNotificationRecipients.ResolveAsync(context, timesheet.Employee, cancellationToken);
+            }
+            else
+            {
+                recipients = await HrApprovalRecipients.ResolveAsync(
+                    context, timesheet.DepartmentId, excludeUserId: timesheet.Employee.UserId, cancellationToken);
+                note = ManagerAvailability.Describe(availability).Replace("for approval", "for review");
+            }
 
             if (recipients.Count == 0)
             {
-                logger.LogInformation("Timesheet {Id}: no manager recipients for employee {EmployeeProfileId}, skipping notification", timesheet.Id, timesheet.EmployeeProfileId);
+                logger.LogInformation("Timesheet {Id}: no reviewer to notify for employee {EmployeeProfileId}, skipping notification", timesheet.Id, timesheet.EmployeeProfileId);
                 return;
             }
 
@@ -123,12 +139,13 @@ public class SubmitTimesheet
                 var htmlBody = $"""
 <p>Hello {greetingName},</p>
 <p><strong>{employeeName}</strong> has {verb} a timesheet for <strong>{period}</strong> ({timesheet.TotalHours:0.##} hours).</p>
+{(note is null ? "" : $"<p><strong>Note:</strong> {note}</p>")}
 <p>Please log in to Jenus People to review and take action.</p>
 """;
                 var textBody = $"""
 Hello {greetingName},
 {employeeName} has {verb} a timesheet for {period} ({timesheet.TotalHours:0.##} hours).
-Please log in to Jenus People to review and take action.
+{(note is null ? "" : $"Note: {note}\n")}Please log in to Jenus People to review and take action.
 """;
 
                 try

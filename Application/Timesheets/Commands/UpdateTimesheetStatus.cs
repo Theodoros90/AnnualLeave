@@ -1,4 +1,5 @@
 using Application.Core;
+using Application.Timesheets.Support;
 using Domain;
 using Domain.Interfaces;
 using MediatR;
@@ -19,6 +20,8 @@ public class UpdateTimesheetStatus
         public bool IsManager { get; set; }
         public bool IsHrAdministrator { get; set; }
         public string? Comment { get; set; }
+        /// <summary>Test seam for <see cref="TimesheetReviewRule"/>'s "is a manager available today"; the controller leaves it null.</summary>
+        public DateTime? NowUtc { get; set; }
     }
 
     public const string OwnTimesheetMessage = "You cannot approve or reject your own timesheet.";
@@ -97,6 +100,24 @@ public class UpdateTimesheetStatus
                             ["Authorization"] = ["You are not authorized to update timesheets outside your departments."]
                         },
                         "You are not authorized to update this timesheet.");
+                }
+
+                // The manager stage is the manager's, as it is for leave. An HR
+                // Administrator reviews a timesheet only when no manager is available
+                // to: the submitter is the only manager, the department has none, or
+                // every manager is on leave today (TimesheetReviewRule).
+                if (request.IsHrAdministrator)
+                {
+                    var submitter = await context.EmployeeProfiles
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(ep => ep.Id == timesheet.EmployeeProfileId, cancellationToken);
+                    if (submitter is not null
+                        && await TimesheetReviewRule.ManagerAvailableAsync(context, submitter, request.NowUtc ?? DateTime.UtcNow, cancellationToken))
+                    {
+                        return Result<Unit>.ValidationFailure(
+                            new Dictionary<string, string[]> { ["Authorization"] = [TimesheetReviewRule.WithManagerMessage] },
+                            TimesheetReviewRule.WithManagerMessage);
+                    }
                 }
             }
 

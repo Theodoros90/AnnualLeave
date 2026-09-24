@@ -21,7 +21,7 @@ import {
     getMyTimesheets, getProjectActivityTypes, getProjectComponents, getProjects, getProjectTypes,
     getTeamAttendance, getTeamAttendanceHistory, getTimesheets, rejectTimesheet, updateLeaveStatus,
 } from '../../lib/api'
-import { approveButtonLabel, approveOutcome, canDecide, isOpenStatus, isWithManager, type ApprovalViewer } from '../../lib/approval-stage'
+import { approveButtonLabel, approveOutcome, canDecide, isOpenStatus, isTimesheetWithManager, isWithManager, type ApprovalViewer } from '../../lib/approval-stage'
 import { currentYearEntitlement } from '../../lib/leave-allowance'
 import { isAwaitingDocument } from '../../lib/attachment-policy'
 import { isAdministrator, isSystemAdministrator } from '../../lib/roles'
@@ -917,8 +917,12 @@ function HrDashboard({ user }: { user: UserInfo }) {
             .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
         [leaves, leaveTypeById, user.id],
     )
+    // Likewise the timesheets: a submitted sheet a manager is available to review is
+    // the manager's (isTimesheetWithManager); HR's queue holds the ones nobody else
+    // can review — a manager's own, a department with no manager, every manager away.
     const pendingTs = useMemo(
-        () => timesheets.filter((t) => (t.status === 'Submitted' || t.status === 'Resubmitted') && t.employeeId !== myProfileId)
+        () => timesheets.filter((t) => (t.status === 'Submitted' || t.status === 'Resubmitted') && t.employeeId !== myProfileId
+                && !isTimesheetWithManager(t, HR_VIEWER))
             .sort((a, b) => new Date(a.submittedAt ?? a.createdAt).getTime() - new Date(b.submittedAt ?? b.createdAt).getTime()),
         [timesheets, myProfileId],
     )

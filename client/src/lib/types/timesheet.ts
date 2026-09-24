@@ -34,4 +34,10 @@ export interface Timesheet {
   projectSummaries?: TimesheetProjectSummary[];
   /** Hours per weekday — index 0 = Monday … 4 = Friday. */
   dailyHours?: number[];
+  /**
+   * A submitted timesheet a manager is available to review today, so it is the
+   * manager's, not HR's (server `TimesheetReviewRule`). Absent on an API predating
+   * the flag, which reads as not with the manager.
+   */
+  awaitingManager?: boolean;
 }

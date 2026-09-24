@@ -65,6 +65,24 @@ export function isManagersRejection(
     return type === undefined || type.requiresManagerApproval
 }
 
+/**
+ * A submitted timesheet that is the manager's to review, seen by an HR
+ * Administrator — the timesheet counterpart of `isWithManager`, mirroring the
+ * server's `TimesheetReviewRule`. The server says so per row (`awaitingManager`:
+ * a manager other than the submitter is available today); HR's pages leave such
+ * rows out and review the rest — a manager's own sheet, a department with no
+ * manager, every manager on leave. An API predating the flag reads as not with the
+ * manager, so the row is shown and the server answers.
+ */
+export function isTimesheetWithManager(
+    timesheet: { status: string; awaitingManager?: boolean },
+    viewer: ApprovalViewer,
+): boolean {
+    return viewer.isHrAdministrator
+        && (timesheet.status === 'Submitted' || timesheet.status === 'Resubmitted')
+        && timesheet.awaitingManager === true
+}
+
 /** Whether this viewer may approve or reject the request at its current stage. */
 export function canDecide(leave: Pick<AnnualLeave, 'status'>, viewer: ApprovalViewer, type: ApprovalFlags | undefined): boolean {
     if (leave.status === 'Pending') return !isWithManager(leave, type, viewer)

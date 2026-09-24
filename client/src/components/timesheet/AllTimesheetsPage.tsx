@@ -23,8 +23,10 @@ import {
 } from '../../lib/api'
 import type { Timesheet, TimesheetProjectSummary } from '../../lib/types/timesheet'
 import type { TimesheetEntry } from '../../lib/types/timesheet-entry'
+import { isTimesheetWithManager } from '../../lib/approval-stage'
 import { useAppSettings } from '../../lib/hooks/useAppSettings'
 import { useStore } from '../../lib/mobx'
+import { isHrAdministrator } from '../../lib/roles'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
 import { RejectReasonDialog } from '../ui'
 import { buildTimesheetsCsv } from './timesheet-csv'
@@ -621,9 +623,20 @@ export default function AllTimesheetsPage() {
         setRejectError('')
     }
 
+    /* An HR Administrator's page leaves out what is the manager's to review: a
+       submitted sheet a manager is available for (isTimesheetWithManager, from the
+       server's awaitingManager flag). They see it once decided, and review the ones
+       nobody else can — a manager's own, a department with no manager, every manager
+       away. The System Administrator's view keeps every row. */
+    const isHr = isHrAdministrator(authStore.user?.roles)
+    const visibleTimesheets = useMemo(
+        () => (isHr ? timesheets.filter((t) => !isTimesheetWithManager(t, { isHrAdministrator: true })) : timesheets),
+        [timesheets, isHr],
+    )
+
     // Filter logic
     const filtered = useMemo(() => {
-        let list = timesheets
+        let list = visibleTimesheets
         if (tab === 'pending') list = list.filter((t) => isPendingStatus(t.status))
         else if (tab === 'approved') list = list.filter((t) => t.status === 'Approved')
         else if (tab === 'rejected') list = list.filter((t) => t.status === 'Rejected')
@@ -654,7 +667,7 @@ export default function AllTimesheetsPage() {
             const bDate = b.submittedAt ?? b.createdAt
             return new Date(bDate).getTime() - new Date(aDate).getTime()
         })
-    }, [timesheets, tab, deptFilter, projectFilter, weekFilter, statusFilter, search, departments])
+    }, [visibleTimesheets, tab, deptFilter, projectFilter, weekFilter, statusFilter, search, departments])
 
     // Group by week
     const weekGroups = useMemo(() => {

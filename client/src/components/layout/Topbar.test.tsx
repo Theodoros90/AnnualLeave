@@ -133,13 +133,21 @@ describe("An HR Administrator's bell", () => {
             { ...base, id: 'l-hr', employeeName: 'Maria Georgiou', status: 'AwaitingHrApproval' },
             { ...base, id: 'l-mgr', employeeName: 'Andreas Georgiou', status: 'Pending' },
         ] as never)
+        // Timesheets follow the same rule: the one a manager is available for stays off.
+        const sheet = { departmentId: 2, periodStart: '2026-09-14T00:00:00', periodEnd: '2026-09-20T00:00:00', totalHours: 40, submittedAt: recent, createdAt: recent, status: 'Submitted' }
+        api.getTimesheets.mockResolvedValue([
+            { ...sheet, id: 't-hr', employeeId: 'p-mgr', employeeName: 'Nikos Manager', awaitingManager: false },
+            { ...sheet, id: 't-mgr', employeeId: 'p-emp', employeeName: 'Andreas Georgiou', awaitingManager: true },
+        ] as never)
         renderTopbarAs(HR)
 
         await waitFor(() => expect(api.getAnnualLeaves).toHaveBeenCalled())
-        await waitFor(() => expect(screen.getByText('1')).toBeInTheDocument())
+        // One leave awaiting HR plus one timesheet nobody but HR can review.
+        await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument())
 
         fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
         expect(await screen.findByText('Leave request from Maria Georgiou awaiting HR approval')).toBeInTheDocument()
+        expect(screen.getByText('New timesheet from Nikos Manager')).toBeInTheDocument()
         expect(screen.queryByText(/Andreas Georgiou/)).not.toBeInTheDocument()
         expect(screen.queryByText(/Leave approved/)).not.toBeInTheDocument()
         expect(api.getLeaveStatusHistories).not.toHaveBeenCalled()

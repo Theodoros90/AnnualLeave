@@ -181,6 +181,29 @@ describe('The HR Administrator dashboard', () => {
      * for the manager is not HR's to decide, so it is not queued for them at all —
      * they see it once the manager has approved it.
      */
+    /**
+     * Timesheets follow the same rule: a submitted sheet a manager is available to
+     * review (awaitingManager, from the server) is the manager's; HR's queue holds
+     * the ones nobody else can review — a manager's own, a department with no manager.
+     */
+    it('queues only the timesheets no manager can review', async () => {
+        api.getAnnualLeaves.mockResolvedValue([])
+        const sheet = (id: string, employeeId: string, employeeName: string, awaitingManager: boolean) => ({
+            id, employeeId, employeeName, departmentId: 1, status: 'Submitted', awaitingManager,
+            periodStart: iso(-8), periodEnd: iso(-2), totalHours: 40, submittedAt: iso(-1), createdAt: iso(-8), projectSummaries: [],
+        })
+        api.getTimesheets.mockResolvedValue([
+            sheet('t-emp', 'pr-1', 'Maria Ioannou', true),      // the manager's to review
+            sheet('t-mgr', 'pr-2', 'Andreas Georgiou', false),  // the manager's own — HR's
+        ] as never)
+        renderAs(HR)
+        await screen.findByText('Approval queue')
+
+        expect(screen.getByText(/Andreas Georgiou · Timesheet/)).toBeInTheDocument()
+        expect(screen.queryByText(/Maria Ioannou · Timesheet/)).not.toBeInTheDocument()
+        expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1)
+    })
+
     it("leaves a request that is with the manager off the queue", async () => {
         api.getAnnualLeaves.mockResolvedValue([
             leave({ id: 'l-mgr', employeeId: 'u-1', employeeName: 'Maria Ioannou', status: 'Pending', startDate: iso(5), endDate: iso(5) }),

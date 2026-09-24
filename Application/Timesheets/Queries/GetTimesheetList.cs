@@ -62,6 +62,16 @@ namespace Application.Timesheets.Queries
 
                 var timesheets = await pageQuery.ToListAsync(cancellationToken);
 
+                // Which open timesheets a manager is available to review today. The HR
+                // pages leave those rows out: the manager stage is the manager's.
+                var openSubmitters = timesheets
+                    .Where(t => TimesheetReviewRule.IsOpen(t.Status) && t.Employee != null)
+                    .Select(t => t.Employee!)
+                    .ToList();
+                var managerAvailable = openSubmitters.Count > 0
+                    ? await TimesheetReviewRule.ManagerAvailableAsync(_context, openSubmitters, DateTime.UtcNow, cancellationToken)
+                    : new Dictionary<string, bool>();
+
                 var items = timesheets.Select(t =>
                 {
                     var weekStart = t.PeriodStart.Date;
@@ -101,6 +111,9 @@ namespace Application.Timesheets.Queries
                             .OrderByDescending(p => p.Hours)
                             .ToList(),
                         DailyHours = daily,
+                        AwaitingManager = TimesheetReviewRule.IsOpen(t.Status)
+                            && managerAvailable.TryGetValue(t.EmployeeProfileId, out var available)
+                            && available,
                     };
                 }).ToList();
 

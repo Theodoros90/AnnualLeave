@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
     approvalRule, approveButtonLabel, approveOutcome, autoApproves, canApproveInDialog, canCancelApproved, canDecide,
-    canRejectInDialog, isManagersRejection, isOpenStatus, isWithManager, statusChipLabel, statusPhrase,
+    canRejectInDialog, isManagersRejection, isOpenStatus, isTimesheetWithManager, isWithManager, statusChipLabel, statusPhrase,
 } from './approval-stage'
 
 /**
@@ -63,6 +63,23 @@ describe('isManagersRejection', () => {
         expect(isManagersRejection({ status: 'Rejected' }, managerOnly, MANAGER, 'Pending')).toBe(false)
         expect(isManagersRejection({ status: 'Approved' }, managerOnly, HR, 'Pending')).toBe(false)
         expect(isManagersRejection({ status: 'Cancelled' }, managerOnly, HR, 'Approved')).toBe(false)
+    })
+})
+
+describe('isTimesheetWithManager', () => {
+    it("is a submitted timesheet the server says a manager is available for, seen by HR", () => {
+        expect(isTimesheetWithManager({ status: 'Submitted', awaitingManager: true }, HR)).toBe(true)
+        expect(isTimesheetWithManager({ status: 'Resubmitted', awaitingManager: true }, HR)).toBe(true)
+    })
+    it('is not one nobody but HR can review', () => {
+        expect(isTimesheetWithManager({ status: 'Submitted', awaitingManager: false }, HR)).toBe(false)
+    })
+    it('reads a missing flag (an older API) as not with the manager, so the server answers', () => {
+        expect(isTimesheetWithManager({ status: 'Submitted' }, HR)).toBe(false)
+    })
+    it('is never the case for a manager or a decided sheet', () => {
+        expect(isTimesheetWithManager({ status: 'Submitted', awaitingManager: true }, MANAGER)).toBe(false)
+        expect(isTimesheetWithManager({ status: 'Approved', awaitingManager: true }, HR)).toBe(false)
     })
 })
 

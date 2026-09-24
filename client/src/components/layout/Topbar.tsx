@@ -20,7 +20,7 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import { getAnnualLeaves, getLeaveStatusHistories, getSystemErrors, getTimesheets, getTimesheetStatusHistories } from '../../lib/api'
-import { canDecide, statusPhrase } from '../../lib/approval-stage'
+import { canDecide, isTimesheetWithManager, statusPhrase } from '../../lib/approval-stage'
 import { useStore } from '../../lib/mobx'
 import { isAdministrator, isHrAdministrator, isSystemAdministrator } from '../../lib/roles'
 import { formatServerDateTime as formatChangedAt, parseServerDate } from '../../lib/server-date'
@@ -147,7 +147,8 @@ const Topbar = observer(function Topbar() {
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
     const managerPendingTimesheets = (timesheets ?? [])
-        .filter((t) => t.status === 'Submitted' || t.status === 'Resubmitted')
+        .filter((t) => (t.status === 'Submitted' || t.status === 'Resubmitted')
+            && !isTimesheetWithManager(t, { isHrAdministrator: isHrAdminUser }))
         .sort((a, b) => {
             const aDate = a.submittedAt ?? a.createdAt
             const bDate = b.submittedAt ?? b.createdAt

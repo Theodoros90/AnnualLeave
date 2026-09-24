@@ -28,5 +28,13 @@ namespace Application.Timesheets.DTOs
 
         /// <summary>Hours per weekday — index 0 = Monday … 4 = Friday.</summary>
         public List<decimal> DailyHours { get; set; } = new() { 0, 0, 0, 0, 0 };
+
+        /// <summary>
+        /// A submitted timesheet a manager is available to review today, so it is the
+        /// manager's, not HR's (<c>TimesheetReviewRule</c>). False once decided, and
+        /// false when nobody but HR can review it — the submitter is the only manager,
+        /// the department has none, or every manager is on leave.
+        /// </summary>
+        public bool AwaitingManager { get; set; }
     }
 }
