@@ -927,8 +927,9 @@ export default function AllTimesheetsPage() {
                 </Box>
             )}
 
-            {/* Tabs */}
-            <Box sx={{
+            {/* Tabs. Not for an HR Administrator, as on Leave Management: their view
+                already holds only what is theirs, so the split is mostly zeros. */}
+            {!isHr && <Box sx={{
                 display: 'flex',
                 gap: '2px',
                 borderBottom: '1px solid', borderColor: 'divider',
@@ -965,7 +966,7 @@ export default function AllTimesheetsPage() {
                         </Box>
                     )
                 })}
-            </Box>
+            </Box>}
 
             {/* Filter toolbar */}
             <Box sx={{
