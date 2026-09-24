@@ -1,0 +1,94 @@
+import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AppSettings, AttendanceToday } from '../../lib/types'
+import AttendancePage from './AttendancePage'
+
+/*
+ * My Attendance quotes the organisation's break beside today's break time, so an
+ * employee can see what the day allows for against what they have taken. The
+ * wording comes from `describeBreakPolicy`; with no break configured the line reads
+ * as it always did.
+ */
+// The page reads the history and the settings through the barrel; the today-state
+// hook reads its module directly, so both are mocked.
+vi.mock('../../lib/api')
+vi.mock('../../lib/api/attendance')
+
+const api = vi.mocked(await import('../../lib/api'))
+const attendanceApi = vi.mocked(await import('../../lib/api/attendance'))
+
+const TODAY: AttendanceToday = {
+    date: '2026-09-24',
+    status: 'in',
+    checkInAt: '2026-09-24T05:00:00Z',
+    checkOutAt: null,
+    onBreakSince: null,
+    totalBreakMinutes: 25,
+    workedMinutes: 180,
+    events: [],
+    isAutoBreak: false,
+}
+
+const SETTINGS: AppSettings = {
+    leaveYearStartMonth: 1,
+    autoRunRollover: true,
+    sendYearEndWarningEmails: true,
+    blockLeaveSpanningIntoNextYear: true,
+    notifyManagersOfTeamExpiries: true,
+    holidayCountryCode: null,
+    holidayCountryName: null,
+    workingHoursStart: '08:00',
+    workingHoursEnd: '17:00',
+    timeZoneId: 'UTC',
+    financialYearStartMonth: 1,
+    workingDays: 'mon-fri',
+    workingDaysCustom: 'mon,tue,wed,thu,fri',
+    breakMode: 'none',
+    breakStart: '13:00',
+    breakEnd: '14:00',
+    breakMinutes: 0,
+    weeklyHoursTarget: 40,
+    timesheetSubmissionDeadlineDay: 'fri',
+    timesheetSubmissionDeadlineTime: '18:00',
+    emailNotificationsEnabled: true,
+    emailDailyDigest: true,
+    emailUrgentOnly: false,
+    reminders: [],
+}
+
+beforeEach(() => {
+    vi.clearAllMocks()
+    attendanceApi.getAttendanceToday.mockResolvedValue(TODAY)
+    api.getAttendanceHistory.mockResolvedValue([])
+})
+
+async function renderPage(settings: AppSettings) {
+    api.getAppSettings.mockResolvedValue(settings)
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={queryClient}><AttendancePage /></QueryClientProvider>)
+    await screen.findByText(/Total break time/)
+}
+
+describe('My Attendance quotes the break the day allows for', () => {
+    it('states the allowance beside today\'s break time for a flexible break', async () => {
+        await renderPage({ ...SETTINGS, breakMode: 'flexible', breakMinutes: 60 })
+
+        expect(await screen.findByText('Break allowance 1h')).toBeInTheDocument()
+        expect(screen.getByText('25 min')).toBeInTheDocument()
+    })
+
+    it('states the window for a fixed break', async () => {
+        await renderPage({ ...SETTINGS, breakMode: 'fixed', breakStart: '13:00', breakEnd: '13:45' })
+
+        expect(await screen.findByText('Break 13:00–13:45 (45 min)')).toBeInTheDocument()
+    })
+
+    it('says nothing about a break the organisation has not set', async () => {
+        await renderPage(SETTINGS)
+
+        expect(await screen.findByText('25 min')).toBeInTheDocument()
+        expect(screen.queryByText(/Break allowance/)).not.toBeInTheDocument()
+        expect(screen.queryByText(/^Break \d/)).not.toBeInTheDocument()
+    })
+})

@@ -184,6 +184,160 @@ public class AppSettingsValidationTests
         Assert.True(Validate(command).IsValid);
     }
 
+    /* ── The break ──────────────────────────────────────────────────────────── */
+
+    [Fact]
+    public void The_break_mode_must_be_none_fixed_or_flexible()
+    {
+        var command = Valid();
+        command.BreakMode = "lunch";
+
+        AssertRejects(command, nameof(command.BreakMode));
+    }
+
+    [Theory]
+    [InlineData("13:00", "14:00")]
+    [InlineData("9:00", "9:30")]
+    [InlineData("17:00", "18:00")]
+    public void A_fixed_break_inside_the_working_day_passes(string start, string end)
+    {
+        var command = Valid();
+        command.BreakMode = "fixed";
+        command.BreakStart = start;
+        command.BreakEnd = end;
+
+        var result = Validate(command);
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.ErrorMessage)));
+    }
+
+    [Theory]
+    [InlineData("", "14:00", nameof(UpdateAppSettings.Command.BreakStart))]
+    [InlineData("13:00", "soon", nameof(UpdateAppSettings.Command.BreakEnd))]
+    [InlineData("14:00", "13:00", nameof(UpdateAppSettings.Command.BreakEnd))]
+    [InlineData("13:00", "13:00", nameof(UpdateAppSettings.Command.BreakEnd))]
+    public void A_fixed_break_needs_an_end_after_its_start(string start, string end, string property)
+    {
+        var command = Valid();
+        command.BreakMode = "fixed";
+        command.BreakStart = start;
+        command.BreakEnd = end;
+
+        AssertRejects(command, property);
+    }
+
+    [Theory]
+    [InlineData("08:30", "09:30", nameof(UpdateAppSettings.Command.BreakStart))]
+    [InlineData("17:30", "18:30", nameof(UpdateAppSettings.Command.BreakEnd))]
+    [InlineData("08:00", "19:00", nameof(UpdateAppSettings.Command.BreakStart))]
+    public void A_fixed_break_must_fall_within_the_working_hours(string start, string end, string property)
+    {
+        var command = Valid();
+        command.BreakMode = "fixed";
+        command.BreakStart = start;
+        command.BreakEnd = end;
+
+        AssertRejects(command, property);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(45)]
+    [InlineData(9 * 60 - 1)]
+    public void A_flexible_break_shorter_than_the_day_passes(int minutes)
+    {
+        var command = Valid();
+        command.BreakMode = "flexible";
+        command.BreakMinutes = minutes;
+
+        var result = Validate(command);
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.ErrorMessage)));
+    }
+
+    /// <summary>
+    /// A break of 0 is no break — the "No break" mode says that — and one as long
+    /// as the day leaves nothing to work.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-30)]
+    [InlineData(9 * 60)]
+    public void A_flexible_break_must_be_shorter_than_the_working_day(int minutes)
+    {
+        var command = Valid();
+        command.BreakMode = "flexible";
+        command.BreakMinutes = minutes;
+
+        AssertRejects(command, nameof(command.BreakMinutes));
+    }
+
+    /// <summary>
+    /// The window is read only in fixed mode and the duration only in flexible mode,
+    /// so the unused figures are not worth refusing a save over — the same scoping
+    /// as the custom working-days list.
+    /// </summary>
+    [Fact]
+    public void The_unused_break_figures_are_ignored()
+    {
+        var none = Valid();
+        none.BreakMode = "none";
+        none.BreakStart = "not";
+        none.BreakEnd = "times";
+        none.BreakMinutes = 0;
+        Assert.True(Validate(none).IsValid);
+
+        var fixedBreak = Valid();
+        fixedBreak.BreakMode = "fixed";
+        fixedBreak.BreakStart = "13:00";
+        fixedBreak.BreakEnd = "14:00";
+        fixedBreak.BreakMinutes = 0;
+        Assert.True(Validate(fixedBreak).IsValid);
+
+        var flexible = Valid();
+        flexible.BreakMode = "flexible";
+        flexible.BreakMinutes = 30;
+        flexible.BreakStart = "not";
+        flexible.BreakEnd = "times";
+        Assert.True(Validate(flexible).IsValid);
+    }
+
+    [Fact]
+    public async Task The_break_is_saved_and_its_times_canonicalised()
+    {
+        using var db = TestDb.Create();
+        var command = Valid();
+        command.BreakMode = "FIXED ";
+        command.BreakStart = "13:0";
+        command.BreakEnd = "14:00";
+        command.BreakMinutes = 15;
+
+        var result = await new UpdateAppSettings.Handler(db).Handle(command, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        var saved = db.AppSettings.Single();
+        Assert.Equal("fixed", saved.BreakMode);
+        Assert.Equal("13:00", saved.BreakStart);
+        Assert.Equal("14:00", saved.BreakEnd);
+        Assert.Equal(15, saved.BreakMinutes);
+        Assert.Equal("fixed", result.Value!.BreakMode);
+        Assert.Equal("13:00", result.Value.BreakStart);
+    }
+
+    [Fact]
+    public async Task The_handler_refuses_a_break_as_long_as_the_day_as_a_validation_failure()
+    {
+        using var db = TestDb.Create();
+        var command = Valid();
+        command.BreakMode = "flexible";
+        command.BreakMinutes = 0;
+
+        var result = await new UpdateAppSettings.Handler(db).Handle(command, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.NotNull(result.ValidationErrors);
+        Assert.True(result.ValidationErrors!.ContainsKey(nameof(command.BreakMinutes)));
+        Assert.False(db.AppSettings.Any());
+    }
+
     /* ── The handler backstop ───────────────────────────────────────────────── */
 
     /// <summary>

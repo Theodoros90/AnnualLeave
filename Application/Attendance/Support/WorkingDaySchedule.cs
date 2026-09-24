@@ -32,12 +32,28 @@ public sealed class WorkingDaySchedule
     public TimeOnly End { get; }
 
     /// <summary>
-    /// Length of the scheduled working day in minutes. An end before the start is
-    /// a typo, not a policy, and reads as the default nine hours.
+    /// Length of the scheduled working day in minutes, <b>net of the break</b>. An
+    /// end before the start is a typo, not a policy, and reads as the default nine
+    /// hours. This is the day the overtime figures are judged against, so with
+    /// 08:00–17:00 and an hour's lunch, someone who worked eight and a half hours
+    /// is half an hour over rather than half an hour short.
     /// </summary>
     public int ScheduledMinutes { get; }
 
-    private WorkingDaySchedule(TimeZoneInfo timeZone, TimeOnly start, TimeOnly end)
+    /// <summary>
+    /// How long a break the day allows for: the fixed window's length, the flexible
+    /// duration, or 0 for no break. A figure that does not fit the working day — an
+    /// inverted or out-of-hours window, a duration as long as the day — counts as 0,
+    /// like the other typos here, rather than producing a negative day.
+    /// </summary>
+    public int BreakMinutes { get; }
+
+    /// <summary>The fixed break's window, or null when the break is flexible or off.</summary>
+    public TimeOnly? BreakStart { get; }
+    public TimeOnly? BreakEnd { get; }
+
+    private WorkingDaySchedule(TimeZoneInfo timeZone, TimeOnly start, TimeOnly end, string breakMode,
+        TimeOnly? breakStart, TimeOnly? breakEnd, int breakMinutes)
     {
         TimeZone = timeZone;
         Start = start;
@@ -46,7 +62,34 @@ public sealed class WorkingDaySchedule
         // TimeOnly subtraction wraps past midnight (08:00 - 09:00 is 23 hours),
         // so the differences here go through TimeSpan to keep their sign.
         var scheduled = (int)(end.ToTimeSpan() - start.ToTimeSpan()).TotalMinutes;
-        ScheduledMinutes = scheduled > 0 ? scheduled : (int)(DefaultEnd.ToTimeSpan() - DefaultStart.ToTimeSpan()).TotalMinutes;
+        if (scheduled <= 0)
+        {
+            start = DefaultStart;
+            end = DefaultEnd;
+            scheduled = (int)(DefaultEnd.ToTimeSpan() - DefaultStart.ToTimeSpan()).TotalMinutes;
+        }
+
+        var breakLength = 0;
+        switch (breakMode)
+        {
+            case "fixed" when breakStart is { } bs && breakEnd is { } be && bs >= start && be <= end:
+                var window = (int)(be.ToTimeSpan() - bs.ToTimeSpan()).TotalMinutes;
+                if (window > 0)
+                {
+                    breakLength = window;
+                    BreakStart = bs;
+                    BreakEnd = be;
+                }
+                break;
+            case "flexible" when breakMinutes > 0:
+                breakLength = breakMinutes;
+                break;
+        }
+
+        // A break as long as the day leaves nothing to work; treat it as the typo it is.
+        BreakMinutes = breakLength < scheduled ? breakLength : 0;
+        if (BreakMinutes == 0) { BreakStart = null; BreakEnd = null; }
+        ScheduledMinutes = scheduled - BreakMinutes;
     }
 
     /// <summary>
@@ -58,7 +101,11 @@ public sealed class WorkingDaySchedule
     {
         var start = TimeOnly.TryParse(settings?.WorkingHoursStart, out var s) ? s : DefaultStart;
         var end = TimeOnly.TryParse(settings?.WorkingHoursEnd, out var e) ? e : DefaultEnd;
-        return new WorkingDaySchedule(ResolveTimeZone(settings?.TimeZoneId), start, end);
+        var breakMode = string.IsNullOrWhiteSpace(settings?.BreakMode) ? "none" : settings.BreakMode.Trim().ToLowerInvariant();
+        TimeOnly? breakStart = TimeOnly.TryParse(settings?.BreakStart, out var bs) ? bs : null;
+        TimeOnly? breakEnd = TimeOnly.TryParse(settings?.BreakEnd, out var be) ? be : null;
+        return new WorkingDaySchedule(ResolveTimeZone(settings?.TimeZoneId), start, end,
+            breakMode, breakStart, breakEnd, settings?.BreakMinutes ?? 0);
     }
 
     /// <summary>The schedule from the single settings row, untracked.</summary>

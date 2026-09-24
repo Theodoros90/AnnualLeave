@@ -111,4 +111,64 @@ public class WorkingDayScheduleTests
 
         Assert.Equal(9 * 60, schedule.ScheduledMinutes);
     }
+
+    /* ── The break ──────────────────────────────────────────────────────────── */
+
+    private static AppSettings WithBreak(string mode, string start = "13:00", string end = "14:00", int minutes = 0)
+    {
+        var settings = Settings("UTC", start: "08:00", end: "17:00");
+        settings.BreakMode = mode;
+        settings.BreakStart = start;
+        settings.BreakEnd = end;
+        settings.BreakMinutes = minutes;
+        return settings;
+    }
+
+    [Fact]
+    public void A_fixed_break_comes_off_the_scheduled_day()
+    {
+        var schedule = WorkingDaySchedule.From(WithBreak("fixed", "13:00", "14:00"));
+
+        Assert.Equal(60, schedule.BreakMinutes);
+        Assert.Equal(8 * 60, schedule.ScheduledMinutes);
+    }
+
+    [Fact]
+    public void A_flexible_break_comes_off_the_scheduled_day()
+    {
+        var schedule = WorkingDaySchedule.From(WithBreak("flexible", minutes: 45));
+
+        Assert.Equal(45, schedule.BreakMinutes);
+        Assert.Equal(9 * 60 - 45, schedule.ScheduledMinutes);
+    }
+
+    /// <summary>
+    /// The mode decides which figures are read. A window or a duration left over
+    /// from an earlier setting must not come off the day once the break is off.
+    /// </summary>
+    [Fact]
+    public void No_break_leaves_the_day_whole_whatever_the_other_columns_hold()
+    {
+        Assert.Equal(9 * 60, WorkingDaySchedule.From(WithBreak("none", "13:00", "14:00", minutes: 45)).ScheduledMinutes);
+        Assert.Equal(0, WorkingDaySchedule.From(WithBreak("none", "13:00", "14:00", minutes: 45)).BreakMinutes);
+        Assert.Equal(9 * 60, WorkingDaySchedule.From(Settings("UTC", start: "08:00", end: "17:00")).ScheduledMinutes);
+    }
+
+    [Fact]
+    public void A_fixed_break_that_does_not_fit_the_working_day_counts_nothing()
+    {
+        // Inverted, and starting before the day: each is a typo, not a policy.
+        Assert.Equal(0, WorkingDaySchedule.From(WithBreak("fixed", "14:00", "13:00")).BreakMinutes);
+        Assert.Equal(0, WorkingDaySchedule.From(WithBreak("fixed", "07:00", "08:30")).BreakMinutes);
+        Assert.Equal(0, WorkingDaySchedule.From(WithBreak("fixed", "16:30", "17:30")).BreakMinutes);
+        Assert.Equal(0, WorkingDaySchedule.From(WithBreak("fixed", "lunch", "later")).BreakMinutes);
+    }
+
+    [Fact]
+    public void A_flexible_break_as_long_as_the_day_counts_nothing()
+    {
+        Assert.Equal(0, WorkingDaySchedule.From(WithBreak("flexible", minutes: 9 * 60)).BreakMinutes);
+        Assert.Equal(0, WorkingDaySchedule.From(WithBreak("flexible", minutes: -5)).BreakMinutes);
+        Assert.Equal(9 * 60, WorkingDaySchedule.From(WithBreak("flexible", minutes: 9 * 60)).ScheduledMinutes);
+    }
 }

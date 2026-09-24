@@ -56,6 +56,50 @@ public class UpdateAppSettingsValidator : AbstractValidator<UpdateAppSettings.Co
             .Must(value => WorkingTimeFormat.TryNormalizeTime(value, out _))
             .WithMessage("Timesheet submission deadline time must be a valid time (HH:mm).");
 
+        RuleFor(x => x.BreakMode)
+            .Must(WorkingTimeFormat.IsKnownBreakMode)
+            .WithMessage(BreakRules.ModeMessage);
+
+        // The window is read only in fixed mode and the duration only in flexible
+        // mode, so each set of rules is scoped to its mode, like the custom
+        // working-days list below. The bounds read the working hours from the same
+        // payload; when those are not a valid day themselves, their own rules above
+        // report it and these stay quiet.
+        When(x => WorkingTimeFormat.NormalizeBreakMode(x.BreakMode) == "fixed", () =>
+        {
+            RuleFor(x => x.BreakStart)
+                .Must(value => WorkingTimeFormat.TryNormalizeTime(value, out _))
+                .WithMessage(BreakRules.StartTimeMessage)
+                .DependentRules(() =>
+                {
+                    RuleFor(x => x.BreakStart)
+                        .Must((x, value) => BreakRules.StartsInsideWorkingHours(value, x.WorkingHoursStart, x.WorkingHoursEnd))
+                        .WithMessage(BreakRules.StartInsideMessage);
+                });
+
+            RuleFor(x => x.BreakEnd)
+                .Must(value => WorkingTimeFormat.TryNormalizeTime(value, out _))
+                .WithMessage(BreakRules.EndTimeMessage)
+                .DependentRules(() =>
+                {
+                    RuleFor(x => x.BreakEnd)
+                        .Must((x, value) => BreakRules.EndsAfterStart(x.BreakStart, value))
+                        .WithMessage(BreakRules.EndAfterStartMessage)
+                        .When(x => WorkingTimeFormat.TryNormalizeTime(x.BreakStart, out _))
+                        .DependentRules(() =>
+                        {
+                            RuleFor(x => x.BreakEnd)
+                                .Must((x, value) => BreakRules.EndsInsideWorkingHours(value, x.WorkingHoursStart, x.WorkingHoursEnd))
+                                .WithMessage(BreakRules.EndInsideMessage);
+                        });
+                });
+        });
+
+        RuleFor(x => x.BreakMinutes)
+            .Must((x, value) => BreakRules.FitsTheDay(value, x.WorkingHoursStart, x.WorkingHoursEnd))
+            .WithMessage(BreakRules.MinutesMessage)
+            .When(x => WorkingTimeFormat.NormalizeBreakMode(x.BreakMode) == "flexible");
+
         // Only meaningful for the custom schedule: the other WorkingDays values
         // carry their own days, so an unused custom list is not an error.
         RuleFor(x => x.WorkingDaysCustom)

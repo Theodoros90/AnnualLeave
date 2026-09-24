@@ -32,6 +32,20 @@ public class AppSettings
     // ("mon,tue,wed,thu,fri,sat,sun") that count as working days.
     public string WorkingDaysCustom { get; set; } = "mon,tue,wed,thu,fri";
 
+    // ── The break ──────────────────────────────────────────────────────────
+    // "none" | "fixed" | "flexible". The working day the attendance rules measure
+    // against (WorkingDaySchedule.ScheduledMinutes) is WorkingHoursStart..End net
+    // of this break, so 08:00–17:00 with an hour's lunch is an eight-hour day.
+    // Nothing here pauses anyone: employees still record their own breaks; this
+    // says how long a break the day allows for, and (fixed) when it falls.
+    public string BreakMode { get; set; } = "none";
+    // Only consulted when BreakMode == "fixed": the window, "HH:mm" local, inside
+    // the working hours.
+    public string BreakStart { get; set; } = "13:00";
+    public string BreakEnd { get; set; } = "14:00";
+    // Only consulted when BreakMode == "flexible": how long, taken whenever.
+    public int BreakMinutes { get; set; }
+
     // ── Timesheet policy ───────────────────────────────────────────────────
     // Target hours an employee is expected to log per week (drives the
     // under/on-target colouring on the timesheet review page).

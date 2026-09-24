@@ -21,6 +21,7 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
 import { getAppSettings, getDepartments, getEmployeeProfiles, getHolidayCountries, getLeaveTypes, updateAppSettings } from '../../lib/api'
 import { getApiErrorMessage } from '../../lib/api/error-utils'
+import { breakSettingsError } from '../../lib/break-policy'
 import { annualCarryoverCap, annualLeaveAllowance, describeCarryoverCap, employeeAnnualEntitlement, splitAtCarryoverCap } from '../../lib/leave-allowance'
 import type { AppSettings, HolidayCountry } from '../../lib/types'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
@@ -180,6 +181,10 @@ const ORG_DEFAULTS = {
     workingHoursEnd: '18:00',
     timeZoneId: 'UTC',
     workingDays: 'mon-fri',
+    breakMode: 'none',
+    breakStart: '13:00',
+    breakEnd: '14:00',
+    breakMinutes: 0,
     weeklyHoursTarget: 40,
     timesheetSubmissionDeadlineDay: 'fri',
     timesheetSubmissionDeadlineTime: '18:00',
@@ -321,6 +326,7 @@ const GROUP_FIELDS: Record<SaveGroup, readonly (keyof AppSettings)[]> = {
     ],
     organization: [
         'workingHoursStart', 'workingHoursEnd', 'timeZoneId', 'workingDays', 'workingDaysCustom',
+        'breakMode', 'breakStart', 'breakEnd', 'breakMinutes',
         'weeklyHoursTarget', 'timesheetSubmissionDeadlineDay', 'timesheetSubmissionDeadlineTime',
         'holidayCountryCode', 'holidayCountryName',
     ],
@@ -347,6 +353,10 @@ const DEFAULT: AppSettings = {
     financialYearStartMonth: 1,
     workingDays: 'mon-fri',
     workingDaysCustom: 'mon,tue,wed,thu,fri',
+    breakMode: 'none',
+    breakStart: '13:00',
+    breakEnd: '14:00',
+    breakMinutes: 0,
     weeklyHoursTarget: 40,
     timesheetSubmissionDeadlineDay: 'fri',
     timesheetSubmissionDeadlineTime: '18:00',
@@ -355,6 +365,12 @@ const DEFAULT: AppSettings = {
     emailUrgentOnly: false,
     reminders: [],
 }
+
+const BREAK_MODES: { value: AppSettings['breakMode']; label: string }[] = [
+    { value: 'none', label: 'No break' },
+    { value: 'fixed', label: 'Fixed time' },
+    { value: 'flexible', label: 'Flexible' },
+]
 
 export default function AppSettingsPanel() {
     const queryClient = useQueryClient()
@@ -441,6 +457,19 @@ export default function AppSettingsPanel() {
 
     const customDaysInvalid =
         form.workingDays === 'custom' && (form.workingDaysCustom ?? '').split(',').filter(Boolean).length === 0
+
+    /* The server's own reading of the break, so Save is held with the reason on
+       screen rather than refused with a 400. Read from the form, as the server
+       reads it from the payload, so a window that fitted yesterday's hours and not
+       the ones being typed is caught before the save. */
+    const breakError = breakSettingsError(form)
+    // An API predating the columns hands back no mode; the select must still open
+    // on something, and "none" is what the server reads a blank as.
+    const breakMode = form.breakMode ?? 'none'
+    const breakHours = Math.floor((form.breakMinutes ?? 0) / 60)
+    const breakRestMinutes = (form.breakMinutes ?? 0) % 60
+    const setBreakMinutes = (hours: number, minutes: number) =>
+        set('breakMinutes', Math.max(0, Math.floor(hours)) * 60 + Math.min(59, Math.max(0, Math.floor(minutes))))
 
     const resetOrgDefaults = () => setForm((prev) => ({ ...prev, ...ORG_DEFAULTS }))
 
@@ -749,6 +778,59 @@ export default function AppSettingsPanel() {
                             </Select>
                         </Field>
 
+                        {/* The break the day allows for. Employees still record their own
+                            breaks; this says how long the day makes room for — and, fixed, when
+                            — and it comes off the working day the overtime figures are judged
+                            against. It is not a pause imposed on anyone. */}
+                        <Field label="Break" hint={breakMode === 'fixed' ? 'A set window inside the working hours'
+                            : breakMode === 'flexible' ? 'Taken whenever, up to this long'
+                                : 'Comes off the working day used for overtime'}>
+                            <Select size="small" fullWidth value={breakMode}
+                                onChange={(e) => set('breakMode', e.target.value as AppSettings['breakMode'])}
+                                inputProps={{ 'aria-label': 'Break' }} sx={{ fontSize: 13 }}>
+                                {BREAK_MODES.map((m) => <MenuItem key={m.value} value={m.value} sx={{ fontSize: 13 }}>{m.label}</MenuItem>)}
+                            </Select>
+                        </Field>
+                        {breakMode === 'fixed' && (
+                            <>
+                                <Field label="Break start" hint="Within the working hours">
+                                    <TextField type="time" size="small" fullWidth value={form.breakStart ?? ''}
+                                        onChange={(e) => set('breakStart', e.target.value)}
+                                        error={breakError?.startsWith('Break start') ?? false}
+                                        inputProps={{ 'aria-label': 'Break start' }} sx={{ '& .MuiInputBase-input': { fontSize: 13 } }} />
+                                </Field>
+                                <Field label="Break end" hint="After the start, within the working hours">
+                                    <TextField type="time" size="small" fullWidth value={form.breakEnd ?? ''}
+                                        onChange={(e) => set('breakEnd', e.target.value)}
+                                        error={breakError?.startsWith('Break end') ?? false}
+                                        inputProps={{ 'aria-label': 'Break end' }} sx={{ '& .MuiInputBase-input': { fontSize: 13 } }} />
+                                </Field>
+                            </>
+                        )}
+                        {breakMode === 'flexible' && (
+                            <Field label="Break length" hint="Hours and minutes, shorter than the working day" span={6}>
+                                <Box sx={{ display: 'flex', gap: 1.5 }}>
+                                    <TextField type="number" size="small" value={breakHours}
+                                        onChange={(e) => setBreakMinutes(Number(e.target.value), breakRestMinutes)}
+                                        error={breakError !== null}
+                                        inputProps={{ min: 0, max: 23, 'aria-label': 'Break hours' }}
+                                        InputProps={{ endAdornment: <Typography sx={{ fontSize: 12, color: 'text.secondary', ml: 0.5 }}>hr</Typography> }}
+                                        sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: 13 } }} />
+                                    <TextField type="number" size="small" value={breakRestMinutes}
+                                        onChange={(e) => setBreakMinutes(breakHours, Number(e.target.value))}
+                                        error={breakError !== null}
+                                        inputProps={{ min: 0, max: 59, step: 5, 'aria-label': 'Break minutes' }}
+                                        InputProps={{ endAdornment: <Typography sx={{ fontSize: 12, color: 'text.secondary', ml: 0.5 }}>min</Typography> }}
+                                        sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: 13 } }} />
+                                </Box>
+                            </Field>
+                        )}
+                        {breakError && (
+                            <Grid size={12}>
+                                <Typography sx={{ fontSize: 12, color: 'error.main', mt: -1 }}>{breakError}</Typography>
+                            </Grid>
+                        )}
+
                         {form.workingDays === 'custom' && (() => {
                             const selected = (form.workingDaysCustom ?? '').split(',').map((t) => t.trim()).filter(Boolean)
                             return (
@@ -852,7 +934,7 @@ export default function AppSettingsPanel() {
                             sx={{ textTransform: 'none', borderColor: 'divider', color: 'text.secondary' }}>
                             Reset working week & policy
                         </Button>
-                        <Button variant="contained" size="small" onClick={() => mutation.mutate('organization')} disabled={!isGroupDirty('organization') || mutation.isPending || customDaysInvalid}
+                        <Button variant="contained" size="small" onClick={() => mutation.mutate('organization')} disabled={!isGroupDirty('organization') || mutation.isPending || customDaysInvalid || breakError !== null}
                             startIcon={pendingGroup === 'organization' ? <CircularProgress size={13} color="inherit" /> : null}
                             sx={{ textTransform: 'none', boxShadow: 'none' }}>
                             {pendingGroup === 'organization' ? 'Saving…' : 'Save Changes'}

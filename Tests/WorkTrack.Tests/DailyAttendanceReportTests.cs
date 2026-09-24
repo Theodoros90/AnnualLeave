@@ -244,6 +244,27 @@ public class DailyAttendanceReportTests
         Assert.DoesNotContain("Bob Employee", overtime);
     }
 
+    /// <summary>
+    /// The working day the overtime is judged against is net of the configured
+    /// break: with an hour's lunch on 09:00–18:00 the day is eight hours, so Fay's
+    /// eleven worked read as three over rather than two.
+    /// </summary>
+    [Fact]
+    public async Task Overtime_is_judged_against_the_working_day_net_of_the_break()
+    {
+        using var db = SeedWorld();
+        var settings = Settings();
+        settings.BreakMode = "fixed";
+        settings.BreakStart = "13:00";
+        settings.BreakEnd = "14:00";
+
+        var mail = await RunAsync(db, settings);
+
+        var overtime = Section(mail.HtmlBody, "Overtime");
+        Assert.Contains("Fay Employee", overtime);
+        Assert.Contains("3h 00m over", overtime);
+    }
+
     [Fact]
     public async Task Late_is_measured_in_the_org_time_zone()
     {

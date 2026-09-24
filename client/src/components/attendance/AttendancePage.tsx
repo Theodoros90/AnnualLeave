@@ -13,7 +13,8 @@ import TableCell from '@mui/material/TableCell'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
-import { getAttendanceHistory } from '../../lib/api'
+import { getAppSettings, getAttendanceHistory } from '../../lib/api'
+import { describeBreakPolicy } from '../../lib/break-policy'
 import {
     formatElapsed,
     formatTime,
@@ -107,6 +108,10 @@ export default function AttendancePage() {
         queryKey: ['attendance', 'history', 30],
         queryFn: () => getAttendanceHistory(30),
     })
+    // Readable by every signed-in user (GET /api/settings); what is quoted here is
+    // the break the day allows for, beside the break actually taken.
+    const { data: settings } = useQuery({ queryKey: ['appSettings'], queryFn: getAppSettings })
+    const breakPolicy = describeBreakPolicy(settings)
 
     const status = today?.status ?? 'out'
     const isOut = status === 'out' || status === 'done'
@@ -285,6 +290,9 @@ export default function AttendancePage() {
                             <Box component="strong" sx={{ color: 'text.primary' }}>
                                 {today?.totalBreakMinutes ?? 0} min
                             </Box>
+                            {breakPolicy && (
+                                <Box component="span" sx={{ ml: 1, color: 'text.disabled' }}>{breakPolicy}</Box>
+                            )}
                         </span>
                         <span>
                             Productive hours:{' '}

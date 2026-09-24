@@ -27,6 +27,13 @@ public class UpdateAppSettings
         public string WorkingDays { get; set; } = "mon-fri";
         public string WorkingDaysCustom { get; set; } = "mon,tue,wed,thu,fri";
 
+        // The break: "none" | "fixed" | "flexible"; the window is read in fixed
+        // mode and the duration in flexible mode.
+        public string BreakMode { get; set; } = "none";
+        public string BreakStart { get; set; } = "13:00";
+        public string BreakEnd { get; set; } = "14:00";
+        public int BreakMinutes { get; set; }
+
         // Timesheet policy
         public int WeeklyHoursTarget { get; set; } = 40;
         public string TimesheetSubmissionDeadlineDay { get; set; } = "fri";
@@ -65,6 +72,31 @@ public class UpdateAppSettings
             if (!WorkingTimeFormat.TryNormalizeTime(request.TimesheetSubmissionDeadlineTime, out var deadlineTime))
                 return Invalid(nameof(request.TimesheetSubmissionDeadlineTime), "Timesheet submission deadline time must be a valid time (HH:mm).");
 
+            var breakMode = WorkingTimeFormat.NormalizeBreakMode(request.BreakMode);
+            if (!WorkingTimeFormat.IsKnownBreakMode(breakMode))
+                return Invalid(nameof(request.BreakMode), BreakRules.ModeMessage);
+            // Outside fixed mode the window is unused, so it is kept tidy rather than
+            // refused: canonicalised when it parses, the entity default when it does not.
+            var breakStart = WorkingTimeFormat.TryNormalizeTime(request.BreakStart, out var bs) ? bs : "13:00";
+            var breakEnd = WorkingTimeFormat.TryNormalizeTime(request.BreakEnd, out var be) ? be : "14:00";
+            if (breakMode == "fixed")
+            {
+                if (!WorkingTimeFormat.TryNormalizeTime(request.BreakStart, out breakStart))
+                    return Invalid(nameof(request.BreakStart), BreakRules.StartTimeMessage);
+                if (!WorkingTimeFormat.TryNormalizeTime(request.BreakEnd, out breakEnd))
+                    return Invalid(nameof(request.BreakEnd), BreakRules.EndTimeMessage);
+                if (!BreakRules.EndsAfterStart(breakStart, breakEnd))
+                    return Invalid(nameof(request.BreakEnd), BreakRules.EndAfterStartMessage);
+                if (!BreakRules.StartsInsideWorkingHours(breakStart, workStart, workEnd))
+                    return Invalid(nameof(request.BreakStart), BreakRules.StartInsideMessage);
+                if (!BreakRules.EndsInsideWorkingHours(breakEnd, workStart, workEnd))
+                    return Invalid(nameof(request.BreakEnd), BreakRules.EndInsideMessage);
+            }
+            else if (breakMode == "flexible" && !BreakRules.FitsTheDay(request.BreakMinutes, workStart, workEnd))
+            {
+                return Invalid(nameof(request.BreakMinutes), BreakRules.MinutesMessage);
+            }
+
             var settings = await context.AppSettings.FirstOrDefaultAsync(cancellationToken);
             if (settings is null)
             {
@@ -86,6 +118,10 @@ public class UpdateAppSettings
             settings.WorkingDaysCustom = WorkingTimeFormat.NormalizeWorkingDaysCustom(request.WorkingDaysCustom);
             if (settings.WorkingDays == "custom" && settings.WorkingDaysCustom.Length == 0)
                 return Invalid(nameof(request.WorkingDaysCustom), "Select at least one working day for the custom schedule.");
+            settings.BreakMode = breakMode;
+            settings.BreakStart = breakStart;
+            settings.BreakEnd = breakEnd;
+            settings.BreakMinutes = request.BreakMinutes;
             settings.WeeklyHoursTarget = request.WeeklyHoursTarget;
             settings.TimesheetSubmissionDeadlineDay = request.TimesheetSubmissionDeadlineDay!.Trim().ToLowerInvariant();
             settings.TimesheetSubmissionDeadlineTime = deadlineTime;

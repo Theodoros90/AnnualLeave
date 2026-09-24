@@ -19,6 +19,13 @@ public class AppSettingsDto
     public string WorkingDays { get; set; } = "mon-fri";
     public string WorkingDaysCustom { get; set; } = "mon,tue,wed,thu,fri";
 
+    // The break: "none" | "fixed" | "flexible"; the window is read in fixed mode
+    // and the duration in flexible mode.
+    public string BreakMode { get; set; } = "none";
+    public string BreakStart { get; set; } = "13:00";
+    public string BreakEnd { get; set; } = "14:00";
+    public int BreakMinutes { get; set; }
+
     // ── Timesheet policy ───────────────────────────────────────────────────
     public int WeeklyHoursTarget { get; set; } = 40;
     public string TimesheetSubmissionDeadlineDay { get; set; } = "fri";

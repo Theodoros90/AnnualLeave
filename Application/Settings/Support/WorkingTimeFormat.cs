@@ -15,6 +15,16 @@ internal static class WorkingTimeFormat
     public static bool IsKnownDay(string? value) =>
         DayOrder.Contains(value?.Trim().ToLowerInvariant());
 
+    /// <summary>The three readings of <c>AppSettings.BreakMode</c>.</summary>
+    public static readonly string[] BreakModes = ["none", "fixed", "flexible"];
+
+    public static bool IsKnownBreakMode(string? value) =>
+        BreakModes.Contains(NormalizeBreakMode(value));
+
+    /// <summary>Lower-cased and trimmed; a blank reads as "none", the entity default.</summary>
+    public static string NormalizeBreakMode(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "none" : value.Trim().ToLowerInvariant();
+
     /// <summary>
     /// Accepts "H:mm"/"HH:mm"; emits canonical "HH:mm". Returns false and a
     /// "00:00" placeholder when the input is not a time at all, so callers have to

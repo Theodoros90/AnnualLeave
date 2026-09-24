@@ -960,6 +960,21 @@ Two more traps worth knowing, both found the hard way:
   `NormalizeLegacyTimeZoneLabels` rewrote the four) — and every attendance query
   carries a nullable `NowUtc` on its `Query`, a test seam the controllers leave
   null, because the issues and the feed depend on the time of day.
+  **The working day is net of the configured break.** `AppSettings.BreakMode`
+  (`none`/`fixed`/`flexible`), `BreakStart`/`BreakEnd` (the fixed window, read
+  in fixed mode only) and `BreakMinutes` (read in flexible mode only) are set in
+  the Working Week section of Organization settings; `WorkingDaySchedule.BreakMinutes`
+  is what they come to, and `ScheduledMinutes` is the hours minus it, so the
+  daily report's overtime line judges 08:00–17:00 with an hour's lunch as an
+  eight-hour day. A window or duration that does not fit the day reads as no
+  break there, and `UpdateAppSettingsValidator` refuses saving one
+  (`Application/Settings/Support/BreakRules.cs`, shared with the handler's
+  backstop). Employees still record their own breaks; nothing pauses anyone.
+  `client/src/lib/break-policy.ts` mirrors the reading (`breakAllowanceMinutes`,
+  `describeBreakPolicy`, and `breakSettingsError` with the server's messages) so
+  My Attendance quotes an allowance the server counts and the settings card holds
+  Save rather than taking a 400. Keep the two in step, the same way
+  `leave-limits.ts` is kept in step with `NoticePeriodRule`.
 - **Account deactivation:** `User.IsActive` gates sign-in, enforced inside
   Identity by `API/Security/ActiveUserSignInManager.cs` (overrides
   `CanSignInAsync`), so no sign-in path can miss it. A refusal surfaces as
