@@ -25,7 +25,8 @@ public class UpdateLeaveType
             if (leaveType is null)
                 return Result<LeaveTypeDto>.Failure("Leave type not found.");
 
-            var wasRequiringApproval = leaveType.RequiresManagerApproval;
+            var wasRequiringManager = leaveType.RequiresManagerApproval;
+            var wasRequiringHr = leaveType.RequiresHrApproval;
             var previousAllowance = leaveType.DefaultAllowance;
             var previouslyProRated = leaveType.ProRateFirstYear;
 
@@ -84,45 +85,85 @@ public class UpdateLeaveType
                     affectedProfiles[employeeProfile.Id] = employeeProfile;
             }
 
-            if (wasRequiringApproval && !leaveType.RequiresManagerApproval && leaveType.IsActive)
+            /* Requests already in flight follow the switches. Every switch off:
+               approve everything open, balance-checked, as the one-switch sweep
+               always did. HR off with Manager still on: approve what was with HR —
+               its manager stage is done. Manager off with HR on: Pending rows move
+               to HR, since there is no manager stage left for them to clear.
+               Switching anything *on* moves nothing: a Pending row will be advanced
+               by the manager, and a row with HR stays with HR. */
+            if (leaveType.IsActive)
             {
-                var pendingLeaves = await context.AnnualLeaves
-                    .Where(al => al.LeaveTypeId == leaveType.Id && al.Status == AnnualLeaveStatus.Pending)
-                    .ToListAsync(cancellationToken);
+                var nowManager = leaveType.RequiresManagerApproval;
+                var nowHr = leaveType.RequiresHrApproval;
+                var everythingOff = !nowManager && !nowHr && (wasRequiringManager || wasRequiringHr);
+                var hrDropped = wasRequiringHr && !nowHr && nowManager;
+                var managerDropped = wasRequiringManager && !nowManager && nowHr;
 
-                foreach (var annualLeave in pendingLeaves)
+                if (everythingOff || hrDropped)
                 {
-                    var employeeProfile = await context.EmployeeProfiles
-                        .FirstOrDefaultAsync(ep => ep.Id == annualLeave.EmployeeProfileId, cancellationToken);
+                    var toApprove = await context.AnnualLeaves
+                        .Where(al => al.LeaveTypeId == leaveType.Id
+                            && (al.Status == AnnualLeaveStatus.AwaitingHrApproval
+                                || (everythingOff && al.Status == AnnualLeaveStatus.Pending)))
+                        .ToListAsync(cancellationToken);
 
-                    if (employeeProfile is not null)
+                    foreach (var annualLeave in toApprove)
                     {
-                        var balanceError = await AnnualLeaveBalanceCalculator.CheckSufficientBalanceAsync(
-                            context,
-                            employeeProfile,
-                            annualLeave,
-                            excludeLeaveId: annualLeave.Id,
-                            cancellationToken);
-                        if (balanceError is not null)
-                            return Result<LeaveTypeDto>.Conflict(balanceError);
+                        var employeeProfile = await context.EmployeeProfiles
+                            .FirstOrDefaultAsync(ep => ep.Id == annualLeave.EmployeeProfileId, cancellationToken);
 
-                        affectedProfiles[employeeProfile.Id] = employeeProfile;
+                        if (employeeProfile is not null)
+                        {
+                            var balanceError = await AnnualLeaveBalanceCalculator.CheckSufficientBalanceAsync(
+                                context,
+                                employeeProfile,
+                                annualLeave,
+                                excludeLeaveId: annualLeave.Id,
+                                cancellationToken);
+                            if (balanceError is not null)
+                                return Result<LeaveTypeDto>.Conflict(balanceError);
+
+                            affectedProfiles[employeeProfile.Id] = employeeProfile;
+                        }
+
+                        var previous = annualLeave.Status;
+                        annualLeave.Status = AnnualLeaveStatus.Approved;
+                        annualLeave.ApprovedAt = DateTime.UtcNow;
+                        annualLeave.ApprovedById = null;
+
+                        context.LeaveStatusHistories.Add(new LeaveStatusHistory
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            AnnualLeaveId = annualLeave.Id,
+                            ChangedByUserId = annualLeave.EmployeeId,
+                            OldStatus = previous,
+                            NewStatus = AnnualLeaveStatus.Approved,
+                            Comment = "Automatically approved based on leave type settings.",
+                            ChangedAt = DateTime.UtcNow,
+                        });
                     }
+                }
+                else if (managerDropped)
+                {
+                    var toHr = await context.AnnualLeaves
+                        .Where(al => al.LeaveTypeId == leaveType.Id && al.Status == AnnualLeaveStatus.Pending)
+                        .ToListAsync(cancellationToken);
 
-                    annualLeave.Status = AnnualLeaveStatus.Approved;
-                    annualLeave.ApprovedAt = DateTime.UtcNow;
-                    annualLeave.ApprovedById = null;
-
-                    context.LeaveStatusHistories.Add(new LeaveStatusHistory
+                    foreach (var annualLeave in toHr)
                     {
-                        Id = Guid.NewGuid().ToString(),
-                        AnnualLeaveId = annualLeave.Id,
-                        ChangedByUserId = annualLeave.EmployeeId,
-                        OldStatus = AnnualLeaveStatus.Pending,
-                        NewStatus = AnnualLeaveStatus.Approved,
-                        Comment = "Automatically approved based on leave type settings.",
-                        ChangedAt = DateTime.UtcNow,
-                    });
+                        annualLeave.Status = AnnualLeaveStatus.AwaitingHrApproval;
+                        context.LeaveStatusHistories.Add(new LeaveStatusHistory
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            AnnualLeaveId = annualLeave.Id,
+                            ChangedByUserId = annualLeave.EmployeeId,
+                            OldStatus = AnnualLeaveStatus.Pending,
+                            NewStatus = AnnualLeaveStatus.AwaitingHrApproval,
+                            Comment = "Moved to HR approval based on leave type settings.",
+                            ChangedAt = DateTime.UtcNow,
+                        });
+                    }
                 }
             }
 
