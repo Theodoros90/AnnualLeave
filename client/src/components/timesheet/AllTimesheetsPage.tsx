@@ -623,14 +623,17 @@ export default function AllTimesheetsPage() {
         setRejectError('')
     }
 
-    /* An HR Administrator's page leaves out what is the manager's to review: a
+    /* An HR Administrator's page leaves out what is not theirs to see: a Draft,
+       which is the employee's unsubmitted work and nobody's to review yet, and a
        submitted sheet a manager is available for (isTimesheetWithManager, from the
-       server's awaitingManager flag). They see it once decided, and review the ones
-       nobody else can — a manager's own, a department with no manager, every manager
-       away. The System Administrator's view keeps every row. */
+       server's awaitingManager flag). They see a sheet once decided, and review the
+       ones nobody else can — a manager's own, a department with no manager, every
+       manager away. The System Administrator's view keeps every row. */
     const isHr = isHrAdministrator(authStore.user?.roles)
     const visibleTimesheets = useMemo(
-        () => (isHr ? timesheets.filter((t) => !isTimesheetWithManager(t, { isHrAdministrator: true })) : timesheets),
+        () => (isHr
+            ? timesheets.filter((t) => t.status !== 'Draft' && !isTimesheetWithManager(t, { isHrAdministrator: true }))
+            : timesheets),
         [timesheets, isHr],
     )
 
