@@ -108,7 +108,7 @@ The two roles also open on different dashboards. `DashboardHome` sends a System 
 |--------|-----------|
 | `User` | Extends `IdentityUser`; has `DisplayName`, `ImageUrl`, `IsActive` (may this account sign in — a leaver is switched off rather than deleted, since `DeleteAdminUser` nulls out every approval they gave). `DateOfBirth` and `Gender` are recorded HR data an admin maintains on the Users panel. **`Gender` decides who is offered Maternity and Paternity Leave, and any other type an admin restricted through `LeaveType.AvailableTo`** — see [Who is offered a leave type](#domain-model-summary) below the table. It follows `DepartmentId`'s rule exactly — **required for an Employee or a Manager, refused for a System Administrator** — on both admin dialogs and both admin validators (`PersonFieldRules.GenderRequiredMessage` / `GenderNotForAdminMessage`, mirrored by `genderError` in `client/src/lib/validation/person.ts`, which the dialogs skip for a System Administrator): the dialog offers Male or Female only, and hides the radios for a System Administrator, who sits outside every leave rule a gender routes. `UpdateAdminUserValidator` reads the **stored** role to tell which rule applies, since the payload carries none, so `AdminUsersPanel`'s edit mutation sets **roles → user → profile** in that order; reordering refuses every role change on a field the admin cannot see. It used to offer an explicit "Not specified" so a value set by mistake could be taken back — see **Full-replace update DTOs** under [Backend Patterns](#backend-patterns) — but the eligibility rule reads a stored `null` as "offer everything", so a type restricted to one gender was still offered to anyone an admin left unspecified, and the restriction looked like a rule and behaved like none. The column stays nullable for accounts predating it, and such a `null` is still offered **both** parental types rather than neither, until the account is next saved — when the admin has to pick one, the same backfill-on-save the date of birth gets. A System Administrator's `null` is the standing answer, not a gap, so a System Administrator filing their *own* leave is offered everything; accepted as the price of not asking them |
 | `AnnualLeave` | `EmployeeId`, `StartDate/EndDate`, `Status` (enum), `TotalDays` (computed, no weekends). `ChildId` is nullable — required on a request against a `PerChildEntitlement` type, `null` on every row predating the feature (and on any request against a type that isn't per-child), and a `null` `ChildId` counts against no per-child ledger |
-| `LeaveType` | `Name`, `IsActive`, `AffectsBalance` (is it deducted from the enforced pool), `DefaultAllowance` and `MaxCarryoverDays` — the allowance and the year-end cap that bounds it (and which it in turn bounds: a cap may not exceed the allowance, and is nullable, `null` meaning no cap at all), both per type and both edited **only** on Leave Types. See [Leave is configured once](#domain-model-summary). `PerChildEntitlement` plus its three numbers (`PerChildTotalWeeks`, `PerChildWeeksPerYear`, `ChildEligibleUntilAge`) configure the second, per-child ledger — see [the two leave ledgers](#domain-model-summary) below the table. `AttachmentPolicy` decides whether a request needs a supporting document, and is enforced on create and edit — see [the attachment policy](#domain-model-summary) below the table. `MinServiceMonths` hides the type from anyone whose `EmploymentStartDate` is not that many months behind today (0 = no minimum) — see [A leave type can ask for a length of service](#domain-model-summary) below the table. `ProRateFirstYear` scales a mid-year joiner's first leave year of this type's allowance from their `EmploymentStartDate`; enforced only on the type flagged `AffectsBalance`, quoted for every other, refused on a per-child type — see [A leave type can pro-rate the first year](#domain-model-summary) below the table. Annual, Maternity and Paternity Leave are **built-in** (`Domain/SystemLeaveTypes.cs`): they cannot be renamed or deleted, though every other setting on them stays editable. Keyed by name, which is sound only because the name is frozen and already unique case-insensitively; `LeaveTypeDto.IsSystem` derives the flag so the client keeps no copy of the list. Annual leave additionally cannot be **disabled** — it is the type the enforced pool is a budget for — but Maternity and Paternity can be, for an organisation that does not offer them |
+| `LeaveType` | `Name`, `IsActive`, `AffectsBalance` (is it deducted from the enforced pool), `DefaultAllowance` and `MaxCarryoverDays` — the allowance and the year-end cap that bounds it (and which it in turn bounds: a cap may not exceed the allowance, and is nullable, `null` meaning no cap at all), both per type and both edited **only** on Leave Types. See [Leave is configured once](#domain-model-summary). `PerChildEntitlement` plus its three numbers (`PerChildTotalWeeks`, `PerChildWeeksPerYear`, `ChildEligibleUntilAge`) configure the second, per-child ledger — see [the two leave ledgers](#domain-model-summary) below the table. `AttachmentPolicy` decides whether a request needs a supporting document, and is enforced on create and edit — see [the attachment policy](#domain-model-summary) below the table. `MinServiceMonths` hides the type from anyone whose `EmploymentStartDate` is not that many months behind today (0 = no minimum) — see [A leave type can ask for a length of service](#domain-model-summary) below the table. `ProRateFirstYear` scales a mid-year joiner's first leave year of this type's allowance from their `EmploymentStartDate`; enforced only on the type flagged `AffectsBalance`, quoted for every other, refused on a per-child type — see [A leave type can pro-rate the first year](#domain-model-summary) below the table. Annual, Maternity and Paternity Leave are **built-in** (`Domain/SystemLeaveTypes.cs`): they cannot be renamed or deleted, though every other setting on them stays editable. Keyed by name, which is sound only because the name is frozen and already unique case-insensitively; `LeaveTypeDto.IsSystem` derives the flag so the client keeps no copy of the list. Annual leave additionally cannot be **disabled** — it is the type the enforced pool is a budget for — but Maternity and Paternity can be, for an organisation that does not offer them. `RequiresManagerApproval` / `RequiresHrApproval` are the two approval stages — see [Approval can take two stages](#domain-model-summary) below the table |
 | `AnnualLeave` (cont.) | `Duration` (`Full`/`HalfDayMorning`/`HalfDayAfternoon`) decides whether the request costs whole days or 0.5 of one, and `TotalDays` is **decimal** because of it. `Full` is 0, so every row predating the column reads as the full day it was charged as. A half day covers exactly one date and is refused on a type whose `HalfDayAllowed` is off — see [A half day is stored and charged](#domain-model-summary) below the table |
 | `Timesheet` | `EmployeeId`, `PeriodStart/End`, `TotalHours`, `Status` (Draft→Submitted→Approved/Rejected), `DepartmentId` (nullable — the department it was filed under, kept for history so it outlives its author's move; null when the author has none, i.e. a System Administrator, matching `AnnualLeave.DepartmentId`) |
 | `TimesheetEntry` | `TimesheetId`, `ProjectId`, `Date`, `HoursWorked` (decimal 4,2), optional `ActivityTypeId`, `ProjectTypeId` and `ProjectComponentId`. One entry per project **+ type + component** per date |
@@ -119,7 +119,7 @@ The two roles also open on different dashboards. `DashboardHome` sends a System 
 | `ProjectType` | Org-wide catalogue of engagement kinds (Task, Issue, Inquiry, Support): `Name` (unique), `Icon`, `ColorKey`, `IsActive`. Projects carry any number via `ProjectTypeAssignment`, or none; a type projects still carry cannot be deleted. A `TimesheetEntry` also logs against one — narrowed to the types its project carries, and the field that narrows its project picker |
 | `StoredFile` | An uploaded file's bytes in the database: `Content` (varbinary(max)), `FileName`, `ContentType` (**detected**, never the caller's claim), `Sha256` (also the HTTP ETag), `SizeBytes`, `UploadedById`. `Purpose` (`ProfileImage`, `LeaveEvidence`, `CoverageHandover`) drives both what the upload accepts and who may read it back. Evidence and a handover document are kept apart on purpose: the delegate may open the handover, and must not thereby be able to open a doctor's note |
 
-Status enums: `AnnualLeaveStatus` (Pending, Approved, Rejected, Cancelled); `TimesheetStatus` (Draft=0, Submitted=1, Approved=2, Rejected=3, Resubmitted=4).
+Status enums: `AnnualLeaveStatus` (Pending, Approved, Rejected, Cancelled, AwaitingHrApproval); `TimesheetStatus` (Draft=0, Submitted=1, Approved=2, Rejected=3, Resubmitted=4).
 
 **Leave is configured once, for everyone, on Leave Types.** Both numbers that describe
 an annual-leave budget are columns on the type flagged `AffectsBalance` (annual leave,
@@ -423,6 +423,80 @@ Six things about it that are deliberate:
   is guarded on the leave type having *resolved*, not just on `halfDayOffered`: the
   type list lands a tick after the dialog opens, and until it does every type reads
   as "no half days", which would wipe the duration before anyone touched anything.
+
+**Approval can take two stages: the manager's, then HR's.** The one "Requires
+approval" switch is now two columns on the leave type, `RequiresManagerApproval`
+(the renamed old column — migration `SplitLeaveApprovalIntoManagerAndHr` keeps
+every value) and `RequiresHrApproval` (new, default off, so nothing changed until
+an admin flips one). `Application/AnnualLeaves/Commands/ApprovalStageRule.cs` is
+the rule, called from `CreateAnnualLeave`, `UpdateLeaveStatus` and the status path
+of `EditAnnualLeave`; `client/src/lib/approval-stage.ts` mirrors it so a page never
+offers an Approve the API refuses. Keep the two in step, the same way
+`AttachmentPolicyRule` and `attachment-policy.ts` are kept in step.
+
+| Manager | HR | Filed as | Who finishes it |
+|---|---|---|---|
+| off | off | `Approved` | nobody — filing is approval |
+| on | off | `Pending` | a Manager in the department, or an HR Administrator covering it |
+| off | on | `AwaitingHrApproval` | an HR Administrator |
+| on | on | `Pending` | a Manager's Approve moves it to `AwaitingHrApproval`; an HR Administrator's finishes it |
+
+Six things about it that are deliberate:
+
+- **The client always asks for `Approved`; the server decides the stage.** A
+  client-supplied `AwaitingHrApproval` is refused (`StageIsDerivedMessage`).
+  `ApprovalStageRule.Resolve` opens with an idempotence guard — asking for the
+  status a request already has is a no-op (`Outcome(current, null)`), so a
+  retried Approve on an already-approved row never sends it back to HR. So
+  the approve buttons on Team Leave, All Leave and both dashboards are one button
+  whose *label* changes ("Approve & send to HR", from `approveOutcome`), not two.
+  `approveOutcome` returns `'awaiting-hr'` from any status but `AwaitingHrApproval`
+  when the type needs HR and the viewer is not HR, matching the server, which
+  applies the HR check regardless of the starting status; the Team Leave view
+  dialog layers `canApproveInDialog` / `canRejectInDialog` on top of the ordinary
+  `canDecide` for the same reason — a Rejected request may be re-approved and an
+  Approved one rejected there, not just a Pending one decided.
+- **An HR Administrator stands in for the manager.** Their Approve from `Pending`
+  finishes a request in one step even when the type asks for HR: they are the HR
+  sign-off. A Manager cannot approve, reject or cancel a request that is with HR
+  (`AwaitingHrMessage`); they had their say at stage one. `IsAdmin` on the two
+  status commands already means "the caller is an HR Administrator", scoped by
+  the same `ManagerAccessScopeResolver` test as a Manager, and that flag is what
+  the rule reads.
+- **Balance, per-child ledger, coverage announcement, `ApprovedAt`/`ApprovedById`
+  move only into `Approved`.** `AwaitingHrApproval` charges nothing and tells the
+  delegate nothing. The attachment policy runs on *both* steps out of `Pending`,
+  so a manager cannot pass an undocumented request along.
+- **`AwaitingHrApproval` is open like `Pending`** — for the overlap checks in both
+  leave validators, the employee's Cancel (`DeleteAnnualLeave`), the
+  pending-approvals reminder, the Topbar badge, the queues and the Pending tabs
+  (`isOpenStatus`) — **but locked for editing like `Approved`.** A manager
+  approved specific dates; an edit that kept the stage would put different dates
+  in front of HR under the manager's name. Only an HR Administrator in scope
+  (`actsAsAdmin`) may edit it; everyone else is told to cancel and file again.
+- **Who is told.** `HrApprovalRecipients` (beside `ManagerNotificationRecipients`)
+  is the HR Administrators whose `UserDepartment` rows cover the leave's
+  department, or every active one for a department-less leave, and
+  `HrApprovalNotification` mails them with the reason and the coverage line when
+  a request reaches the HR stage — on filing for an HR-only type, on the manager's
+  approval otherwise. The employee's status email for that step reads "approved
+  by {manager} and is awaiting HR approval". A department with no HR
+  Administrator assigned leaves an HR-stage request stuck, the same way a
+  department with no manager leaves a `Pending` one.
+- **Changing the switches sweeps what is in flight** (`UpdateLeaveType`): every
+  switch off approves every open row, balance-checked; HR off approves the rows
+  with HR, whose manager stage is done; Manager off while HR stays on moves
+  `Pending` rows to HR. HR-only becoming Manager-only in one save is a fourth
+  case: the rows with HR move back to `Pending` (history "Moved to manager
+  approval based on leave type settings."), since they never had a manager
+  stage and the save just turned one on — `hrDropped` therefore requires that
+  Manager was already on, not newly switched on in the same save, so this case
+  is routed separately. Switching anything *on* alone moves nothing. As with the
+  old auto-approval sweep, nothing is emailed.
+
+The enum value is appended (`AwaitingHrApproval = 4`) so stored values keep their
+meaning, and the card's Enabled toggle sends both flags (see the trap at the end
+of this section). No seeded type turns HR approval on.
 
 **The two limits on the leave type are enforced, in different units.**
 `LeaveType.MinNoticeDays` bounds how soon a request may start and
