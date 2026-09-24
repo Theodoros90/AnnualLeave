@@ -59,7 +59,7 @@ public class ApprovalStageHandlerTests
         db.UserDepartments.Add(new UserDepartment { UserId = Hr, DepartmentId = Dept });
         db.LeaveTypes.AddRange(
             new LeaveType { Id = ManagerOnlyType, Name = "Annual Leave", IsActive = true, AffectsBalance = true, DefaultAllowance = 20, RequiresManagerApproval = true, RequiresHrApproval = false },
-            new LeaveType { Id = HrOnlyType, Name = "Sabbatical", IsActive = true, AffectsBalance = false, DefaultAllowance = 10, RequiresManagerApproval = false, RequiresHrApproval = true },
+            new LeaveType { Id = HrOnlyType, Name = "Sabbatical", IsActive = true, AffectsBalance = true, DefaultAllowance = 20, RequiresManagerApproval = false, RequiresHrApproval = true },
             new LeaveType { Id = BothType, Name = "Unpaid Leave", IsActive = true, AffectsBalance = true, DefaultAllowance = 20, RequiresManagerApproval = true, RequiresHrApproval = true });
         await db.SaveChangesAsync();
         return db;
