@@ -10,7 +10,15 @@ public enum AnnualLeaveStatus
     Pending,
     Approved,
     Rejected,
-    Cancelled
+    Cancelled,
+    /// <summary>
+    /// Past the manager's approval, waiting on an HR Administrator's — the second
+    /// stage a type with both approval switches asks for, and the only stage for
+    /// a type that asks for HR alone. Appended so every stored value keeps its
+    /// meaning. Open like Pending (overlaps, Cancel, queues), locked for editing
+    /// like Approved. See ApprovalStageRule.
+    /// </summary>
+    AwaitingHrApproval = 4,
 }
 
 public class AnnualLeave : IAuditable
