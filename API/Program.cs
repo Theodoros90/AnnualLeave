@@ -6,6 +6,7 @@ using API.BackgroundServices;
 using API.Services;
 using Application.Core;
 using Application.Reminders;
+using Application.SystemErrors;
 using Application.AnnualLeaves.Queries;
 using Application.Holidays.Support;
 using Asp.Versioning;
@@ -290,6 +291,14 @@ x.RegisterServicesFromAssemblyContaining<GetAnnualLeaveList.Handler>());
 // in-memory dedup). See ReminderBackgroundService for the scheduling rules.
 builder.Services.AddScoped<ReminderDispatcher>();
 builder.Services.AddHostedService<ReminderBackgroundService>();
+
+// System errors — an unhandled 500 or a reminder that threw — are emailed to
+// the System Administrators (the attendance report and the digests go to HR
+// and the managers, not to them). The throttle is a singleton so "once an
+// hour per fault" survives across requests; the notifier is scoped for its
+// DbContext.
+builder.Services.AddSingleton<SystemErrorThrottle>();
+builder.Services.AddScoped<SystemErrorNotifier>();
 
 // Nager (public-holidays API) is a public, occasionally-flaky third party. The
 // standard resilience handler bundles: per-attempt timeout, retry with

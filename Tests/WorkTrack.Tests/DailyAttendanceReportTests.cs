@@ -8,16 +8,20 @@ using Xunit;
 namespace WorkTrack.Tests;
 
 /// <summary>
-/// The daily attendance report: every System Administrator is emailed each working morning
-/// about the previous working day — who checked in late, who never checked in,
-/// who never checked out, whose timesheet for the last week past its deadline is
-/// still unsubmitted, and who was on leave. System Administrators and deactivated accounts are
-/// reported on by nobody: they are not part of the tracked workforce.
+/// The daily attendance report: every HR Administrator is emailed each working
+/// morning about the previous working day in their departments — who checked in
+/// late, who never checked in, who never checked out, whose timesheet for the last
+/// week past its deadline is still unsubmitted, and who was on leave. A System
+/// Administrator runs the workspace, not attendance, and is sent nothing; the
+/// administrators and deactivated accounts are reported on by nobody either, since
+/// they are not part of the tracked workforce.
 /// </summary>
 public class DailyAttendanceReportTests
 {
     private const string AdminEmail = "ada@example.com";
+    private const string HrEmail = "hope@example.com";
     private const int DepartmentId = 1;
+    private const int OtherDepartmentId = 2;
 
     /// <summary>
     /// Every day is a working day and no holiday country is set, so the report
@@ -61,15 +65,26 @@ public class DailyAttendanceReportTests
         var db = TestDb.Create();
 
         db.Departments.Add(new Department { Id = DepartmentId, Name = "Engineering", Code = "ENG" });
+        db.Departments.Add(new Department { Id = OtherDepartmentId, Name = "Finance", Code = "FIN" });
         db.LeaveTypes.Add(new LeaveType { Id = 1, Name = "Annual Leave", IsActive = true });
 
         var adminRole = new Role { Id = "r-admin", Name = AppRoles.SystemAdministrator, NormalizedName = AppRoles.SystemAdministrator.ToUpperInvariant() };
-        db.Roles.Add(adminRole);
+        var hrRole = new Role { Id = "r-hr", Name = AppRoles.HrAdministrator, NormalizedName = AppRoles.HrAdministrator.ToUpperInvariant() };
+        db.Roles.AddRange(adminRole, hrRole);
 
         SeedPerson(db, "admin", "Ada System Administrator", AdminEmail, departmentId: null);
         db.UserRoles.Add(new UserRole { UserId = "admin-u", RoleId = adminRole.Id });
         // An admin checking in late must not be reported: the widget is hidden for the role.
         db.AttendanceEvents.Add(AttendanceDay.NewEvent("admin-p", Yesterday.AddHours(11), AttendanceEventType.CheckIn));
+
+        // Hope runs Engineering. Finance is nobody's, so Gus below is reported to nobody.
+        SeedPerson(db, "hr", "Hope HR Administrator", HrEmail, departmentId: null);
+        db.UserRoles.Add(new UserRole { UserId = "hr-u", RoleId = hrRole.Id });
+        db.UserDepartments.Add(new UserDepartment { UserId = "hr-u", DepartmentId = DepartmentId });
+        db.AttendanceEvents.Add(AttendanceDay.NewEvent("hr-p", Yesterday.AddHours(11), AttendanceEventType.CheckIn));
+
+        // Gus: never checked in, but in a department no HR Administrator runs.
+        SeedPerson(db, "gus", "Gus Outsider", "gus@example.com", OtherDepartmentId);
 
         // Eve: 30 minutes late, checked out, no timesheet at all.
         SeedPerson(db, "eve", "Eve Employee", "eve@example.com", DepartmentId);
@@ -144,18 +159,48 @@ public class DailyAttendanceReportTests
     }
 
     [Fact]
-    public async Task Report_goes_to_the_admin_and_nobody_else()
+    public async Task Report_goes_to_the_HR_Administrator_and_not_to_the_System_Administrator()
     {
         using var db = SeedWorld();
 
         var mail = await RunAsync(db, Settings());
 
-        Assert.Equal(AdminEmail, mail.Recipient);
+        Assert.Equal(HrEmail, mail.Recipient);
+        Assert.Contains("Hope HR Administrator", mail.HtmlBody);
 
-        // The greeting names the admin; the report below it must not.
+        // The greeting names the HR Administrator; the report below it must name
+        // neither administrator, the leaver, nor anyone outside HR's departments.
         var body = mail.HtmlBody[mail.HtmlBody.IndexOf("<h3>", StringComparison.Ordinal)..];
         Assert.DoesNotContain("Ada System Administrator", body);
+        Assert.DoesNotContain("Hope HR Administrator", body);
         Assert.DoesNotContain("Zed Leaver", body);
+        Assert.DoesNotContain("Gus Outsider", body);
+    }
+
+    [Fact]
+    public async Task Report_says_which_departments_it_covers()
+    {
+        using var db = SeedWorld();
+
+        var mail = await RunAsync(db, Settings());
+
+        Assert.Contains("covering Engineering", mail.HtmlBody);
+        Assert.DoesNotContain("covering all staff", mail.HtmlBody);
+        Assert.Contains("covering Engineering", mail.TextBody);
+    }
+
+    [Fact]
+    public async Task Nothing_is_sent_when_no_HR_Administrator_has_a_department()
+    {
+        using var db = SeedWorld();
+        db.UserDepartments.RemoveRange(db.UserDepartments);
+        db.SaveChanges();
+
+        var email = new FakeEmailService();
+        await DispatcherFor(db, email).DispatchAsync(ReminderDispatcher.DailyAttendanceReport, Settings(), CancellationToken.None);
+
+        // The System Administrator is not a fallback recipient.
+        Assert.Empty(email.Sent);
     }
 
     [Fact]

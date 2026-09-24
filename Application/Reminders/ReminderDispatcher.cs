@@ -21,10 +21,13 @@ namespace Application.Reminders;
 //   • birthday-reminder — admins/managers told of upcoming employee birthdays
 //   • check-in          — employees who have not yet checked in today (never System Administrators)
 //   • check-out         — employees still checked in (no check-out) today (never System Administrators)
-//   • daily-attendance-report — System Administrators told (company-wide) and HR Administrators
-//                         (their departments), each working morning, who was late,
-//                         absent, still checked in, over hours, behind on a
-//                         timesheet or on leave the previous working day
+//   • daily-attendance-report — HR Administrators told, each working morning and
+//                         over their departments alone, who was late, absent,
+//                         still checked in, over hours, behind on a timesheet or
+//                         on leave the previous working day (never System
+//                         Administrators: they run the system, not attendance,
+//                         and are told about system errors instead —
+//                         SystemErrorNotifier)
 // Other ids are accepted but logged as not-implemented rather than failing.
 public class ReminderDispatcher(
     AppDbContext context,
@@ -418,13 +421,23 @@ public class ReminderDispatcher(
     }
 
     // ── daily-attendance-report ──────────────────────────────────────────────
-    // Every System Administrator, each working morning, about the previous working day: who
-    // checked in late, who never checked in, who never checked out, who worked
-    // overtime, whose timesheet for the latest week past its deadline is still
-    // unsubmitted, and who was on leave. Nothing goes out on a non-working morning, and Monday's
-    // report covers Friday. System Administrators and deactivated accounts appear in none of
-    // the lists (AttendanceDay.ExcludeAdmins; a leaver is not expected in),
-    // matching the check-in reminders and the attendance dashboards.
+    // Every HR Administrator, each working morning, about the previous working
+    // day in their departments: who checked in late, who never checked in, who
+    // never checked out, who worked overtime, whose timesheet for the latest
+    // week past its deadline is still unsubmitted, and who was on leave. Nothing
+    // goes out on a non-working morning, and Monday's report covers Friday.
+    // Administrators and deactivated accounts appear in none of the lists
+    // (AttendanceDay.ExcludeAdmins; a leaver is not expected in), matching the
+    // check-in reminders and the attendance dashboards.
+    //
+    // The System Administrator used to get a company-wide copy. They no longer
+    // do: attendance is Leave & Time, which the HR Administrator runs, and a
+    // System Administrator has no page to act on any of it. The one email the
+    // role gets about the system is the error report (SystemErrorNotifier). An
+    // HR Administrator with no departments assigned is likewise not a recipient
+    // — an empty reach never means "everything" — so a workspace with nobody
+    // assigned sends nothing rather than falling back to the System
+    // Administrator.
     //
     // "Late" is the first check-in after WorkingHoursStart, compared in the
     // org's TimeZoneId — the first consumer that setting has had. Attendance
@@ -451,25 +464,17 @@ public class ReminderDispatcher(
             return;
         }
 
-        var admins = await GetUsersInRolesAsync([AppRoles.SystemAdministrator], ct);
         var hrAdmins = await GetHrAdministratorsAsync(ct);
-        if (admins.Count == 0 && hrAdmins.Count == 0)
+        if (hrAdmins.Count == 0)
         {
-            logger.LogInformation("daily-attendance-report: no administrator with an email address; nothing sent.");
+            logger.LogInformation("daily-attendance-report: no HR Administrator with an email address and assigned departments; nothing sent.");
             return;
         }
 
         var sent = 0;
         if (settings.EmailNotificationsEnabled)
         {
-            DailyReport? company = admins.Count > 0 ? await BuildDailyAttendanceReportAsync(settings, reportDay.Value, null, ct) : null;
             var subject = $"Jenus People: attendance report for {reportDay.Value:ddd dd MMM yyyy}";
-            foreach (var admin in admins)
-            {
-                var html = RenderDailyReportHtml(admin.DisplayName ?? admin.Email, company!);
-                var text = RenderDailyReportText(admin.DisplayName ?? admin.Email, company!);
-                if (await SendEmailAsync(admin.Email, subject, html, text, ct)) sent++;
-            }
 
             // One report per HR Administrator, over their departments alone.
             foreach (var hr in hrAdmins)
@@ -490,6 +495,7 @@ public class ReminderDispatcher(
 
     private sealed record DailyReport(
         DateOnly Day,
+        string Coverage,
         DateOnly TimesheetWeekStart,
         List<string> Late,
         List<string> NotCheckedIn,
@@ -498,16 +504,21 @@ public class ReminderDispatcher(
         List<string> TimesheetNotSubmitted,
         List<string> OnLeave);
 
-    private async Task<DailyReport> BuildDailyAttendanceReportAsync(AppSettings settings, DateOnly day, IReadOnlyCollection<int>? departmentIds, CancellationToken ct)
+    private async Task<DailyReport> BuildDailyAttendanceReportAsync(AppSettings settings, DateOnly day, IReadOnlyCollection<int> departmentIds, CancellationToken ct)
     {
-        var peopleQuery = AttendanceDay.ExcludeAdmins(context.EmployeeProfiles)
-            .Where(p => p.User != null && p.User.IsActive);
-        if (departmentIds is not null)
-        {
-            var ids = departmentIds.ToList();
-            peopleQuery = peopleQuery.Where(p => p.DepartmentId != null && ids.Contains(p.DepartmentId.Value));
-        }
-        var people = await peopleQuery
+        var ids = departmentIds.ToList();
+        // Named in the email's opening line, so the reader knows whose absences
+        // they are looking at — and, as importantly, whose they are not.
+        var departmentNames = await context.Departments
+            .Where(d => ids.Contains(d.Id))
+            .OrderBy(d => d.Name)
+            .Select(d => d.Name)
+            .ToListAsync(ct);
+        var coverage = departmentNames.Count == 0 ? "covering no departments" : "covering " + JoinNames(departmentNames);
+
+        var people = await AttendanceDay.ExcludeAdmins(context.EmployeeProfiles)
+            .Where(p => p.User != null && p.User.IsActive)
+            .Where(p => p.DepartmentId != null && ids.Contains(p.DepartmentId.Value))
             .OrderBy(p => p.User!.DisplayName)
             .Select(p => new
             {
@@ -596,8 +607,16 @@ public class ReminderDispatcher(
                 noTimesheet.Add(label);
         }
 
-        return new DailyReport(day, weekStart, late, notIn, notOut, overtime, noTimesheet, leave);
+        return new DailyReport(day, coverage, weekStart, late, notIn, notOut, overtime, noTimesheet, leave);
     }
+
+    /// <summary>"Engineering", "Engineering and Finance", "Engineering, Finance and Sales".</summary>
+    private static string JoinNames(IReadOnlyList<string> names) => names.Count switch
+    {
+        1 => names[0],
+        2 => $"{names[0]} and {names[1]}",
+        _ => string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1],
+    };
 
     private static string HoursAndMinutes(int minutes) => $"{minutes / 60}h {minutes % 60:00}m";
 
@@ -632,7 +651,7 @@ public class ReminderDispatcher(
 
         return $"""
 <p>Hello {WebUtility.HtmlEncode(greetingName)},</p>
-<p>Attendance report for <strong>{r.Day:dddd dd MMMM yyyy}</strong>, covering all staff.</p>
+<p>Attendance report for <strong>{r.Day:dddd dd MMMM yyyy}</strong>, {WebUtility.HtmlEncode(r.Coverage)}.</p>
 {Section("Late check-ins", r.Late)}
 {Section("Did not check in", r.NotCheckedIn)}
 {Section("Did not check out", r.NotCheckedOut)}
@@ -650,7 +669,7 @@ public class ReminderDispatcher(
         return string.Join("\n\n", new[]
         {
             $"Hello {greetingName},",
-            $"Attendance report for {r.Day:dddd dd MMMM yyyy}, covering all staff.",
+            $"Attendance report for {r.Day:dddd dd MMMM yyyy}, {r.Coverage}.",
             Section("Late check-ins", r.Late),
             Section("Did not check in", r.NotCheckedIn),
             Section("Did not check out", r.NotCheckedOut),
