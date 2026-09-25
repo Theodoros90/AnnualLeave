@@ -65,7 +65,8 @@ public class GetMyAttendanceHistory
                     AttendanceDay.AsUtcNullable(state.CheckInAt),
                     AttendanceDay.AsUtcNullable(state.CheckOutAt),
                     state.TotalBreakMinutes,
-                    state.WorkedMinutes));
+                    state.WorkedMinutes,
+                    schedule.BreakVariance(state, now)));
             }
 
             return Result<List<DayHistoryDto>>.Success(result);

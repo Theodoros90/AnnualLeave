@@ -127,6 +127,7 @@ public static class AttendanceDay
     {
         var events = await LoadDayEventsAsync(context, employeeProfileId, nowUtc, cancellationToken);
         var state = AttendanceDayStateCalculator.Calculate(events, nowUtc);
+        var schedule = await WorkingDaySchedule.LoadAsync(context, cancellationToken);
 
         return new TodayStateDto(
             UtcDayStart(nowUtc).ToString("yyyy-MM-dd"),
@@ -137,7 +138,8 @@ public static class AttendanceDay
             state.TotalBreakMinutes,
             state.WorkedMinutes,
             [.. events.Select(e => new AttendanceEventDto(e.Id, AsUtc(e.At), EventTypeName(e.Type)))],
-            state.IsAutoBreak);
+            state.IsAutoBreak,
+            schedule.BreakVariance(state, nowUtc));
     }
 
     /// <summary>

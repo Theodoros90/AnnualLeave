@@ -92,3 +92,52 @@ describe('My Attendance quotes the break the day allows for', () => {
         expect(screen.queryByText(/^Break \d/)).not.toBeInTheDocument()
     })
 })
+
+/*
+ * Once the server compares the break taken with the break allowed
+ * (`breakVarianceMinutes`, from WorkingDaySchedule.BreakVariance), the same line
+ * says by how much. Null is "nothing to say" and renders nothing, which is also
+ * what an API predating the field sends.
+ */
+describe('My Attendance says how the break compares with the allowance', () => {
+    it('says how far over while the day is still open', async () => {
+        attendanceApi.getAttendanceToday.mockResolvedValue({ ...TODAY, totalBreakMinutes: 80, breakVarianceMinutes: 20 })
+        await renderPage({ ...SETTINGS, breakMode: 'flexible', breakMinutes: 60 })
+
+        expect(await screen.findByText('20 min over')).toBeInTheDocument()
+    })
+
+    it('says how far under once checked out', async () => {
+        attendanceApi.getAttendanceToday.mockResolvedValue({
+            ...TODAY, status: 'done', checkOutAt: '2026-09-24T14:00:00Z', totalBreakMinutes: 30, breakVarianceMinutes: -30,
+        })
+        await renderPage({ ...SETTINGS, breakMode: 'flexible', breakMinutes: 60 })
+
+        expect(await screen.findByText('30 min under')).toBeInTheDocument()
+    })
+
+    it('says nothing when the server has nothing to say', async () => {
+        attendanceApi.getAttendanceToday.mockResolvedValue({ ...TODAY, breakVarianceMinutes: null })
+        await renderPage({ ...SETTINGS, breakMode: 'flexible', breakMinutes: 60 })
+
+        expect(await screen.findByText('Break allowance 1h')).toBeInTheDocument()
+        expect(screen.queryByText(/min over|min under/)).not.toBeInTheDocument()
+    })
+
+    it('shows the variance beside the break in the history table', async () => {
+        api.getAttendanceHistory.mockResolvedValue([
+            {
+                date: '2026-09-23', status: 'complete', checkInAt: '2026-09-23T05:00:00Z', checkOutAt: '2026-09-23T14:00:00Z',
+                totalBreakMinutes: 90, workedMinutes: 450, breakVarianceMinutes: 30,
+            },
+            {
+                date: '2026-09-22', status: 'complete', checkInAt: '2026-09-22T05:00:00Z', checkOutAt: '2026-09-22T14:00:00Z',
+                totalBreakMinutes: 45, workedMinutes: 495, breakVarianceMinutes: -15,
+            },
+        ])
+        await renderPage({ ...SETTINGS, breakMode: 'flexible', breakMinutes: 60 })
+
+        expect(await screen.findByText('30 min over')).toBeInTheDocument()
+        expect(screen.getByText('15 min under')).toBeInTheDocument()
+    })
+})

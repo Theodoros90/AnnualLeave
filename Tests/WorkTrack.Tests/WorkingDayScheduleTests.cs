@@ -1,5 +1,6 @@
 using Application.Attendance.Support;
 using Domain;
+using Domain.Services;
 using Xunit;
 
 namespace WorkTrack.Tests;
@@ -170,5 +171,76 @@ public class WorkingDayScheduleTests
         Assert.Equal(0, WorkingDaySchedule.From(WithBreak("flexible", minutes: 9 * 60)).BreakMinutes);
         Assert.Equal(0, WorkingDaySchedule.From(WithBreak("flexible", minutes: -5)).BreakMinutes);
         Assert.Equal(9 * 60, WorkingDaySchedule.From(WithBreak("flexible", minutes: 9 * 60)).ScheduledMinutes);
+    }
+}
+
+/// <summary>
+/// The break taken against the break allowed, for the surfaces that tell a
+/// manager or HR whether somebody took more or less than the day allows for.
+/// One rule, read off the same <c>BreakMinutes</c> the overtime figure comes off,
+/// so the board, the dashboard, the employee's own page and the daily report
+/// never disagree about what "over" means.
+/// </summary>
+public class WorkingDayScheduleBreakVarianceTests
+{
+    private static readonly DateTime Today = new(2026, 9, 22, 0, 0, 0, DateTimeKind.Utc);
+
+    private static WorkingDaySchedule Schedule(int allowanceMinutes) => WorkingDaySchedule.From(new AppSettings
+    {
+        TimeZoneId = "UTC",
+        WorkingHoursStart = "08:00",
+        WorkingHoursEnd = "17:00",
+        BreakMode = allowanceMinutes > 0 ? "flexible" : "none",
+        BreakMinutes = allowanceMinutes,
+    });
+
+    private static AttendanceDayState State(
+        AttendanceDayStatus status,
+        int breakMinutes,
+        DateTime? onBreakSince = null,
+        DateTime? checkOutAt = null) =>
+        new(status, Today.AddHours(8), checkOutAt, onBreakSince, breakMinutes, 0, false);
+
+    [Fact]
+    public void No_break_configured_says_nothing_whatever_was_taken()
+    {
+        var schedule = Schedule(0);
+
+        Assert.Null(schedule.BreakVariance(State(AttendanceDayStatus.Done, 90, checkOutAt: Today.AddHours(17)), Today.AddHours(18)));
+        Assert.Null(schedule.BreakVariance(State(AttendanceDayStatus.In, 90), Today.AddHours(12)));
+    }
+
+    [Fact]
+    public void Over_the_allowance_is_reported_while_the_day_is_still_open()
+    {
+        var schedule = Schedule(60);
+
+        Assert.Equal(20, schedule.BreakVariance(State(AttendanceDayStatus.In, 80), Today.AddHours(15)));
+    }
+
+    [Fact]
+    public void Under_the_allowance_is_reported_only_once_the_day_is_done()
+    {
+        var schedule = Schedule(60);
+
+        // Ten minutes by mid-morning is not a shortfall yet; the lunch may still come.
+        Assert.Null(schedule.BreakVariance(State(AttendanceDayStatus.In, 10), Today.AddHours(11)));
+        // Checked out having taken ten: fifty minutes under.
+        Assert.Equal(-50, schedule.BreakVariance(State(AttendanceDayStatus.Done, 10, checkOutAt: Today.AddHours(17)), Today.AddHours(18)));
+        // Exactly the allowance on a finished day is an answer, not silence.
+        Assert.Equal(0, schedule.BreakVariance(State(AttendanceDayStatus.Done, 60, checkOutAt: Today.AddHours(17)), Today.AddHours(18)));
+    }
+
+    [Fact]
+    public void A_break_still_running_counts_towards_the_total()
+    {
+        var schedule = Schedule(60);
+        // Fifty minutes of closed breaks plus a break open for the last twenty.
+        var state = State(AttendanceDayStatus.Break, 50, onBreakSince: Today.AddHours(13));
+
+        Assert.Equal(70, schedule.BreakMinutesTaken(state, Today.AddHours(13).AddMinutes(20)));
+        Assert.Equal(10, schedule.BreakVariance(state, Today.AddHours(13).AddMinutes(20)));
+        // Not over yet while the open break is still inside the allowance.
+        Assert.Null(schedule.BreakVariance(state, Today.AddHours(13).AddMinutes(5)));
     }
 }

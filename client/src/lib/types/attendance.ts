@@ -24,6 +24,14 @@ export interface AttendanceToday {
     workedMinutes: number
     events: AttendanceEvent[]
     isAutoBreak: boolean
+    /**
+     * The break taken against the break the Organization settings allow for,
+     * decided by the server (WorkingDaySchedule.BreakVariance): positive minutes
+     * over, negative minutes under, 0 exactly on it, and null when there is
+     * nothing to say — no break configured, or a day still open that has not gone
+     * over yet. Optional so an API predating the field reads as nothing to say.
+     */
+    breakVarianceMinutes?: number | null
 }
 
 export type AttendanceHistoryStatus = 'complete' | 'in-progress' | 'late' | 'absent'
@@ -35,6 +43,8 @@ export interface AttendanceHistoryDay {
     checkOutAt: string | null
     totalBreakMinutes: number
     workedMinutes: number
+    /** See AttendanceToday.breakVarianceMinutes. */
+    breakVarianceMinutes?: number | null
 }
 
 export type TeamMemberStatus = 'in' | 'break' | 'out' | 'leave'
@@ -50,6 +60,10 @@ export interface TeamMemberAttendance {
     onBreakSince: string | null
     todayNote: string
     isAutoBreak: boolean
+    /** Break taken so far today, a running break included. */
+    breakMinutes?: number
+    /** See AttendanceToday.breakVarianceMinutes. */
+    breakVarianceMinutes?: number | null
 }
 
 export interface WeekDayHours {

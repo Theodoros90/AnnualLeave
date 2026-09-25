@@ -2,6 +2,13 @@ namespace Application.Attendance.DTOs;
 
 public record AttendanceEventDto(string Id, DateTime At, string Type);
 
+// BreakVarianceMinutes, wherever it appears below, is the break taken against
+// the break the Organization settings allow for, read through
+// WorkingDaySchedule.BreakVariance: positive minutes over, negative minutes
+// under, 0 exactly on it, and null when there is nothing to say — no break
+// configured, or a day still open that has not gone over yet. A client built
+// before the field reads a missing one as null, i.e. nothing to say.
+
 public record TodayStateDto(
     string Date,
     string Status,
@@ -11,7 +18,8 @@ public record TodayStateDto(
     int TotalBreakMinutes,
     int WorkedMinutes,
     List<AttendanceEventDto> Events,
-    bool IsAutoBreak);
+    bool IsAutoBreak,
+    int? BreakVarianceMinutes = null);
 
 public record DayHistoryDto(
     string Date,
@@ -19,8 +27,12 @@ public record DayHistoryDto(
     DateTime? CheckInAt,
     DateTime? CheckOutAt,
     int TotalBreakMinutes,
-    int WorkedMinutes);
+    int WorkedMinutes,
+    int? BreakVarianceMinutes = null);
 
+// BreakMinutes is the break taken so far today, a running break included
+// (WorkingDaySchedule.BreakMinutesTaken), so the board can quote it beside
+// the variance.
 public record TeamMemberAttendanceDto(
     string EmployeeId,
     string EmployeeName,
@@ -31,7 +43,9 @@ public record TeamMemberAttendanceDto(
     int WorkedMinutes,
     DateTime? OnBreakSince,
     string TodayNote,
-    bool IsAutoBreak);
+    bool IsAutoBreak,
+    int BreakMinutes = 0,
+    int? BreakVarianceMinutes = null);
 
 public record WeekDayHoursDto(string Date, int? WorkedMinutes, string? Note);
 

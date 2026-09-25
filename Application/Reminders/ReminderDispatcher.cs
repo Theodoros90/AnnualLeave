@@ -555,6 +555,7 @@ public class ReminderDispatcher(
         List<string> NotCheckedIn,
         List<string> NotCheckedOut,
         List<string> Overtime,
+        List<string>? BreakAllowance,
         List<string> TimesheetNotSubmitted,
         List<string> OnLeave);
 
@@ -630,6 +631,11 @@ public class ReminderDispatcher(
         var notIn = new List<string>();
         var notOut = new List<string>();
         var overtime = new List<string>();
+        // The break taken against the break allowed, on checked-out days only
+        // (WorkingDaySchedule.BreakVariance); null, and no section, when the
+        // settings configure no break — "Nobody" under a heading nobody set
+        // would read as a policy that is not there.
+        var breakAllowance = schedule.BreakMinutes > 0 ? new List<string>() : null;
         var noTimesheet = new List<string>();
         var leave = new List<string>();
 
@@ -651,6 +657,13 @@ public class ReminderDispatcher(
                     notOut.Add(label);
                 else if (state.WorkedMinutes > scheduledMinutes)
                     overtime.Add($"{label} — {HoursAndMinutes(state.WorkedMinutes - scheduledMinutes)} over (worked {HoursAndMinutes(state.WorkedMinutes)})");
+
+                if (breakAllowance is not null && schedule.BreakVariance(state, nowUtc) is { } variance && variance != 0)
+                {
+                    var taken = schedule.BreakMinutesTaken(state, nowUtc);
+                    breakAllowance.Add(
+                        $"{label} — {HoursAndMinutes(Math.Abs(variance))} {(variance > 0 ? "over" : "under")} (took {HoursAndMinutes(taken)} of {HoursAndMinutes(schedule.BreakMinutes)})");
+                }
             }
             else if (!isOnLeave)
             {
@@ -661,7 +674,7 @@ public class ReminderDispatcher(
                 noTimesheet.Add(label);
         }
 
-        return new DailyReport(day, coverage, weekStart, late, notIn, notOut, overtime, noTimesheet, leave);
+        return new DailyReport(day, coverage, weekStart, late, notIn, notOut, overtime, breakAllowance, noTimesheet, leave);
     }
 
     /// <summary>"Engineering", "Engineering and Finance", "Engineering, Finance and Sales".</summary>
@@ -710,6 +723,7 @@ public class ReminderDispatcher(
 {Section("Did not check in", r.NotCheckedIn)}
 {Section("Did not check out", r.NotCheckedOut)}
 {Section("Overtime", r.Overtime)}
+{(r.BreakAllowance is null ? "" : Section("Break allowance", r.BreakAllowance))}
 {Section("Timesheet not submitted", r.TimesheetNotSubmitted, $"Week of {r.TimesheetWeekStart:dd MMM yyyy}")}
 {Section("On leave", r.OnLeave)}
 """;
@@ -728,9 +742,10 @@ public class ReminderDispatcher(
             Section("Did not check in", r.NotCheckedIn),
             Section("Did not check out", r.NotCheckedOut),
             Section("Overtime", r.Overtime),
+            r.BreakAllowance is null ? null : Section("Break allowance", r.BreakAllowance),
             Section($"Timesheet not submitted (week of {r.TimesheetWeekStart:dd MMM yyyy})", r.TimesheetNotSubmitted),
             Section("On leave", r.OnLeave),
-        });
+        }.Where(section => section is not null));
     }
 
     // The most recent working day strictly before 'today', looking back at most
