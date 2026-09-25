@@ -8,14 +8,22 @@ using Persistence;
 namespace API.BackgroundServices;
 
 // Drives the reminder schedule. Wakes once a minute, reads the persisted
-// reminder settings, and for each enabled reminder whose configured time has
-// passed today (and which hasn't run yet today) invokes the dispatcher.
+// reminder settings, and for each enabled reminder that is due (ReminderSchedule)
+// and hasn't run yet today invokes the dispatcher.
 //
-// Design choices (confirmed with the product owner):
-//   • Server local time — the stored TimeZoneId is a display-only string, so we
-//     fire when the SERVER clock reaches the reminder's HH:mm.
-//   • Weekly reminders fire on Monday only.
-//   • Dedup is in-memory (a last-fired calendar date per reminder id). A restart
+// Design choices:
+//   • The org's clock, not the server's. A reminder's HH:mm is read in
+//     AppSettings.TimeZoneId (WorkingWeek.LocalNow), the same zone the attendance
+//     rules judge lateness in. It used to be DateTime.Now, which is right only
+//     while the server happens to sit in the org's zone — true of the developer
+//     box (GTB Standard Time) and of nothing that can be relied on.
+//   • Working days only, for every reminder. The Working Week on Organization
+//     settings (weekday preset plus public holidays) decides whether anything
+//     goes out today; a Saturday or a bank holiday sends nothing. Weekly
+//     reminders fire on the first working day of the week, so a Monday holiday
+//     moves them to Tuesday rather than skipping the week (they used to fire on
+//     Monday, holiday or not, and never at all for a week with no Monday in it).
+//   • Dedup is in-memory (a last-fired org-local date per reminder id). A restart
 //     can re-send once if it happens within the same day after the fire time;
 //     acceptable for this use case and avoids a DB migration.
 //   • A reminder that throws is logged, reported to the System Administrators
@@ -29,7 +37,7 @@ public class ReminderBackgroundService(
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromMinutes(1);
 
-    // reminderId -> last calendar date (server local) it was dispatched.
+    // reminderId -> last calendar date (org local) it was dispatched.
     private readonly Dictionary<string, DateOnly> _lastRun = new();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -65,28 +73,39 @@ public class ReminderBackgroundService(
 
     private async Task TickAsync(CancellationToken ct)
     {
-        var now = DateTime.Now; // server local time, by design
-        var today = DateOnly.FromDateTime(now);
-        var nowTime = TimeOnly.FromDateTime(now);
-
         using var scope = scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var settings = await context.AppSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new AppSettings();
         var reminders = ReminderSerializer.FromJson(settings.RemindersJson);
+        if (reminders.All(r => !r.Enabled)) return;
+
+        var localNow = WorkingWeek.LocalNow(settings, DateTime.UtcNow);
+        var today = DateOnly.FromDateTime(localNow);
+        var nowTime = TimeOnly.FromDateTime(localNow);
+
+        // One calendar lookup per tick, shared by every reminder; the weekly
+        // question is only asked when a weekly reminder is switched on.
+        var workingDay = await WorkingWeek.IsWorkingDayAsync(context, settings, today, ct);
+        DateOnly? firstWorkingDayOfWeek = workingDay && reminders.Any(r => r.Enabled && r.Frequency == ReminderSchedule.Weekly)
+            ? await WorkingWeek.FirstWorkingDayOfWeekAsync(context, settings, today, ct)
+            : null;
 
         ReminderDispatcher? dispatcher = null;
 
         foreach (var r in reminders)
         {
-            if (!r.Enabled) continue;
-            if (!TimeOnly.TryParse(r.Time, out var scheduled)) continue;
-            if (r.Frequency == "weekly" && now.DayOfWeek != DayOfWeek.Monday) continue;
-            if (nowTime < scheduled) continue; // not time yet today
-            if (_lastRun.TryGetValue(r.Id, out var last) && last == today) continue; // already ran today
+            DateOnly? lastRun = _lastRun.TryGetValue(r.Id, out var last) ? last : null;
+            var state = ReminderSchedule.Evaluate(r, nowTime, today, workingDay, firstWorkingDayOfWeek, lastRun);
+            if (state != ReminderDueState.Due)
+            {
+                if (state is ReminderDueState.NotWorkingDay or ReminderDueState.NotFirstWorkingDayOfWeek)
+                    logger.LogDebug("Reminder '{Id}' not sent: {State} ({Today}, {Zone}).", r.Id, state, today, settings.TimeZoneId);
+                continue;
+            }
 
             _lastRun[r.Id] = today;
-            logger.LogInformation("Reminder '{Id}' is due (scheduled {Time}, {Freq}); dispatching.", r.Id, r.Time, r.Frequency);
+            logger.LogInformation("Reminder '{Id}' is due (scheduled {Time} {Zone}, {Freq}); dispatching.", r.Id, r.Time, settings.TimeZoneId, r.Frequency);
 
             dispatcher ??= scope.ServiceProvider.GetRequiredService<ReminderDispatcher>();
             try

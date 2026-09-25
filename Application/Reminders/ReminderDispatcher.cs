@@ -1,5 +1,6 @@
 using System.Net;
 using Application.Attendance.Support;
+using Application.Settings.Support;
 using Domain;
 using Domain.Interfaces;
 using Domain.Services;
@@ -311,7 +312,8 @@ public class ReminderDispatcher(
             .Select(p => new { Name = p.User!.DisplayName, Dob = p.User.DateOfBirth!.Value, p.DepartmentId })
             .ToListAsync(ct);
 
-        var today = DateOnly.FromDateTime(DateTime.Now);
+        // "Upcoming" is measured from today on the org's clock, not the server's.
+        var today = TodayLocal(settings);
 
         var upcoming = people
             .Select(p => new
@@ -504,7 +506,7 @@ public class ReminderDispatcher(
     // yardstick; this one follows the settings, as the late rule does.
     private async Task DailyAttendanceReportAsync(AppSettings settings, CancellationToken ct)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = TodayLocal(settings);
         if (!await IsWorkingDayAsync(settings, today, ct))
         {
             logger.LogInformation("daily-attendance-report: today is not a working day; nothing sent.");
@@ -804,48 +806,22 @@ public class ReminderDispatcher(
         return new AttendanceSnapshot(employees, checkedIn, checkedOut, onLeave);
     }
 
-    // True when today (UTC calendar day, matching the attendance snapshot) is a
-    // working day for the org: not a weekend per the configured WorkingDays, and
-    // not a public holiday for the configured holiday country.
+    // Today's date on the org's clock (AppSettings.TimeZoneId) — the date a public
+    // holiday is a date on. The scheduler (ReminderBackgroundService) already
+    // refuses to dispatch on a non-working day; the checks below repeat the
+    // question because the on-demand run-reminder endpoint bypasses the schedule.
+    private static DateOnly TodayLocal(AppSettings settings) => WorkingWeek.TodayLocal(settings, DateTime.UtcNow);
+
+    // True when today is a working day for the org: not a weekend per the
+    // configured WorkingDays, and not a public holiday for the configured
+    // holiday country. One rule, shared with the scheduler (WorkingWeek). The
+    // attendance snapshot it guards still reads the UTC calendar day, which is
+    // how attendance events are recorded and reported everywhere.
     private Task<bool> IsWorkingDayTodayAsync(AppSettings settings, CancellationToken ct) =>
-        IsWorkingDayAsync(settings, DateOnly.FromDateTime(DateTime.UtcNow), ct);
+        IsWorkingDayAsync(settings, TodayLocal(settings), ct);
 
-    private async Task<bool> IsWorkingDayAsync(AppSettings settings, DateOnly day, CancellationToken ct)
-    {
-        if (!IsConfiguredWorkingDay(settings, day.DayOfWeek))
-            return false;
-
-        if (!string.IsNullOrWhiteSpace(settings.HolidayCountryCode))
-        {
-            var date = day.ToDateTime(TimeOnly.MinValue);
-            var isHoliday = await context.PublicHolidays
-                .AnyAsync(h => h.CountryCode == settings.HolidayCountryCode && h.Date.Date == date, ct);
-            if (isHoliday) return false;
-        }
-
-        return true;
-    }
-
-    // DayOfWeek is Sunday=0 .. Saturday=6 — index straight into this token table.
-    private static readonly string[] DayTokens = { "sun", "mon", "tue", "wed", "thu", "fri", "sat" };
-
-    private static bool IsConfiguredWorkingDay(AppSettings settings, DayOfWeek day)
-    {
-        if (settings.WorkingDays == "custom")
-        {
-            var working = (settings.WorkingDaysCustom ?? string.Empty)
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(t => t.ToLowerInvariant());
-            return working.Contains(DayTokens[(int)day]);
-        }
-
-        return settings.WorkingDays switch
-        {
-            "mon-sat" => day != DayOfWeek.Sunday,
-            "sun-fri" => day != DayOfWeek.Saturday,
-            _ => day != DayOfWeek.Saturday && day != DayOfWeek.Sunday, // mon-fri (default)
-        };
-    }
+    private Task<bool> IsWorkingDayAsync(AppSettings settings, DateOnly day, CancellationToken ct) =>
+        WorkingWeek.IsWorkingDayAsync(context, settings, day, ct);
 
     private record EmployeeContact(string ProfileId, string UserId, string Email, string? DisplayName);
 
