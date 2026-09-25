@@ -975,6 +975,26 @@ Two more traps worth knowing, both found the hard way:
   My Attendance quotes an allowance the server counts and the settings card holds
   Save rather than taking a 400. Keep the two in step, the same way
   `leave-limits.ts` is kept in step with `NoticePeriodRule`.
+  **The break taken is judged against that allowance in one place.**
+  `WorkingDaySchedule.BreakVariance(state, nowUtc)` is minutes over (positive) or
+  under (negative) `BreakMinutes`, 0 exactly on it, and `null` when there is
+  nothing to say: no break configured (a 0 allowance is "no policy", not "no
+  breaks"), or a day still open that has not gone over — a shortfall is only news
+  once the day is checked out of, since the lunch may still come, while going over
+  is reported the moment it happens, a running break included
+  (`BreakMinutesTaken`, which adds the open break the calculator's
+  `TotalBreakMinutes` leaves out). Every surface carries the server's figure and
+  none re-derives it: `TeamMemberAttendanceDto.BreakMinutes`/`BreakVarianceMinutes`
+  on the team board ("Break 1h 20m · 20 min over" under the member's row),
+  `TodayStateDto`/`DayHistoryDto.BreakVarianceMinutes` on the employee's own page,
+  a "N over break allowance" issue on the company dashboard (over only — the panel
+  flags what needs attention), and a "Break allowance" section in the daily
+  attendance report (over and under, checked-out days only, omitted entirely
+  when no break is configured rather than saying "Nobody"). The client words it
+  with `describeBreakVariance` in `break-policy.ts` and reads a missing field as
+  `null`, so an older API says nothing. `WorkingDayScheduleBreakVarianceTests`,
+  `AttendanceBreakAllowanceTests` and `DailyAttendanceReportTests` pin the server;
+  `TeamAttendancePage.test.tsx` and `AttendancePage.test.tsx` the client.
 - **Account deactivation:** `User.IsActive` gates sign-in, enforced inside
   Identity by `API/Security/ActiveUserSignInManager.cs` (overrides
   `CanSignInAsync`), so no sign-in path can miss it. A refusal surfaces as

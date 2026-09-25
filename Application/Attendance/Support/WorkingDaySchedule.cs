@@ -1,4 +1,5 @@
 using Domain;
+using Domain.Services;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
 
@@ -161,6 +162,38 @@ public sealed class WorkingDaySchedule
     /// </summary>
     public bool IsPastStart(DateTime nowUtc, int graceMinutes = 0) =>
         LocalTimeOf(nowUtc) >= Start.AddMinutes(graceMinutes);
+
+    /// <summary>
+    /// Minutes of break taken so far today: the closed breaks the calculator
+    /// totalled plus a break still running, measured to <paramref name="nowUtc"/>.
+    /// The calculator's <see cref="AttendanceDayState.TotalBreakMinutes"/> covers
+    /// the closed ones only, so somebody twenty minutes past their hour while
+    /// still on it would otherwise read as inside the allowance.
+    /// </summary>
+    public int BreakMinutesTaken(AttendanceDayState state, DateTime nowUtc)
+    {
+        var open = state.OnBreakSince is { } since && state.CheckOutAt is null
+            ? (int)Math.Max(0, (nowUtc - AttendanceDay.AsUtc(since)).TotalMinutes)
+            : 0;
+        return state.TotalBreakMinutes + open;
+    }
+
+    /// <summary>
+    /// The break taken against <see cref="BreakMinutes"/>: positive minutes over
+    /// the allowance, negative minutes under it, 0 on the allowance exactly, and
+    /// null when there is nothing to say. There is nothing to say when no break
+    /// is configured (a 0 allowance is "no policy", not "no breaks permitted"),
+    /// and a shortfall is only news once the day is checked out of — ten minutes
+    /// by mid-morning is not "fifty under", the lunch may still come. Going over
+    /// is reported the moment it happens, running break included.
+    /// </summary>
+    public int? BreakVariance(AttendanceDayState state, DateTime nowUtc)
+    {
+        if (BreakMinutes == 0) return null;
+        var variance = BreakMinutesTaken(state, nowUtc) - BreakMinutes;
+        if (variance > 0) return variance;
+        return state.Status == AttendanceDayStatus.Done ? variance : null;
+    }
 
     /// <summary>The start plus a grace, as "HH:mm", for the wording beside a flag.</summary>
     public string StartPlus(int graceMinutes) => Start.AddMinutes(graceMinutes).ToString("HH:mm");

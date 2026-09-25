@@ -75,6 +75,19 @@ export function formatBreakMinutes(minutes: number): string {
     return `${hours}h ${rest}m`
 }
 
+/**
+ * The server's verdict on somebody's break in a phrase: "20 min over", "30 min
+ * under", "on allowance" for a finished day exactly on it, and null when the
+ * server had nothing to say (null, or a field an older API does not send). The
+ * comparison itself is never made here — `WorkingDaySchedule.BreakVariance` is
+ * the one rule, so the board, the dashboard and the employee's own page agree.
+ */
+export function describeBreakVariance(variance: number | null | undefined): string | null {
+    if (variance === null || variance === undefined) return null
+    if (variance === 0) return 'on allowance'
+    return `${formatBreakMinutes(Math.abs(variance))} ${variance > 0 ? 'over' : 'under'}`
+}
+
 function formatTime(minutes: number): string {
     return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
 }

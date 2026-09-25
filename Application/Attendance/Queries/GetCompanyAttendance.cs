@@ -36,6 +36,7 @@ public class GetCompanyAttendance
     private const int RecentActivityLimit = 200;
     private const int NotCheckedInListLimit = 5;
     private const int LateNamesShown = 3;
+    private const int OverBreakNamesShown = 3;
 
     public class Query : IRequest<Result<CompanyAttendanceDto>>
     {
@@ -289,7 +290,31 @@ public class GetCompanyAttendance
                     string.Join(" · ", lateNames.Take(LateNamesShown))));
             }
 
-            // 3) On-leave summary, broken down by department.
+            // 3) Over the break allowance, reported as minutes over the configured
+            //    break (WorkingDaySchedule.BreakVariance), a running break included.
+            //    Under is not an issue: the panel flags what needs attention, and
+            //    the team board is where a short break shows.
+            var overBreak = new List<string>();
+            foreach (var profile in profiles)
+            {
+                if (onLeave.Contains(profile.Id)) continue;
+
+                var state = stateByProfileId[profile.Id];
+                if (schedule.BreakVariance(state, now) is not { } variance || variance <= 0) continue;
+
+                var department = profile.Department?.Name ?? "Unassigned";
+                overBreak.Add($"{AttendanceDay.DisplayNameOf(profile)} ({department}) · {variance} min over");
+            }
+
+            if (overBreak.Count > 0)
+            {
+                issues.Add(new IssueDto(
+                    "warning",
+                    $"{overBreak.Count} over break allowance",
+                    string.Join(" · ", overBreak.Take(OverBreakNamesShown))));
+            }
+
+            // 4) On-leave summary, broken down by department.
             if (totals.Leave > 0)
             {
                 var profileById = profiles.ToDictionary(p => p.Id);
@@ -307,7 +332,7 @@ public class GetCompanyAttendance
                     string.Join(" · ", breakdown)));
             }
 
-            // 4) Overtime. Always reported, so the panel says something reassuring
+            // 5) Overtime. Always reported, so the panel says something reassuring
             // when nothing is wrong rather than going blank.
             var overtime = profiles.Count(p => stateByProfileId[p.Id].WorkedMinutes > OvertimeMinutes);
             issues.Add(overtime == 0

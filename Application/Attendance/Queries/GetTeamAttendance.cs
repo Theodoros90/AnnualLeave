@@ -65,7 +65,7 @@ public class GetTeamAttendance
                 context, profileIds, now, cancellationToken);
 
             var members = profiles
-                .Select(p => BuildMember(p, AttendanceDay.StateFor(todayByEmployee, p.Id, now), onLeave, schedule))
+                .Select(p => BuildMember(p, AttendanceDay.StateFor(todayByEmployee, p.Id, now), onLeave, schedule, now))
                 .ToList();
 
             var week = await BuildWeekAsync(profiles, profileIds, now, cancellationToken);
@@ -77,7 +77,8 @@ public class GetTeamAttendance
             EmployeeProfile profile,
             AttendanceDayState state,
             HashSet<string> onLeave,
-            WorkingDaySchedule schedule)
+            WorkingDaySchedule schedule,
+            DateTime now)
         {
             // Leave outranks attendance: someone on approved leave is reported as
             // away even if a stale event would otherwise place them at work.
@@ -103,7 +104,9 @@ public class GetTeamAttendance
                 state.WorkedMinutes,
                 AttendanceDay.AsUtcNullable(state.OnBreakSince),
                 note,
-                state.IsAutoBreak);
+                state.IsAutoBreak,
+                schedule.BreakMinutesTaken(state, now),
+                schedule.BreakVariance(state, now));
         }
 
         /// <summary>

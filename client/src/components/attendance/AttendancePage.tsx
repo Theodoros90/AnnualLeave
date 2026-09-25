@@ -14,7 +14,8 @@ import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import { getAppSettings, getAttendanceHistory } from '../../lib/api'
-import { describeBreakPolicy } from '../../lib/break-policy'
+import type { SxProps, Theme } from '@mui/material/styles'
+import { describeBreakPolicy, describeBreakVariance } from '../../lib/break-policy'
 import {
     formatElapsed,
     formatTime,
@@ -98,6 +99,21 @@ function formatHistoryDate(iso: string) {
 function fmtHm(minutes: number | null) {
     if (minutes == null) return '—'
     return formatElapsed(minutes)
+}
+
+/**
+ * "20 min over" in the warning colour, "30 min under" or "on allowance" muted, and
+ * nothing at all when the server had nothing to say.
+ */
+function BreakVerdict({ variance, sx }: { variance: number | null | undefined; sx?: SxProps<Theme> }) {
+    const verdict = describeBreakVariance(variance)
+    if (!verdict) return null
+    const over = (variance ?? 0) > 0
+    return (
+        <Box component="span" sx={{ fontWeight: over ? 600 : 400, color: over ? 'warning.dark' : 'text.disabled', ...sx }}>
+            {verdict}
+        </Box>
+    )
 }
 
 export default function AttendancePage() {
@@ -293,6 +309,7 @@ export default function AttendancePage() {
                             {breakPolicy && (
                                 <Box component="span" sx={{ ml: 1, color: 'text.disabled' }}>{breakPolicy}</Box>
                             )}
+                            <BreakVerdict variance={today?.breakVarianceMinutes} sx={{ ml: 1 }} />
                         </span>
                         <span>
                             Productive hours:{' '}
@@ -397,7 +414,10 @@ export default function AttendancePage() {
                                         </TableCell>
                                         <TableCell sx={TD}>{d.checkInAt ? formatTime(d.checkInAt) : '—'}</TableCell>
                                         <TableCell sx={TD}>{d.checkOutAt ? formatTime(d.checkOutAt) : '—'}</TableCell>
-                                        <TableCell sx={TD}>{d.totalBreakMinutes > 0 ? `${d.totalBreakMinutes} min` : '—'}</TableCell>
+                                        <TableCell sx={TD}>
+                                            {d.totalBreakMinutes > 0 ? `${d.totalBreakMinutes} min` : '—'}
+                                            <BreakVerdict variance={d.breakVarianceMinutes} sx={{ ml: 0.75 }} />
+                                        </TableCell>
                                         <TableCell sx={TD}>{fmtHm(d.workedMinutes > 0 ? d.workedMinutes : null)}</TableCell>
                                         <TableCell sx={TD}>
                                             {d.status === 'in-progress'

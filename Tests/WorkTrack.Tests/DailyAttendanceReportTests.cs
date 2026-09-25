@@ -265,6 +265,47 @@ public class DailyAttendanceReportTests
         Assert.Contains("3h 00m over", overtime);
     }
 
+    /// <summary>
+    /// The break each person took against the break the settings allow for, over
+    /// and under, on the days they checked out of. Bob never checked out, so his
+    /// break is not judged here; "Did not check out" already names him.
+    /// </summary>
+    [Fact]
+    public async Task Break_allowance_section_names_who_took_more_or_less_than_the_break()
+    {
+        using var db = SeedWorld();
+        // Olly: an hour and a half's break against the hour allowed, checked out.
+        SeedPerson(db, "olly", "Olly Employee", "olly@example.com", DepartmentId);
+        db.AttendanceEvents.Add(AttendanceDay.NewEvent("olly-p", Yesterday.AddHours(9), AttendanceEventType.CheckIn));
+        db.AttendanceEvents.Add(AttendanceDay.NewEvent("olly-p", Yesterday.AddHours(12), AttendanceEventType.BreakStart));
+        db.AttendanceEvents.Add(AttendanceDay.NewEvent("olly-p", Yesterday.AddHours(13).AddMinutes(30), AttendanceEventType.BreakEnd));
+        db.AttendanceEvents.Add(AttendanceDay.NewEvent("olly-p", Yesterday.AddHours(18), AttendanceEventType.CheckOut));
+        db.SaveChanges();
+
+        var settings = Settings();
+        settings.BreakMode = "fixed";
+        settings.BreakStart = "13:00";
+        settings.BreakEnd = "14:00";
+
+        var section = Section((await RunAsync(db, settings)).HtmlBody, "Break allowance");
+
+        Assert.Contains("Olly Employee (Engineering) — 0h 30m over (took 1h 30m of 1h 00m)", section);
+        Assert.Contains("Fay Employee (Engineering) — 0h 30m under (took 0h 30m of 1h 00m)", section);
+        Assert.Contains("Eve Employee (Engineering) — 1h 00m under (took 0h 00m of 1h 00m)", section);
+        Assert.DoesNotContain("Bob Employee", section);
+    }
+
+    [Fact]
+    public async Task Break_allowance_section_is_absent_when_no_break_is_configured()
+    {
+        using var db = SeedWorld();
+
+        var mail = await RunAsync(db, Settings());
+
+        Assert.DoesNotContain("Break allowance", mail.HtmlBody);
+        Assert.DoesNotContain("Break allowance", mail.TextBody);
+    }
+
     [Fact]
     public async Task Late_is_measured_in_the_org_time_zone()
     {

@@ -13,6 +13,7 @@ import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import { getTeamAttendance } from '../../lib/api'
 import { formatElapsed, formatTime } from '../../lib/hooks/useAttendance'
+import { describeBreakVariance, formatBreakMinutes } from '../../lib/break-policy'
 import type { TeamMemberAttendance, TeamMemberStatus } from '../../lib/types'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
 
@@ -121,7 +122,10 @@ function TeamMemberCard({ m }: { m: TeamMemberAttendance }) {
             </Stack>
             <Box sx={{ fontSize: 11, color: 'text.secondary' }}>
                 {m.status === 'out' || m.status === 'leave' ? (
-                    <span>{m.todayNote}</span>
+                    <>
+                        <span>{m.todayNote}</span>
+                        <BreakLine m={m} />
+                    </>
                 ) : (
                     <>
                         <span>
@@ -135,9 +139,36 @@ function TeamMemberCard({ m }: { m: TeamMemberAttendance }) {
                             </Box>{' worked'}
                         </span>
                         <Box sx={{ fontSize: 10, color: 'text.disabled', mt: 0.25 }}>{m.todayNote}</Box>
+                        <BreakLine m={m} />
                     </>
                 )}
             </Box>
+        </Box>
+    )
+}
+
+/**
+ * "Break 1h 20m · 20 min over" — the break taken so far, and the server's verdict
+ * on it against the Organization settings' allowance when it has one
+ * (`describeBreakVariance`). Nothing at all before the first break of the day, and
+ * no verdict when the server sent none, so an older API reads as nothing to say.
+ */
+function BreakLine({ m }: { m: TeamMemberAttendance }) {
+    const taken = m.breakMinutes ?? 0
+    const verdict = describeBreakVariance(m.breakVarianceMinutes)
+    if (taken === 0 && !verdict) return null
+    const over = (m.breakVarianceMinutes ?? 0) > 0
+    return (
+        <Box sx={{ fontSize: 10, mt: 0.25, color: 'text.disabled' }}>
+            <span>Break {formatBreakMinutes(taken)}</span>
+            {verdict && (
+                <>
+                    {' · '}
+                    <Box component="span" sx={{ fontWeight: over ? 600 : 400, color: over ? 'warning.dark' : 'text.disabled' }}>
+                        {verdict}
+                    </Box>
+                </>
+            )}
         </Box>
     )
 }
