@@ -22,11 +22,12 @@ import TableRow from '@mui/material/TableRow'
 import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import { approveTimesheet, getDepartments, getEmployeeProfiles, getProjects, getProjectActivityTypes, getProjectComponents, getProjectTypes, getTimesheet, getTimesheets, rejectTimesheet } from '../../lib/api'
-import type { TimesheetEntry, TimesheetStatus, UserInfo } from '../../lib/types'
+import { approveTimesheet, getDepartments, getEmployeeProfiles, getProjects, getProjectActivityTypes, getProjectComponents, getProjectTypes, getTimesheet, getTimesheets, getTimesheetStatusHistories, rejectTimesheet } from '../../lib/api'
+import type { TimesheetEntry, TimesheetStatus, TimesheetStatusHistory, UserInfo } from '../../lib/types'
 import type { Timesheet } from '../../lib/types/timesheet'
-import { softBg, type SxColor } from '../../lib/theme-tokens'
+import { softBg, type SemanticPalette, type SxColor } from '../../lib/theme-tokens'
 import { isAdministrator } from '../../lib/roles'
+import { currentReviewNote, isCancelledApproval, latestCommentByTimesheet, reviewNoteLabel } from '../../lib/timesheet-review-note'
 
 
 const STATUS_COLORS: Record<string, { bg: SxColor; color: string }> = {
@@ -80,6 +81,28 @@ function DeptBadge({ dept }: { dept: string }) {
     )
 }
 
+/**
+ * A reviewer's reason, worded by what it did: "Approval cancelled by Helen HR" in
+ * amber (the sheet is back for review), "Rejected by Mark Manager" in red. Compact
+ * under the row's name; full-width at the top of the View dialog.
+ */
+function ReviewNote({ note, compact = false }: { note: TimesheetStatusHistory; compact?: boolean }) {
+    const tone: SemanticPalette = isCancelledApproval(note) ? 'warning' : 'error'
+    return (
+        <Box sx={compact
+            ? { mt: '4px', fontSize: 12, color: `${tone}.dark`, fontWeight: 400 }
+            : {
+                p: '10px 12px', borderRadius: '6px', fontSize: 13,
+                bgcolor: softBg(tone), color: `${tone}.dark`, borderLeft: '3px solid', borderLeftColor: `${tone}.main`,
+            }}
+        >
+            <Box component="span" sx={{ fontWeight: 600 }}>{reviewNoteLabel(note)}</Box>
+            {compact ? ': ' : ' — '}
+            <Box component="span" sx={{ fontStyle: 'italic' }}>&ldquo;{note.comment}&rdquo;</Box>
+        </Box>
+    )
+}
+
 function formatPeriod(start: string, end: string) {
     const s = new Date(start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
     const e = new Date(end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -129,6 +152,17 @@ const TeamTimesheetPage = observer(function TeamTimesheetPage({ user }: { user: 
         queryKey: ['timesheets'],
         queryFn: getTimesheets,
     })
+
+    /* The reason behind a sheet's present status — an HR Administrator's cancelled
+       approval, or a rejection — lives in the status history, scoped server-side to
+       what this viewer may see. Without it a week the manager already approved
+       reappears in their queue with nothing saying why. */
+    const { data: histories = [] } = useQuery({
+        queryKey: ['timesheetStatusHistories'],
+        queryFn: getTimesheetStatusHistories,
+    })
+    const latestComment = useMemo(() => latestCommentByTimesheet(histories), [histories])
+    const noteFor = (ts: Timesheet) => currentReviewNote(ts.status, latestComment.get(ts.id))
 
     /* Nobody decides their own hours. A Manager's own submitted timesheet is inside
        their own department scope, so it lists here like anyone else's; the server
@@ -380,7 +414,10 @@ const TeamTimesheetPage = observer(function TeamTimesheetPage({ user }: { user: 
                                             key={ts.id}
                                             sx={{ '&:last-child td': { borderBottom: 'none' }, '&:hover td': { bgcolor: 'action.hover' } }}
                                         >
-                                            <TableCell sx={TD}><strong>{ts.employeeName}</strong></TableCell>
+                                            <TableCell sx={TD}>
+                                                <strong>{ts.employeeName}</strong>
+                                                {noteFor(ts) && <ReviewNote note={noteFor(ts)!} compact />}
+                                            </TableCell>
                                             {isAdmin && (
                                                 <TableCell sx={TD}>
                                                     {deptName !== '—' ? <DeptBadge dept={deptName} /> : <span style={{ color: 'text.secondary' }}>—</span>}
@@ -513,6 +550,7 @@ const TeamTimesheetPage = observer(function TeamTimesheetPage({ user }: { user: 
                                 </Box>
                             ) : (
                                 <Stack spacing={2}>
+                                    {noteFor(viewTs) && <ReviewNote note={noteFor(viewTs)!} />}
                                     <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '8px', overflow: 'hidden' }}>
                                         <Table sx={{ width: '100%', borderCollapse: 'collapse' }}>
                                             <TableHead>

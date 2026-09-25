@@ -10,6 +10,7 @@ import { getApiErrorMessage } from '../../lib/api/error-utils'
 import { useStore } from '../../lib/mobx'
 import type { Timesheet, TimesheetStatus, TimesheetStatusHistory, UserInfo } from '../../lib/types'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
+import { isCancelledApproval, latestCommentByTimesheet } from '../../lib/timesheet-review-note'
 
 
 const WEEKLY_TARGET = 40
@@ -99,17 +100,7 @@ export default function MyTimesheetPage({ user: _user }: { user: UserInfo }) {
     )
 
     /* Latest comment per timesheet, for feedback panels */
-    const latestComment = useMemo(() => {
-        const map = new Map<string, TimesheetStatusHistory>()
-        for (const h of histories) {
-            if (!h.comment) continue
-            const prev = map.get(h.timesheetId)
-            if (!prev || new Date(h.changedAt) > new Date(prev.changedAt)) {
-                map.set(h.timesheetId, h)
-            }
-        }
-        return map
-    }, [histories])
+    const latestComment = useMemo(() => latestCommentByTimesheet(histories), [histories])
 
     /* Counts by status */
     const counts = useMemo(() => {
@@ -876,6 +867,17 @@ function StatusBadge({ status }: { status: TimesheetStatus }) {
 }
 
 function FeedbackBox({ t, comment }: { t: Timesheet; comment?: TimesheetStatusHistory }) {
+    if (t.status === 'Submitted' && comment?.comment && isCancelledApproval(comment)) {
+        return (
+            <Box sx={feedbackSx(softBg('warning'), 'warning.dark', 'warning.main')}>
+                <Box component="span">💬</Box>
+                <Box>
+                    Approval cancelled by <Box component="strong">{comment.changedByUserName}</Box>: "{comment.comment}"
+                    {' '}· back with your manager for review
+                </Box>
+            </Box>
+        )
+    }
     if (t.status === 'Submitted' || t.status === 'Resubmitted') {
         return (
             <Box sx={feedbackSx(softBg('warning'), 'warning.dark', 'warning.main')}>
