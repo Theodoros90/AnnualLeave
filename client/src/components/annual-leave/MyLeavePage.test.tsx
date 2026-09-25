@@ -489,3 +489,58 @@ describe('MyLeavePage pro-rated first year', () => {
         await waitFor(() => expect(tile.textContent).toContain('of 23 annual leave'))
     })
 })
+
+/**
+ * A decision on the employee's request is somebody's: the row says who rejected
+ * it, who cancelled it and who left the note on an approval, not just what they
+ * wrote. The cancelled row used to print the reason with no name at all, so a
+ * cancellation by HR read like one the employee had made themselves.
+ */
+describe('MyLeavePage says who decided', () => {
+    const year = new Date().getFullYear() + 1
+
+    function aDecidedRequest(status: AnnualLeave['status']): AnnualLeave {
+        return {
+            id: 'L-decided', employeeId: USER.id, leaveTypeId: ANNUAL_LEAVE_TYPE.id,
+            startDate: `${year}-03-02T00:00:00`, endDate: `${year}-03-04T00:00:00`,
+            reason: 'Trip', evidenceUrl: null, delegateId: null, delegateName: '',
+            status, duration: 'Full', totalDays: 3,
+            createdAt: `${year - 1}-02-01T00:00:00`, approvedAt: null,
+            employeeName: USER.displayName, departmentName: 'Delivery', childId: null, childName: '',
+        }
+    }
+
+    function decision(newStatus: string, changedByUserName: string, comment: string) {
+        return {
+            id: 'h-1', annualLeaveId: 'L-decided', employeeId: USER.id, employeeName: USER.displayName,
+            changedByUserId: 'u-other', changedByUserName, leaveTypeName: 'Annual Leave',
+            oldStatus: 'Approved', newStatus, comment, changedAt: `${year - 1}-02-03T00:00:00`,
+        }
+    }
+
+    it('names who cancelled it, with the reason', async () => {
+        api.getAnnualLeaves.mockResolvedValue([aDecidedRequest('Cancelled')])
+        api.getLeaveStatusHistories.mockResolvedValue([decision('Cancelled', 'Helen HR', 'Project deadline moved')])
+        await renderPage()
+
+        expect(await screen.findByText('Cancelled by Helen HR:')).toBeInTheDocument()
+        expect(screen.getByText(/Project deadline moved/)).toBeInTheDocument()
+    })
+
+    it('names who rejected it, with the reason', async () => {
+        api.getAnnualLeaves.mockResolvedValue([aDecidedRequest('Rejected')])
+        api.getLeaveStatusHistories.mockResolvedValue([decision('Rejected', 'Irene Despoti', 'Too many away that week')])
+        await renderPage()
+
+        expect(await screen.findByText('Rejected by Irene Despoti:')).toBeInTheDocument()
+        expect(screen.getByText(/Too many away that week/)).toBeInTheDocument()
+    })
+
+    it("names who approved it, when they left a note", async () => {
+        api.getAnnualLeaves.mockResolvedValue([aDecidedRequest('Approved')])
+        api.getLeaveStatusHistories.mockResolvedValue([decision('Approved', 'Irene Despoti', 'Enjoy the trip')])
+        await renderPage()
+
+        expect(await screen.findByText('Approved by Irene Despoti:')).toBeInTheDocument()
+    })
+})

@@ -1098,12 +1098,15 @@ function FeedbackBox({ status, feedback }: { status: AnnualLeaveStatus; feedback
         )
     }
     if (!feedback?.comment) return null
+    /* A decision is somebody's: say who made it and what they did, not just what
+       they wrote. The cancelled box used to print the reason with no name, so a
+       cancellation by HR read like one the employee had made themselves. */
     if (status === 'Approved') {
         return (
             <Box sx={feedbackSx(softBg('success'), 'success.dark', 'success.main')}>
                 <Box component="span">💬</Box>
                 <Box>
-                    <Box component="strong">{feedback.changedByUserName}:</Box> "{feedback.comment}"
+                    <Box component="strong">Approved by {feedback.changedByUserName}:</Box> "{feedback.comment}"
                 </Box>
             </Box>
         )
@@ -1113,7 +1116,7 @@ function FeedbackBox({ status, feedback }: { status: AnnualLeaveStatus; feedback
             <Box sx={feedbackSx(softBg('error'), 'error.dark', 'error.main')}>
                 <Box component="span">💬</Box>
                 <Box>
-                    <Box component="strong">{feedback.changedByUserName}:</Box> "{feedback.comment}"
+                    <Box component="strong">Rejected by {feedback.changedByUserName}:</Box> "{feedback.comment}"
                 </Box>
             </Box>
         )
@@ -1122,7 +1125,9 @@ function FeedbackBox({ status, feedback }: { status: AnnualLeaveStatus; feedback
         return (
             <Box sx={feedbackSx('action.hover', 'text.secondary', 'text.disabled')}>
                 <Box component="span">↪</Box>
-                <Box>{feedback.comment}</Box>
+                <Box>
+                    <Box component="strong">Cancelled by {feedback.changedByUserName}:</Box> "{feedback.comment}"
+                </Box>
             </Box>
         )
     }
@@ -1205,7 +1210,10 @@ function LeaveDetailsDialog({ leave, leaveTypeName, feedback, onClose }: {
         bg: isRejected ? softBg('error') : isApproved ? softBg('success') : 'action.hover',
         fg: isRejected ? 'error.dark' : isApproved ? 'success.dark' : 'text.secondary',
         accent: isRejected ? 'error.main' : isApproved ? 'success.main' : 'text.disabled',
-        label: isRejected ? 'Rejection reason' : isApproved ? 'Manager note' : isCancelled ? 'Cancellation note' : 'Note',
+        label: isRejected ? `Rejected by ${fb.changedByUserName}`
+            : isApproved ? `Approved by ${fb.changedByUserName}`
+            : isCancelled ? `Cancelled by ${fb.changedByUserName}`
+            : `Note from ${fb.changedByUserName}`,
     } : null
 
     return (
@@ -1223,9 +1231,7 @@ function LeaveDetailsDialog({ leave, leaveTypeName, feedback, onClose }: {
                             <Box sx={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', mb: '4px' }}>
                                 {banner.label}
                             </Box>
-                            <Box sx={{ fontSize: 13, lineHeight: 1.5 }}>
-                                <Box component="strong">{fb.changedByUserName}:</Box> "{fb.comment}"
-                            </Box>
+                            <Box sx={{ fontSize: 13, lineHeight: 1.5 }}>"{fb.comment}"</Box>
                         </Box>
                     )}
                     <LeaveDetailRow label="Leave Type" value={leaveTypeName ?? 'Annual Leave'} />
