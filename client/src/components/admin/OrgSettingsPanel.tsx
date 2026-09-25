@@ -15,6 +15,7 @@ import { getAppSettings, resetReminders, updateAppSettings } from '../../lib/api
 import { getApiErrorMessage } from '../../lib/api/error-utils'
 import type { AppSettings, ReminderFrequency, ReminderSetting } from '../../lib/types'
 import type { SxColor } from '../../lib/theme-tokens'
+import { describeReminderCalendar, reminderScheduleClause } from '../../lib/working-week'
 import { SweetAlert } from '../ui'
 
 // ── Static reminder catalogue (display metadata; configurable state comes from
@@ -33,18 +34,13 @@ const REMINDERS_META: ReminderMeta[] = [
 ]
 const META_BY_ID = new Map(REMINDERS_META.map((m) => [m.id, m]))
 
-function formatTime(hhmm: string): string {
-    const [h, m] = (hhmm ?? '').split(':').map(Number)
-    if (Number.isNaN(h) || Number.isNaN(m)) return hhmm
-    const period = h < 12 ? 'AM' : 'PM'
-    const hour12 = h % 12 === 0 ? 12 : h % 12
-    return `${hour12}:${String(m).padStart(2, '0')} ${period}`
-}
-
+// "Every working day" and "the first working day of each week" are the server's
+// rule (ReminderSchedule), not a turn of phrase: a reminder is never sent on a
+// weekend or public holiday, and its time is read on the Organization time zone's
+// clock. The panel used to say "Every day" while the scheduler did exactly that.
 function reminderPreview(r: ReminderSetting): { when: string; rest: string } {
     const meta = META_BY_ID.get(r.id)
-    const when = r.frequency === 'daily' ? `Every day at ${formatTime(r.time)}` : `Once a week at ${formatTime(r.time)}`
-    return { when, rest: `, ${meta?.tail ?? 'the reminder will be sent.'}` }
+    return { when: reminderScheduleClause(r), rest: `, ${meta?.tail ?? 'the reminder will be sent.'}` }
 }
 
 // ── Card chrome (mirrors AppSettingsPanel) ───────────────────────────────────
@@ -172,6 +168,12 @@ export default function OrgSettingsPanel() {
 
             {/* Reminders */}
             <Card title="Reminders" icon="🔔" sub={`${enabledCount} of ${form.reminders.length} enabled`}>
+                {/* The calendar and clock every reminder below follows. Both are set on
+                    Organization › Working Week; this line is here so an admin setting
+                    08:00 knows whose 08:00 it is and that Saturday sends nothing. */}
+                <Alert severity="info" sx={{ mb: 1.5, fontSize: 12, py: 0.5 }}>
+                    {describeReminderCalendar(form)} Change these under Organization › Working Week.
+                </Alert>
                 {form.reminders.map((r) => {
                     const meta = META_BY_ID.get(r.id)
                     const preview = reminderPreview(r)

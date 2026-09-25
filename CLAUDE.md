@@ -995,6 +995,28 @@ Two more traps worth knowing, both found the hard way:
   `null`, so an older API says nothing. `WorkingDayScheduleBreakVarianceTests`,
   `AttendanceBreakAllowanceTests` and `DailyAttendanceReportTests` pin the server;
   `TeamAttendancePage.test.tsx` and `AttendancePage.test.tsx` the client.
+- **Reminders follow the Working Week, in one place.** `ReminderBackgroundService`
+  ticks once a minute and asks `Application/Reminders/ReminderSchedule.cs` (pure,
+  clock and calendar as inputs) whether each reminder on Notification Settings is
+  due: its `HH:mm` is read on the org's clock (`AppSettings.TimeZoneId`, via
+  `Application/Settings/Support/WorkingWeek.cs`, the shared reading of the weekday
+  preset plus public holidays), **nothing is sent on a non-working day**, and a
+  weekly reminder goes out on the **first working day of the week** (Monday to
+  Sunday, as the timesheet week runs), so a Monday holiday moves it to Tuesday
+  rather than skipping the week. It used to fire on `DateTime.Now` — right only
+  while the server sat in the org's zone, as the developer box does — every day of
+  the year, with weekly ones on Monday alone; only the check-in, check-out and
+  daily-report dispatchers asked about the day, each against the UTC date. The
+  dispatcher's own checks stay (the on-demand `run-reminder` endpoint bypasses the
+  schedule) and delegate to `WorkingWeek`; "today" there is the org-local date,
+  while the attendance snapshot it guards still reads the UTC calendar day, which
+  is how attendance events are recorded everywhere. The client's
+  `lib/working-week.ts` words it ("Every working day at…", "On the first working
+  day of each week at…", and the info line naming the days, holiday country and
+  zone). `ReminderScheduleTests` pins the server; `orgSettingsWorkingWeek.test.tsx`
+  the client. `department-digest` is catalogued and switched on by default but has
+  **no dispatcher** — the scheduler logs "no dispatcher implementation" and sends
+  nothing.
 - **Account deactivation:** `User.IsActive` gates sign-in, enforced inside
   Identity by `API/Security/ActiveUserSignInManager.cs` (overrides
   `CanSignInAsync`), so no sign-in path can miss it. A refusal surfaces as

@@ -25,6 +25,7 @@ import { breakSettingsError } from '../../lib/break-policy'
 import { annualCarryoverCap, annualLeaveAllowance, describeCarryoverCap, employeeAnnualEntitlement, splitAtCarryoverCap } from '../../lib/leave-allowance'
 import type { AppSettings, HolidayCountry } from '../../lib/types'
 import { softBg, type SxColor } from '../../lib/theme-tokens'
+import { timeZoneLabel } from '../../lib/working-week'
 
 
 const TH = {
@@ -59,21 +60,6 @@ const TIMEZONES = [
     'America/Sao_Paulo', 'America/Buenos_Aires', 'America/Mexico_City',
     'America/New_York', 'America/Toronto', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Vancouver',
 ]
-
-// "Europe/London (GMT+1)" reads better than the id alone, and the offset is the
-// one thing an admin picking between two nearby zones actually wants to know.
-// Intl is the same tz database the browser keeps its clock by; an id it does
-// not know falls back to the bare id rather than throwing during render.
-function timeZoneLabel(id: string): string {
-    try {
-        const part = new Intl.DateTimeFormat('en-GB', { timeZone: id, timeZoneName: 'shortOffset' })
-            .formatToParts(new Date())
-            .find((p) => p.type === 'timeZoneName')?.value
-        return part ? `${id} (${part})` : id
-    } catch {
-        return id
-    }
-}
 
 /* When the two year-end warnings go out, relative to the leave year end. These were
    AppSettings columns edited on this page, and the schedule preview below was the only

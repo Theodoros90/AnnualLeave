@@ -29,6 +29,7 @@ import { activityIcon } from '../../lib/hooks/useAttendance'
 import { useOfferedLeaveTypes } from '../../lib/hooks'
 import { buildLeaveBalanceRows, type LeaveBalanceRow } from '../../lib/leave-balance-rows'
 import { useStore } from '../../lib/mobx'
+import { describeWorkingDays } from '../../lib/working-week'
 import { iconForLeaveType } from './leave-icons'
 import { ActivityTypesPanel, AdminUsersPanel, AppSettingsPanel, ComponentsPanel, DataMaintenancePanel, DepartmentsPanel, LeaveTypesPanel, OrgSettingsPanel, ProjectsPanel, ProjectTypesPanel, SystemLogPanel } from '..'
 import type {
@@ -863,16 +864,6 @@ function InfoRow({ label, value, tone, last }: { label: string; value: string; t
             }}>{value}</Box>
         </Box>
     )
-}
-
-function describeWorkingDays(workingDays: string, custom: string) {
-    switch (workingDays) {
-        case 'mon-fri': return 'Mon–Fri'
-        case 'mon-sat': return 'Mon–Sat'
-        case 'sun-fri': return 'Sun–Fri'
-        case 'custom': return custom ? custom.split(',').map((d) => d.trim().charAt(0).toUpperCase() + d.trim().slice(1, 3)).join(', ') : 'Custom'
-        default: return workingDays
-    }
 }
 
 function monthName(month: number) {
